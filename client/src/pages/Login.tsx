@@ -115,10 +115,10 @@ export default function Login() {
                     name="username"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Email</FormLabel>
+                        <FormLabel>Email / Uživatelské jméno</FormLabel>
                         <FormControl>
                           <Input
-                            type="email"
+                            type="text"
                             placeholder="vas@email.cz"
                             data-testid="input-email"
                             {...field}
