@@ -1,0 +1,119 @@
+Zde je podrobný popis modulu „Akce“ a plánovače akcí ve Folklore Garden – včetně vztahů na rezervace, personál, sklad, kuchyň, voucherový systém a všech logických kroků, které se mají odehrávat od vytvoření po vyhodnocení akce.
+
+⸻
+
+🔟 Modul: Akce (Event Management) – detailní popis
+
+🧩 Hlavní entita: Event
+
+Pole	Popis
+id	Primární ID
+type	Typ akce: “folklorní_show”, “svatba”, “event”, “privat”
+date	Datum a čas konání
+title	Název akce
+space	Prostor: roubenka / terasa / stodolka / celý areál
+organizer_name	Jméno nebo firma klienta
+contact_person	Kontaktní osoba + telefon/email
+coordinator	Interní osoba odpovědná za akci
+paid_count	Počet placených hostů
+free_count	Počet hostů zdarma
+note	Volné poznámky
+reservation_ref	Odkaz na původní rezervaci (pokud existuje)
+created_by	Uživatel, který akci vytvořil
+status	draft, planned, in_progress, done, cancelled
+
+
+⸻
+
+🔁 Proces vytvoření akce – krok za krokem
+
+🔹 Krok 1: Vytvoření akce
+	•	Manuálně nebo automaticky z rezervace
+	•	Vybere se typ akce, datum, prostor, zázemí, kontakty
+	•	Při propojení s rezervací se automaticky přenesou:
+	•	seznam hostů
+	•	výběr jídel
+	•	fakturace
+	•	informace o voucheru, příchodu, transferu
+
+🔹 Krok 2: Rozvržení stolů a osob
+	•	Přiřazení hostů ke stolům
+	•	Seznam osob: jméno (nebo kód), typ (dospělý/dítě), národnost
+	•	Přesun osob mezi stoly (drag & drop)
+
+🔹 Krok 3: Výběr a kalkulace jídel
+	•	Z rezervací + ruční úpravy
+	•	Výstup: kolik porcí jakého menu + export do kuchyně
+	•	Možnost změnit jídlo pro jednotlivce
+
+🔹 Krok 4: Výpočet potřebného personálu
+	•	Na základě počtu hostů, typu akce a prostoru
+	•	Vzorce (např.):
+	•	1 číšník na 25 hostů
+	•	1 kuchař na 50 porcí
+	•	1 moderátor pro folklórní show
+	•	Doplní se seznam:
+	•	Číšníci, kuchaři, pomocné síly, tanečníci, kapela, moderátor, fotograf
+
+🔹 Krok 5: Přiřazení personálu
+	•	Vybrání lidí z databáze personálu (User nebo StaffMember)
+	•	Možnost exportu seznamu pro daný den
+	•	Historie: kdo byl na jaké akci, kolikrát
+
+🔹 Krok 6: Organizační plán
+	•	Vložení detailního harmonogramu (časové bloky, co se děje)
+	•	Soupis cateringu (dodavatel, položky)
+	•	Automaticky odesílá e-maily:
+	•	Dodavatelům cateringu
+	•	Interním osobám
+
+🔹 Krok 7: Přehled a kontrola plateb
+	•	Načítá se z napojené rezervace
+	•	Možnost zadat další formy úhrady:
+	•	Hotově, kartou, faktura, záloha
+	•	Automatické označení jako uhrazené
+
+🔹 Krok 8: Provize a vouchery
+	•	Pokud se jedná o voucher:
+	•	QR kód načten a spárován s akci
+	•	Výpočet provize podle typu (hotel, recepce, Dana)
+	•	Např. Dana: 80 Kč, Recepce: 250 Kč
+	•	Generování přehledů pro fakturaci
+
+🔹 Krok 9: Den akce
+	•	Přehled hostů + zaškrtávání přítomnosti
+	•	Hlavní číšník má přístup k:
+	•	Výdeji jídel
+	•	Přehledu přítomných
+	•	Případným přesunům hostů
+
+🔹 Krok 10: Uzavření akce
+	•	Manažer musí potvrdit:
+	•	Skutečný počet přítomných osob
+	•	Stav plátců vs. neplátců
+	•	Automatické vygenerování a odeslání voucheru
+	•	Uložení historie (kdy schváleno, kdo potvrdil)
+
+⸻
+
+📆 Modul: Plánovač akcí
+
+Hlavní funkce:
+
+Funkce	Popis
+Denní / týdenní kalendář	Výpis všech plánovaných akcí
+Filtrování	Podle prostoru, typu, klienta, stavu
+Export do Excelu	Pro vedení / dodavatele / kuchyň
+Tisk rozpisu na den	Automaticky generovaný rozvrh dne
+Automatické notifikace	Klientům, kuchyni, dodavatelům
+Historie a změny	Záznam kdo co upravil a kdy
+
+
+⸻
+
+💡 Související entity
+	•	EventTable: pro rozmístění osob (stůl, osoba, jídlo)
+	•	EventStaffAssignment: kdo je přiřazen ke které akci, v jaké roli
+	•	EventMenuSummary: kolik čeho připravit (pro sklad + kuchyni)
+	•	EventLog: změny a akce uživatelů
+	•	CateringRequest: generované objednávky jídla a nápojů
