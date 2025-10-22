@@ -152,20 +152,16 @@ export function AppSidebar() {
             <SidebarMenu>
               {menuItems.map((item) => {
                 const isActive = location === item.url;
+                const Icon = item.icon;
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton
-                      asChild
                       isActive={isActive}
+                      onClick={() => setLocation(item.url)}
                       data-testid={`link-${item.url === '/' ? 'dashboard' : item.url.slice(1)}`}
                     >
-                      <a href={item.url} onClick={(e) => {
-                        e.preventDefault();
-                        setLocation(item.url);
-                      }}>
-                        <item.icon className="w-5 h-5" />
-                        <span>{item.title}</span>
-                      </a>
+                      <Icon className="w-5 h-5" />
+                      <span>{item.title}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
