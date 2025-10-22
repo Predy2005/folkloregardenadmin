@@ -1,18 +1,32 @@
-import { useState } from 'react';
-import { useLocation, Link } from 'wouter';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAuth } from '@/contexts/AuthContext';
-import { Checkbox } from '@/components/ui/checkbox';
+import { useState } from "react";
+import { useLocation, Link } from "wouter";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { useAuth } from "@/contexts/AuthContext";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const loginSchema = z.object({
-  email: z.string().email('Zadejte platný email'),
-  password: z.string().min(6, 'Heslo musí mít alespoň 6 znaků'),
+  username: z.string().min(1, "Zadejte uživatelské jméno"),
+  password: z.string().min(1, "Zadejte heslo"),
   rememberMe: z.boolean().optional(),
 });
 
@@ -26,8 +40,8 @@ export default function Login() {
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: '',
-      password: '',
+      username: "",
+      password: "",
       rememberMe: false,
     },
   });
@@ -35,10 +49,10 @@ export default function Login() {
   const onSubmit = async (data: LoginForm) => {
     try {
       setIsLoading(true);
-      await login({ email: data.email, password: data.password });
-      setLocation('/');
+      await login({ username: data.username, password: data.password });
+      setLocation("/");
     } catch (error) {
-      console.error('Login error:', error);
+      console.error("Login error:", error);
     } finally {
       setIsLoading(false);
     }
@@ -54,7 +68,7 @@ export default function Login() {
             <span className="text-2xl font-bold">FG</span>
           </div>
         </div>
-        
+
         <div className="relative z-10">
           <h1 className="text-4xl font-serif font-bold mb-4">
             Nejrychlejší a nejjednodušší způsob
@@ -63,7 +77,8 @@ export default function Login() {
             Správa Folklore Garden
           </p>
           <p className="text-white/90 text-sm max-w-md">
-            Kompletní administrační systém pro správu rezervací, plateb, akcí a personálu
+            Kompletní administrační systém pro správu rezervací, plateb, akcí a
+            personálu
           </p>
         </div>
 
@@ -87,16 +102,17 @@ export default function Login() {
           <Card className="border-border">
             <CardHeader className="space-y-1">
               <CardTitle className="text-2xl font-serif">Přihlášení</CardTitle>
-              <CardDescription>
-                Zadejte své přihlašovací údaje
-              </CardDescription>
+              <CardDescription>Zadejte své přihlašovací údaje</CardDescription>
             </CardHeader>
             <CardContent>
               <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <form
+                  onSubmit={form.handleSubmit(onSubmit)}
+                  className="space-y-4"
+                >
                   <FormField
                     control={form.control}
-                    name="email"
+                    name="username"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Email</FormLabel>
@@ -151,7 +167,10 @@ export default function Login() {
                         </FormItem>
                       )}
                     />
-                    <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+                    <Link
+                      href="/forgot-password"
+                      className="text-sm text-primary hover:underline"
+                    >
                       Zapomněli jste heslo?
                     </Link>
                   </div>
@@ -162,15 +181,18 @@ export default function Login() {
                     disabled={isLoading}
                     data-testid="button-login"
                   >
-                    {isLoading ? 'Přihlašování...' : 'Přihlásit se'}
+                    {isLoading ? "Přihlašování..." : "Přihlásit se"}
                   </Button>
                 </form>
               </Form>
             </CardContent>
             <CardFooter className="flex justify-center">
               <p className="text-sm text-muted-foreground">
-                Nemáte účet?{' '}
-                <Link href="/register" className="text-primary hover:underline font-medium">
+                Nemáte účet?{" "}
+                <Link
+                  href="/register"
+                  className="text-primary hover:underline font-medium"
+                >
                   Zaregistrovat se
                 </Link>
               </p>
