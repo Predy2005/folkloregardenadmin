@@ -1,394 +1,53 @@
 # Folklore Garden Admin System
 
-Administrační systém pro správu rezervací, plateb, jídel a uživatelů pro Folklore Garden.
+## Overview
+The Folklore Garden Admin System is a comprehensive administration panel designed to manage reservations, payments, food services, and users for the Folklore Garden venue. Its primary purpose is to streamline operational workflows, from booking and financial transactions to inventory management, staff coordination, and event planning. The system aims to provide a centralized platform for efficient management of all key business processes, improving customer experience and internal efficiency.
 
-## Technologie
+## User Preferences
+- All new modules should use the same design pattern as existing modules.
+- Components should implement CRUD operations with filtering, searching, and statistics.
+- The purple gradient design should be consistently applied across the entire application.
 
-### Frontend
-- **React 18** - UI framework
-- **TypeScript** - Type safety
-- **Wouter** - Routing
-- **Axios** - HTTP client pro API komunikaci
-- **Day.js** - Práce s datumy
-- **TailwindCSS** - Styling
-- **Shadcn UI** - Komponenty
-- **React Hook Form** - Formuláře
-- **TanStack Query** - Data fetching a caching
-- **Lucide React** - Ikony
+## System Architecture
 
-### Backend API
-- **External API**: https://api.folkloregarden.cz/
-- **Autentizace**: JWT (LexikJWTAuthenticationBundle)
-- **Database**: PostgreSQL (Symfony Doctrine)
+### UI/UX Decisions
+- **Color Scheme**: Purple Gradient (`hsl(270 70% 60%)` as primary), transitioning to Pink/Orange for interactive elements.
+- **Modes**: Default Dark Mode with an optional Light Mode toggle.
+- **Fonts**: Inter for UI elements, tables, and forms; Poppins for headings and module titles; JetBrains Mono for IDs and transaction codes.
+- **Components**: Utilizes Shadcn UI components with a custom purple theme. Features gradient buttons for primary actions, color-coded status badges, and a sidebar navigation with purple accents.
 
-## Struktura projektu
+### Technical Implementations
+- **Frontend**: Built with React 18 and TypeScript for type safety. Uses Wouter for routing, Axios for API communication, Day.js for date handling, TailwindCSS for styling, React Hook Form for forms, TanStack Query for data fetching/caching, and Lucide React for icons.
+- **Backend API**: Leverages an external Symfony-based API (`https://api.folkloregarden.cz/`) with JWT authentication (LexikJWTAuthenticationBundle) and PostgreSQL database (Symfony Doctrine).
+- **Project Structure**: Organized into `client/` (for React application) and `shared/` (for common TypeScript types).
+- **Authentication**: JWT-based login, registration, and logout with protected routes. JWT token stored in `localStorage`. Axios interceptors handle automatic `Authorization` header injection and 401 Unauthorized logout.
+- **State Management**: React Context for authentication and theme, TanStack Query for data fetching, caching, and mutations.
+- **Testing**: Interactive elements include `data-testid` attributes for easier automated testing.
 
-```
-client/
-├── src/
-│   ├── components/        # Reusable komponenty
-│   │   ├── ui/           # Shadcn UI komponenty
-│   │   ├── AppSidebar.tsx
-│   │   ├── ProtectedRoute.tsx
-│   │   ├── StatusBadge.tsx
-│   │   └── ThemeToggle.tsx
-│   ├── contexts/         # React Contexts
-│   │   ├── AuthContext.tsx      # JWT autentizace
-│   │   └── ThemeContext.tsx     # Dark/Light mode
-│   ├── lib/              # Utility funkce
-│   │   ├── api.ts        # Axios client
-│   │   └── queryClient.ts
-│   ├── pages/            # Stránky aplikace
-│   │   ├── Login.tsx
-│   │   ├── Register.tsx
-│   │   ├── Dashboard.tsx
-│   │   ├── Reservations.tsx
-│   │   ├── Payments.tsx
-│   │   ├── Foods.tsx
-│   │   ├── Users.tsx
-│   │   ├── DisabledDates.tsx
-│   │   ├── StockItems.tsx
-│   │   ├── Recipes.tsx
-│   │   ├── StockMovements.tsx
-│   │   ├── Partners.tsx
-│   │   ├── Vouchers.tsx
-│   │   ├── CommissionLogs.tsx
-│   │   ├── StaffMembers.tsx
-│   │   ├── StaffAttendance.tsx
-│   │   ├── Cashbox.tsx
-│   │   ├── Events.tsx
-│   │   └── not-found.tsx
-│   ├── App.tsx           # Hlavní komponenta s routing
-│   ├── index.css         # Global styles + dark mode
-│   └── main.tsx
-├── index.html
-└── vite.config.ts
+### Feature Specifications
+The system supports a wide range of functionalities:
+- **Authentication**: User login, registration, and secure route protection.
+- **Dashboard**: Overview of key statistics, recent reservations, and metric visualization.
+- **Reservations**: Comprehensive management including search, detail view (guests, food, payments, billing, transfer), and status tracking (RECEIVED, WAITING_PAYMENT, PAID, CANCELLED, CONFIRMED).
+- **Payments**: Integration with Comgate API for listing and filtering payments by status, searching by transaction ID or reference, and financial statistics.
+- **Food Management**: CRUD operations for menu items, including child menus, pricing, and descriptions.
+- **User Management**: CRUD for system users, role assignment (ROLE_USER, ROLE_ADMIN), and login history.
+- **Disabled Dates**: Management of blocked dates for the reservation system with reasons and project association.
+- **Stock Management**:
+    - **Stock Items**: CRUD for ingredients, unit management, minimum stock alerts, and categorization.
+    - **Recipes**: Creation of recipes linked to menu items, ingredient quantity calculation, and menu item association.
+    - **Stock Movements**: Tracking of inventory inflows, outflows, and adjustments with type and date filtering.
+- **Commission/Voucher System**:
+    - **Partners**: CRUD for affiliates, commission rate setup, and active partner tracking.
+    - **Vouchers**: CRUD for discount codes and QR vouchers, validity and usage limit settings, partner linking, and status tracking.
+    - **Commission Logs**: Calculation and tracking of commissions from reservations, payment status, and total amount statistics.
+- **Staff Management**:
+    - **Staff Members**: CRUD for employees, role assignment (chef, waiter, bartender), hourly rates, and contact details.
+    - **Staff Attendance**: Recording of working hours, calculation based on hourly rates, payment status, and unpaid hour statistics.
+- **Cashbox**: Multi-currency (CZK, EUR) management of income and expenses, transaction categorization, balance tracking, and filtering.
+- **Events**: Advanced planning and management module for various event types (Folklore Show, Wedding, Private Event). Includes space allocation, status tracking (Concept, Planned, Ongoing, Completed, Canceled), organizer/client details, guest management (paying/free, table layout, guest list with type/nationality, check-in), menu and catering integration, staff assignment, detailed organizational plan, and linking with reservations. Detailed views include tabs for Information, Guests, Staff, Menu, Plan, and Floor Plan.
 
-shared/
-├── types.ts              # TypeScript interfaces pro API entity
-└── schema.ts             # (původní Drizzle schéma - nepoužívá se)
-```
-
-## Funkcionality
-
-### ✅ Implementované moduly (s hotovým API)
-
-#### 1. Autentizace
-- **Login** - Přihlášení s JWT tokenem
-- **Register** - Registrace nového uživatele
-- **Logout** - Odhlášení
-- **Protected Routes** - Ochrana stránek před nepřihlášenými uživateli
-
-#### 2. Dashboard
-- Přehled statistik (celkem rezervací, zaplacených, příjmů)
-- Seznam posledních 5 rezervací
-- Vizualizace klíčových metrik
-
-#### 3. Rezervace
-- Seznam všech rezervací s vyhledáváním
-- Detail rezervace (osoby, jídla, platby, fakturační údaje, transfer)
-- Zobrazení statusů (RECEIVED, WAITING_PAYMENT, PAID, CANCELLED, CONFIRMED)
-- Informace o kontaktu, transferu, poznámkách
-
-#### 4. Platby
-- Seznam všech plateb z Comgate API
-- Filtrace podle statusu (PAID, PENDING, CANCELLED, AUTHORIZED)
-- Vyhledávání podle Transaction ID nebo Reservation Reference
-- Statistiky (celková částka, počet zaplacených plateb)
-
-#### 5. Jídla (ReservationFoods)
-- CRUD operace (Create, Read, Update, Delete)
-- Správa menu položek
-- Označení dětského menu
-- Ceny a popisy jídel
-
-#### 6. Uživatelé
-- Správa uživatelů systému
-- CRUD operace
-- Zobrazení rolí (ROLE_USER, ROLE_ADMIN)
-- Historie přihlášení (poslední přihlášení, IP adresa)
-
-#### 7. Blokované termíny
-- Správa blokovaných dat pro rezervační systém
-- Nastavení období blokace (dateFrom - dateTo)
-- Důvod blokace
-- Projekt (např. "reservations")
-
-#### 8. Sklad (Stock Management)
-- **StockItems** - Správa surovin a ingrediencí
-  - CRUD operace s gramatury a jednotkami
-  - Sledování minimálních zásob
-  - Alert systém pro nízké zásoby
-  - Kategorie surovin
-- **Recipes** - Receptury propojené na menu
-  - Vytváření receptur s ingrediencemi
-  - Kalkulace množství surovin na porci
-  - Propojení s menu položkami
-- **StockMovements** - Evidence pohybů na skladě
-  - Příjmy, výdaje, adjustments
-  - Sledování množství a důvodů
-  - Filtrace podle typu a data
-
-#### 9. Provizní systém (Commission/Vouchers)
-- **Partners** - Správa partnerů a affiliates
-  - CRUD operace s kontakty
-  - Nastavení provizní sazby
-  - Sledování aktivních partnerů
-- **Vouchers** - Slevové kódy a QR vouchery
-  - CRUD operace se slevovými kódy
-  - Nastavení platnosti a limitů použití
-  - Propojení s partnery
-  - Status tracking (aktivní, vypršelé)
-- **CommissionLogs** - Evidence provizí
-  - Výpočet provizí z rezervací
-  - Sledování zaplacených/nezaplacených provizí
-  - Statistiky celkových částek
-
-#### 10. Personální evidence (Staff Management)
-- **StaffMembers** - Správa zaměstnanců
-  - CRUD operace se členy týmu
-  - Role (kuchař, číšník, barman, atd.)
-  - Hodinové sazby
-  - Kontaktní údaje
-- **StaffAttendance** - Docházka a odpracované hodiny
-  - Záznam odpracovaných hodin
-  - Výpočet částek podle hodinových sazeb
-  - Označení zaplacených hodin
-  - Statistiky nezaplacených hodin
-
-#### 11. Pokladna (Cashbox)
-- **Cashbox** - Správa příjmů a výdajů
-  - Multi-měnový systém (CZK, EUR)
-  - Kategorizace transakcí
-  - Sledování bilance
-  - Filtrace podle typu a měny
-  - Propojení s rezervacemi a akcemi
-
-#### 12. Akce/Events (Rozšířený modul)
-- **Events** - Pokročilé plánování a správa akcí
-  - **Typy akcí**: Folklorní show, Svatba, Event, Soukromá akce
-  - **Prostory**: Roubenka, Terasa, Stodolka, Celý areál
-  - **Stavy**: Koncept, Plánováno, Probíhá, Dokončeno, Zrušeno
-  - **Organizační údaje**:
-    - Organizátor/klient
-    - Kontaktní osoba
-    - Interní koordinátor
-  - **Správa hostů**:
-    - Počet platících a zdarma hostů
-    - Rozvržení stolů (EventTable)
-    - Seznam hostů s typem (dospělý/dítě), národností
-    - Sledování přítomnosti (check-in)
-  - **Menu a catering**:
-    - Propojení na receptury
-    - Kalkulace porcí
-    - Poznámky k cateringu
-  - **Personál**:
-    - Přiřazení zaměstnanců k akci
-    - Role (číšník, kuchař, moderátor, tanečníci, atd.)
-  - **Organizační plán**:
-    - Časový harmonogram akce
-    - Detailní pokyny pro tým
-    - Catering požadavky
-  - **Propojení s rezervacemi**:
-    - Možnost vytvořit akci z rezervace
-    - Automatický přenos hostů a jídel
-  - **Detailní zobrazení** s 5 záložkami:
-    - Informace (základní údaje)
-    - Hosté (přehled, rozvržení stolů)
-    - Personál (přiřazený tým)
-    - Menu (jídla, catering)
-    - Plán (harmonogram, organizace)
-
-## Design
-
-### Barevné schéma (Purple Gradient)
-- **Primary Purple**: `hsl(270 70% 60%)`
-- **Gradient**: Purple → Pink/Orange (pro tlačítka)
-- **Dark Mode**: Default (deep charcoal background)
-- **Light Mode**: Volitelné přepínání
-
-### Fonty
-- **Sans**: Inter (UI, tabulky, formuláře)
-- **Serif**: Poppins (nadpisy, module titles)
-- **Mono**: JetBrains Mono (ID, kódy transakcí)
-
-### Komponenty
-- Shadcn UI s purple theme
-- Gradient tlačítka (primary actions)
-- Status badges (color-coded)
-- Sidebar navigace s purple accenty
-- Dark/Light mode toggle
-
-## API Endpoints
-
-### Autentizace
-- `POST /auth/login` - Přihlášení
-- `POST /auth/register` - Registrace
-- `POST /auth/logout` - Odhlášení
-- `GET /auth/user` - Aktuální uživatel
-- `POST /auth/forgot-password` - Reset hesla
-- `POST /auth/reset-password` - Změna hesla
-
-### Rezervace
-- `GET /api/reservations` - Seznam rezervací
-- `GET /api/reservation/{id}` - Detail rezervace
-
-### Platby
-- `GET /api/payment/list` - Seznam plateb (s filtry)
-- `GET /api/payment/status/{refId}` - Status platby
-
-### Jídla
-- `GET /api/reservation-foods` - Seznam jídel
-- `POST /api/reservation-foods` - Vytvoření jídla
-- `PUT /api/reservation-foods/{id}` - Úprava jídla
-- `DELETE /api/reservation-foods/{id}` - Smazání jídla
-
-### Uživatelé
-- `GET /api/users` - Seznam uživatelů
-- `POST /api/users` - Vytvoření uživatele
-- `PUT /api/users/{id}` - Úprava uživatele
-- `DELETE /api/users/{id}` - Smazání uživatele
-
-### Blokované termíny
-- `GET /api/disable-dates` - Seznam blokací
-- `POST /api/disable-dates` - Vytvoření blokace
-- `PUT /api/disable-dates/{id}` - Úprava blokace
-- `DELETE /api/disable-dates/{id}` - Smazání blokace
-
-### Sklad
-- `GET /api/stock-items` - Seznam surovin
-- `POST /api/stock-items` - Vytvoření suroviny
-- `PUT /api/stock-items/{id}` - Úprava suroviny
-- `DELETE /api/stock-items/{id}` - Smazání suroviny
-- `GET /api/recipes` - Seznam receptur
-- `POST /api/recipes` - Vytvoření receptury
-- `PUT /api/recipes/{id}` - Úprava receptury
-- `DELETE /api/recipes/{id}` - Smazání receptury
-- `GET /api/stock-movements` - Seznam pohybů
-- `POST /api/stock-movements` - Vytvoření pohybu
-
-### Provizní systém
-- `GET /api/partners` - Seznam partnerů
-- `POST /api/partners` - Vytvoření partnera
-- `PUT /api/partners/{id}` - Úprava partnera
-- `DELETE /api/partners/{id}` - Smazání partnera
-- `GET /api/vouchers` - Seznam voucherů
-- `POST /api/vouchers` - Vytvoření voucheru
-- `PUT /api/vouchers/{id}` - Úprava voucheru
-- `DELETE /api/vouchers/{id}` - Smazání voucheru
-- `GET /api/commission-logs` - Seznam provizních logů
-- `PUT /api/commission-logs/{id}/mark-paid` - Označení jako zaplaceno
-
-### Personální evidence
-- `GET /api/staff` - Seznam zaměstnanců
-- `POST /api/staff` - Vytvoření zaměstnance
-- `PUT /api/staff/{id}` - Úprava zaměstnance
-- `DELETE /api/staff/{id}` - Smazání zaměstnance
-- `GET /api/staff-attendance` - Seznam docházky
-- `POST /api/staff-attendance` - Vytvoření záznamu
-- `PUT /api/staff-attendance/{id}/mark-paid` - Označení jako zaplaceno
-
-### Pokladna
-- `GET /api/cashbox` - Seznam transakcí
-- `POST /api/cashbox` - Vytvoření transakce
-
-### Akce/Events
-- `GET /api/events` - Seznam akcí
-- `POST /api/events` - Vytvoření akce
-- `PUT /api/events/{id}` - Úprava akce
-- `DELETE /api/events/{id}` - Smazání akce
-
-## Konfigurace
-
-### Environment Variables
-JWT token se ukládá do `localStorage` jako `auth_token`.
-
-### API Base URL
-```typescript
-const API_BASE_URL = 'https://api.folkloregarden.cz';
-```
-
-### Axios Interceptors
-- **Request**: Automatické přidání `Authorization: Bearer {token}` headeru
-- **Response**: Automatické odhlášení při 401 Unauthorized
-
-## Spuštění
-
-```bash
-npm run dev
-```
-
-Aplikace běží na portu definovaném ve Vite konfiguraci.
-
-## Navigace
-
-### Public routes
-- `/login` - Přihlášení
-- `/register` - Registrace
-
-### Protected routes (vyžadují přihlášení)
-- `/` - Dashboard
-- `/reservations` - Rezervace
-- `/payments` - Platby
-- `/foods` - Jídla
-- `/stock-items` - Sklad
-- `/recipes` - Receptury
-- `/stock-movements` - Pohyby skladu
-- `/partners` - Partneři
-- `/vouchers` - Vouchery
-- `/commission-logs` - Provizní logy
-- `/staff` - Personál
-- `/staff-attendance` - Docházka
-- `/cashbox` - Pokladna
-- `/events` - Akce
-- `/users` - Uživatelé
-- `/disabled-dates` - Blokované termíny
-
-## State Management
-
-- **AuthContext** - JWT token, uživatel, login/logout
-- **ThemeContext** - Dark/Light mode toggle
-- **TanStack Query** - Data fetching, caching, mutations
-
-## Testing
-
-Data-testid atributy jsou přidány na všechny interaktivní elementy pro snadné testování:
-- `button-login`, `button-register`
-- `input-email`, `input-password`
-- `link-dashboard`, `link-reservations`
-- `row-reservation-{id}`, `row-payment-{id}`
-- atd.
-
-## Poznámky
-
-- Backend API je samostatný projekt (PHP Symfony)
-- Frontend komunikuje pouze přes REST API
-- CORS je nakonfigurováno na backend straně
-- JWT token expiruje (čas závisí na backend konfiguraci)
-- Všechny nové moduly (8-12) používají stejný design pattern jako existující moduly
-- Komponenty implementují CRUD operace s filtrováním, vyhledáváním a statistikami
-- Purple gradient design je konzistentně aplikován napříč celou aplikací
-
-## Historie změn
-
-### 2025-10-22
-- ✅ Implementován modul **Sklad** (StockItems, Recipes, StockMovements)
-- ✅ Implementován modul **Provizní systém** (Partners, Vouchers, CommissionLogs)
-- ✅ Implementován modul **Personální evidence** (StaffMembers, StaffAttendance)
-- ✅ Implementován modul **Pokladna** (Cashbox s multi-měnou CZK/EUR)
-- ✅ Implementován modul **Akce/Events** (základní verze)
-- ✅ **Kompletní rozšíření Events modulu** podle detailního popisu:
-  - Přidána Event entita s poli: type, space, organizerName, contactPerson, coordinator, paidCount, freeCount
-  - Vytvořena EventTable a EventGuest entity pro rozvržení stolů a hostů
-  - Formulář se 4 záložkami (Základní údaje, Hosté, Organizační plán, Poznámky)
-  - Detailní zobrazení s 5 záložkami (Informace, Hosté, Personál, Menu, Plán)
-  - Filtrace podle typu akce a statusu
-  - Harmonogram akce, organizační plán, catering poznámky
-  - Propojení s rezervacemi
-  - Podpora pro přítomnost hostů (isPresent flag)
-- ✅ Sidebar navigace rozšířena o všechny nové moduly
-- ✅ Opraveny React chyby:
-  - React hooks warning v AppSidebar (odstranění asChild pattern)
-  - SelectItem s prázdnou hodnotou (Events.tsx, Vouchers.tsx)
-  - Vnořené buttony v user menu
-- ✅ Doplněny data-testid atributy do Events modulu
+## External Dependencies
+- **External API**: `https://api.folkloregarden.cz/`
+- **Database**: PostgreSQL (via Symfony Doctrine)
+- **Payment Gateway**: Comgate API
