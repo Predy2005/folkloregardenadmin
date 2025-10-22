@@ -356,13 +356,18 @@ export interface EventTable {
   id: number;
   eventId: number;
   tableName: string;
+  room: 'roubenka' | 'terasa' | 'stodolka' | 'cely_areal';
   capacity: number;
+  positionX?: number;
+  positionY?: number;
   guests?: EventGuest[];
 }
 
 export interface EventGuest {
   id: number;
-  eventTableId: number;
+  eventTableId?: number;
+  reservationId?: number;
+  personIndex?: number;
   name: string;
   type: 'adult' | 'child';
   nationality?: string;

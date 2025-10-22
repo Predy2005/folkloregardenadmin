@@ -49,7 +49,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Pencil, Trash2, Search, CalendarDays, Eye, Users, UtensilsCrossed, ClipboardList, DollarSign, CheckSquare } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, CalendarDays, Eye, Users, UtensilsCrossed, ClipboardList, DollarSign, CheckSquare, LayoutGrid } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -596,7 +596,7 @@ export default function Events() {
                             <SelectItem value="0">Bez rezervace</SelectItem>
                             {reservations?.map((reservation) => (
                               <SelectItem key={reservation.id} value={reservation.id.toString()}>
-                                Rezervace #{reservation.id} - {reservation.firstName} {reservation.lastName}
+                                Rezervace #{reservation.id} - {reservation.contactName}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -790,12 +790,13 @@ export default function Events() {
           </DialogHeader>
           {viewingEvent && (
             <Tabs defaultValue="info" className="w-full">
-              <TabsList className="grid w-full grid-cols-5">
+              <TabsList className="grid w-full grid-cols-6">
                 <TabsTrigger value="info">Informace</TabsTrigger>
                 <TabsTrigger value="guests">Hosté</TabsTrigger>
                 <TabsTrigger value="staff">Personál</TabsTrigger>
                 <TabsTrigger value="menu">Menu</TabsTrigger>
                 <TabsTrigger value="plan">Plán</TabsTrigger>
+                <TabsTrigger value="floorplan">Plánek stolů</TabsTrigger>
               </TabsList>
 
               <TabsContent value="info" className="space-y-4 mt-4">
@@ -988,6 +989,92 @@ export default function Events() {
                     Organizační plán a harmonogram zatím nebyly vytvořeny
                   </div>
                 )}
+              </TabsContent>
+
+              <TabsContent value="floorplan" className="space-y-4 mt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 justify-between">
+                      <div className="flex items-center gap-2">
+                        <LayoutGrid className="w-5 h-5" />
+                        Plánek stolů
+                      </div>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        data-testid="button-import-guests"
+                      >
+                        Importovat hosty z rezervací
+                      </Button>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Tabs defaultValue="roubenka" className="w-full">
+                      <TabsList className="grid w-full grid-cols-4">
+                        <TabsTrigger value="roubenka">Roubenka</TabsTrigger>
+                        <TabsTrigger value="terasa">Terasa</TabsTrigger>
+                        <TabsTrigger value="stodolka">Stodolka</TabsTrigger>
+                        <TabsTrigger value="cely_areal">Celý areál</TabsTrigger>
+                      </TabsList>
+
+                      {['roubenka', 'terasa', 'stodolka', 'cely_areal'].map((room) => (
+                        <TabsContent key={room} value={room} className="mt-4">
+                          <div className="flex gap-4">
+                            {/* Floor Plan Canvas - bude samostatná komponenta */}
+                            <div className="flex-1 border rounded-md p-4 min-h-[400px] bg-muted/20">
+                              <div className="flex items-center justify-between mb-4">
+                                <h4 className="font-semibold">
+                                  Místnost: {EVENT_SPACE_LABELS[room as Event['space']]}
+                                </h4>
+                                <Button size="sm" variant="outline" data-testid={`button-add-table-${room}`}>
+                                  + Přidat stůl
+                                </Button>
+                              </div>
+                              
+                              {/* Grid zobrazení stolů */}
+                              <div className="grid grid-cols-5 gap-3">
+                                {viewingEvent.tables
+                                  ?.filter(table => table.room === room)
+                                  .map((table) => (
+                                    <div
+                                      key={table.id}
+                                      className="border rounded-md p-3 bg-background hover-elevate cursor-pointer"
+                                      data-testid={`table-${table.id}`}
+                                    >
+                                      <div className="text-sm font-semibold">{table.tableName}</div>
+                                      <div className="text-xs text-muted-foreground mt-1">
+                                        {table.guests?.length || 0} / {table.capacity}
+                                      </div>
+                                    </div>
+                                  ))}
+                              </div>
+                              
+                              {!viewingEvent.tables?.some(t => t.room === room) && (
+                                <div className="text-center py-8 text-muted-foreground">
+                                  V této místnosti zatím nejsou žádné stoly
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Guest Roster - nepřiřazení hosté */}
+                            <div className="w-72 border rounded-md p-4">
+                              <h4 className="font-semibold mb-3">Nepřiřazení hosté</h4>
+                              <div className="text-xs text-muted-foreground mb-3">
+                                Přetáhněte hosty ke stolům nebo je přiřaďte kliknutím
+                              </div>
+                              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                                {/* TODO: Seznam hostů z rezervací, kteří nejsou v EventGuest */}
+                                <div className="text-sm text-muted-foreground text-center py-4">
+                                  Zatím žádní nepřiřazení hosté
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </TabsContent>
+                      ))}
+                    </Tabs>
+                  </CardContent>
+                </Card>
               </TabsContent>
             </Tabs>
           )}
