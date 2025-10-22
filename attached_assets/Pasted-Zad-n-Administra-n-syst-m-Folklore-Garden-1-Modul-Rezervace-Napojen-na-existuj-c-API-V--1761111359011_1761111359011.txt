@@ -1,0 +1,134 @@
+Zadání: Administrační systém Folklore Garden
+
+1. Modul: Rezervace
+
+Napojený na existující API:
+	•	Výpis všech rezervací
+	•	Detail rezervace:
+	•	Osoby
+	•	Vybrané jídlo (menu)
+	•	Fakturační údaje
+	•	Transfer
+	•	Poznámky, jazyk, zdroj (hotel/recepce/leták)
+	•	Možnost ručního vytvoření rezervace
+	•	Historie změn rezervace
+	•	Tlačítko: „Vygenerovat akci z rezervace“
+
+⸻
+
+2. Modul: Akce
+
+Možnost ručně vytvořit nebo automaticky z rezervace.
+
+Základní údaje:
+	•	Název akce
+	•	Datum a čas
+	•	Počet osob: placené / zdarma
+	•	Místo konání: roubenka, terasa, stodola, celý areál, stánkovárna
+	•	Typ akce: folklórní show / svatba / privátní event
+	•	Firma/osoba + kontakt
+	•	Koordinátor
+	•	Jazyk (CZ, EN, SP…)
+	•	Fakturační informace, záloha, způsob úhrady
+
+Přidružené informace:
+	•	Seznam hostů + národnosti
+	•	Přiřazení hostů ke stolům
+	•	Přiřazení jídel a nápojů
+	•	Přehled voucherů a jejich validace
+	•	Poznámky pro personál
+
+Personál k akci:
+	•	Koordinátor, číšníci, kuchaři, tanečníci, kapela, moderátor, pomocné síly, fotograf
+	•	Možnost odškrtnutí účasti
+	•	Evidence docházky
+	•	Export do Excelu
+
+⸻
+
+3. Modul: Přehled plateb
+
+Napojené na existující Comgate API a PaymentController.
+	•	Výpis uhrazených / čekajících / zrušených plateb
+	•	Filtrování podle typu, data, metody platby
+	•	Vystavení zálohové faktury
+	•	Označení platby jako „uhrazeno“
+	•	Přehled dle měny (CZK, EUR)
+	•	Záznam o tom, jak bylo hrazeno (hotově, online, faktura)
+
+⸻
+
+4. Modul: Jídla (ReservationFoods)
+
+Napojený na backend.
+	•	Výpis jídel
+	•	Přidání nového jídla (název, popis, cena, dětské menu)
+	•	Editace/smazání jídel
+	•	Nastavení příplatků
+
+⸻
+
+5. Modul: Sklad
+	•	Evidence jídla dle gramáže
+	•	Počet dostupných porcí
+	•	Výpočet skladových zásob na základě receptur
+	•	Vystavení výdejek na základě rezervací/akcí
+
+⸻
+
+6. Modul: Provizní systém
+	•	Evidence voucherů:
+	•	Počet vydaných
+	•	Počet uplatněných
+	•	Počet proplacených (včetně typu platby)
+	•	Rozdíl mezi hotely, recepcí, Danu (distributor)
+	•	Automatické výpočty provizí
+	•	Příklad: 80 Kč Danu, 250 Kč recepce
+	•	Napojení na QR skenování voucheru
+
+⸻
+
+7. Modul: Personální evidence
+	•	Výpis všech členů personálu
+	•	Historie účasti na akcích
+	•	Export do Excelu
+	•	Výpočet potřebných sil podle počtu osob
+
+⸻
+
+8. Modul: Pokladna
+	•	Výpis příjmů a výdajů
+	•	Záznam pohybů v CZK / EUR
+	•	Okamžité zničení pokladny
+	•	Výpočet výsledku akce (příjmy - výdaje)
+
+⸻
+
+9. Modul: Plánovač akcí
+	•	Přehled všech budoucích akcí
+	•	Možnost generovat plán akcí na daný den/týden
+	•	Export pro partnery
+	•	Automatické e-maily klientům, dodavatelům
+
+⸻
+
+10. Modul: Uživatelská práva a přístupy
+	•	Uživatelské role (admin, manažer, číšník, kuchař…)
+	•	Nastavení oprávnění na úrovni modulů a akcí
+	•	Audit log změn (kdo co upravil, kdy…)
+
+⸻
+
+11. Modul: Transféry a SmartDrive
+	•	Přehled transferů
+	•	Možnost přiřadit transfer ke konkrétní rezervaci/akci
+	•	Odeslání notifikace (např. FCM push)
+	•	Export seznamu tras pro řidiče
+
+⸻
+
+12. Organizační plán akce
+	•	Soupis cateringu a jeho rozeslání
+	•	Časový harmonogram
+	•	Speciální požadavky (bezlepková strava, uspořádání stolů…)
+	•	Historie akcí, poznámky
