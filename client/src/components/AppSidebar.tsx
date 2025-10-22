@@ -11,6 +11,13 @@ import {
   Package,
   ChefHat,
   ArrowUpDown,
+  Users2,
+  Ticket,
+  DollarSign,
+  UserCog,
+  Clock,
+  Wallet,
+  CalendarDays,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -70,6 +77,41 @@ const menuItems = [
     title: 'Pohyby skladu',
     url: '/stock-movements',
     icon: ArrowUpDown,
+  },
+  {
+    title: 'Partneři',
+    url: '/partners',
+    icon: Users2,
+  },
+  {
+    title: 'Vouchery',
+    url: '/vouchers',
+    icon: Ticket,
+  },
+  {
+    title: 'Provizní logy',
+    url: '/commission-logs',
+    icon: DollarSign,
+  },
+  {
+    title: 'Personál',
+    url: '/staff',
+    icon: UserCog,
+  },
+  {
+    title: 'Docházka',
+    url: '/staff-attendance',
+    icon: Clock,
+  },
+  {
+    title: 'Pokladna',
+    url: '/cashbox',
+    icon: Wallet,
+  },
+  {
+    title: 'Akce',
+    url: '/events',
+    icon: CalendarDays,
   },
   {
     title: 'Uživatelé',

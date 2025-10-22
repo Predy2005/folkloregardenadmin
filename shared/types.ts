@@ -186,3 +186,163 @@ export const STOCK_UNIT_LABELS: Record<string, string> = {
   ml: 'ml',
   ks: 'ks',
 };
+
+// Commission System types
+export interface Voucher {
+  id: number;
+  code: string;
+  discountPercent: number;
+  validFrom: string;
+  validTo: string;
+  usageLimit?: number;
+  usedCount: number;
+  active: boolean;
+  partnerId?: number;
+  qrCodeUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+  partner?: Partner;
+}
+
+export interface Partner {
+  id: number;
+  name: string;
+  contactEmail: string;
+  contactPhone?: string;
+  commissionPercent: number;
+  active: boolean;
+  totalRevenue: number;
+  totalCommission: number;
+  createdAt: string;
+  updatedAt: string;
+  vouchers?: Voucher[];
+  commissionLogs?: CommissionLog[];
+}
+
+export interface CommissionLog {
+  id: number;
+  partnerId: number;
+  reservationId?: number;
+  voucherId?: number;
+  amount: number;
+  commissionAmount: number;
+  isPaid: boolean;
+  paidAt?: string;
+  note?: string;
+  createdAt: string;
+  partner?: Partner;
+  voucher?: Voucher;
+}
+
+export const VOUCHER_STATUS_LABELS = {
+  active: 'Aktivní',
+  inactive: 'Neaktivní',
+  expired: 'Vypršel',
+};
+
+// Staff Management types
+export interface StaffMember {
+  id: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  role: string;
+  hourlyRate?: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  attendances?: StaffAttendance[];
+}
+
+export interface StaffAttendance {
+  id: number;
+  staffMemberId: number;
+  eventId?: number;
+  reservationId?: number;
+  date: string;
+  hoursWorked: number;
+  note?: string;
+  isPaid: boolean;
+  paidAt?: string;
+  createdAt: string;
+  staffMember?: StaffMember;
+}
+
+export const STAFF_ROLE_LABELS: Record<string, string> = {
+  chef: 'Kuchař',
+  waiter: 'Číšník',
+  bartender: 'Barman',
+  cleaner: 'Uklízeč',
+  manager: 'Manažer',
+  other: 'Jiné',
+};
+
+// Cashbox types
+export interface CashboxEntry {
+  id: number;
+  type: 'INCOME' | 'EXPENSE';
+  category: string;
+  amount: number;
+  currency: 'CZK' | 'EUR';
+  description?: string;
+  eventId?: number;
+  reservationId?: number;
+  date: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const CASHBOX_TYPE_LABELS: Record<CashboxEntry['type'], string> = {
+  INCOME: 'Příjem',
+  EXPENSE: 'Výdaj',
+};
+
+export const CASHBOX_CATEGORY_LABELS: Record<string, string> = {
+  reservation_payment: 'Platba za rezervaci',
+  food_purchase: 'Nákup potravin',
+  staff_payment: 'Výplata personálu',
+  rent: 'Nájem',
+  utilities: 'Energie',
+  equipment: 'Vybavení',
+  other: 'Ostatní',
+};
+
+// Events types
+export interface Event {
+  id: number;
+  name: string;
+  date: string;
+  reservationId?: number;
+  guestCount: number;
+  status: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  staffAssignments?: EventStaffAssignment[];
+  menuItems?: EventMenuItem[];
+}
+
+export interface EventStaffAssignment {
+  id: number;
+  eventId: number;
+  staffMemberId: number;
+  role: string;
+  staffMember?: StaffMember;
+}
+
+export interface EventMenuItem {
+  id: number;
+  eventId: number;
+  recipeId?: number;
+  name: string;
+  quantity: number;
+  recipe?: Recipe;
+}
+
+export const EVENT_STATUS_LABELS: Record<Event['status'], string> = {
+  PLANNED: 'Plánováno',
+  IN_PROGRESS: 'Probíhá',
+  COMPLETED: 'Dokončeno',
+  CANCELLED: 'Zrušeno',
+};

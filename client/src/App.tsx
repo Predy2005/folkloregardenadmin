@@ -21,6 +21,13 @@ import DisabledDates from "@/pages/DisabledDates";
 import StockItems from "@/pages/StockItems";
 import Recipes from "@/pages/Recipes";
 import StockMovements from "@/pages/StockMovements";
+import Partners from "@/pages/Partners";
+import Vouchers from "@/pages/Vouchers";
+import CommissionLogs from "@/pages/CommissionLogs";
+import StaffMembers from "@/pages/StaffMembers";
+import StaffAttendance from "@/pages/StaffAttendance";
+import Cashbox from "@/pages/Cashbox";
+import Events from "@/pages/Events";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const style = {
@@ -137,6 +144,62 @@ function Router() {
         <ProtectedRoute>
           <AuthenticatedLayout>
             <StockMovements />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/partners">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <Partners />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/vouchers">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <Vouchers />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/commission-logs">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <CommissionLogs />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/staff">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <StaffMembers />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/staff-attendance">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <StaffAttendance />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/cashbox">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <Cashbox />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/events">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <Events />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
