@@ -311,16 +311,28 @@ export const CASHBOX_CATEGORY_LABELS: Record<string, string> = {
 // Events types
 export interface Event {
   id: number;
+  type: 'folklorni_show' | 'svatba' | 'event' | 'privat';
   name: string;
   date: string;
+  space: 'roubenka' | 'terasa' | 'stodolka' | 'cely_areal';
+  organizerName: string;
+  contactPerson?: string;
+  coordinator?: string;
+  paidCount: number;
+  freeCount: number;
   reservationId?: number;
-  guestCount: number;
-  status: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  status: 'DRAFT' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   notes?: string;
+  organizationPlan?: string;
+  schedule?: string;
+  cateringNotes?: string;
+  createdBy?: number;
   createdAt: string;
   updatedAt: string;
   staffAssignments?: EventStaffAssignment[];
   menuItems?: EventMenuItem[];
+  tables?: EventTable[];
+  reservation?: Reservation;
 }
 
 export interface EventStaffAssignment {
@@ -340,7 +352,42 @@ export interface EventMenuItem {
   recipe?: Recipe;
 }
 
+export interface EventTable {
+  id: number;
+  eventId: number;
+  tableName: string;
+  capacity: number;
+  guests?: EventGuest[];
+}
+
+export interface EventGuest {
+  id: number;
+  eventTableId: number;
+  name: string;
+  type: 'adult' | 'child';
+  nationality?: string;
+  menuItemId?: number;
+  isPresent: boolean;
+  isPaid: boolean;
+  notes?: string;
+}
+
+export const EVENT_TYPE_LABELS: Record<Event['type'], string> = {
+  folklorni_show: 'Folklorní show',
+  svatba: 'Svatba',
+  event: 'Event',
+  privat: 'Soukromá akce',
+};
+
+export const EVENT_SPACE_LABELS: Record<Event['space'], string> = {
+  roubenka: 'Roubenka',
+  terasa: 'Terasa',
+  stodolka: 'Stodolka',
+  cely_areal: 'Celý areál',
+};
+
 export const EVENT_STATUS_LABELS: Record<Event['status'], string> = {
+  DRAFT: 'Koncept',
   PLANNED: 'Plánováno',
   IN_PROGRESS: 'Probíhá',
   COMPLETED: 'Dokončeno',
