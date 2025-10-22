@@ -8,6 +8,9 @@ import {
   CalendarOff,
   LogOut,
   User,
+  Package,
+  ChefHat,
+  ArrowUpDown,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -52,6 +55,21 @@ const menuItems = [
     title: 'Jídla',
     url: '/foods',
     icon: UtensilsCrossed,
+  },
+  {
+    title: 'Sklad',
+    url: '/stock-items',
+    icon: Package,
+  },
+  {
+    title: 'Receptury',
+    url: '/recipes',
+    icon: ChefHat,
+  },
+  {
+    title: 'Pohyby skladu',
+    url: '/stock-movements',
+    icon: ArrowUpDown,
   },
   {
     title: 'Uživatelé',

@@ -127,3 +127,62 @@ export const PERSON_TYPE_LABELS: Record<ReservationPerson['type'], string> = {
   child: 'Dítě',
   infant: 'Miminko',
 };
+
+// Stock Management types
+export interface StockItem {
+  id: number;
+  name: string;
+  description?: string;
+  unit: string;
+  quantityAvailable: number;
+  minQuantity?: number;
+  pricePerUnit?: number;
+  supplier?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Recipe {
+  id: number;
+  reservationFoodId?: number;
+  name: string;
+  description?: string;
+  portions: number;
+  createdAt: string;
+  updatedAt: string;
+  ingredients?: RecipeIngredient[];
+}
+
+export interface RecipeIngredient {
+  id: number;
+  recipeId: number;
+  stockItemId: number;
+  quantityRequired: number;
+  stockItem?: StockItem;
+}
+
+export interface StockMovement {
+  id: number;
+  stockItemId: number;
+  movementType: 'IN' | 'OUT' | 'ADJUSTMENT';
+  quantity: number;
+  reason?: string;
+  reservationId?: number;
+  userId?: number;
+  createdAt: string;
+  stockItem?: StockItem;
+}
+
+export const STOCK_MOVEMENT_TYPE_LABELS: Record<StockMovement['movementType'], string> = {
+  IN: 'Příjem',
+  OUT: 'Výdej',
+  ADJUSTMENT: 'Oprava',
+};
+
+export const STOCK_UNIT_LABELS: Record<string, string> = {
+  kg: 'kg',
+  g: 'g',
+  l: 'l',
+  ml: 'ml',
+  ks: 'ks',
+};

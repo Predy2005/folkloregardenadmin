@@ -18,6 +18,9 @@ import Payments from "@/pages/Payments";
 import Foods from "@/pages/Foods";
 import Users from "@/pages/Users";
 import DisabledDates from "@/pages/DisabledDates";
+import StockItems from "@/pages/StockItems";
+import Recipes from "@/pages/Recipes";
+import StockMovements from "@/pages/StockMovements";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const style = {
@@ -110,6 +113,30 @@ function Router() {
         <ProtectedRoute>
           <AuthenticatedLayout>
             <DisabledDates />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/stock-items">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <StockItems />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/recipes">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <Recipes />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/stock-movements">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <StockMovements />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
