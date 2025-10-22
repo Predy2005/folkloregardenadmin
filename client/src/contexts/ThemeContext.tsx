@@ -13,7 +13,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
     const stored = localStorage.getItem('theme') as Theme;
-    return stored || 'dark'; // Default je dark mode podle mockupů
+    return stored || 'light'; // Default je light mode - čistý bílý design
   });
 
   useEffect(() => {
