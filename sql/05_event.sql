@@ -22,7 +22,7 @@ CREATE TABLE event (
     guests_total INT GENERATED ALWAYS AS (guests_paid + guests_free) STORED,
     
     -- Místo konání
-    venue VARCHAR(100), -- 'ROUBENKA', 'TERASA', 'STODOLA', 'CELY_AREAL', 'STANKOVARNA'
+    venue VARCHAR(100), -- 'ROUBENKA', 'TERASA', 'STODOLA', 'CELY_AREAL', 'STANK', 'KOVARNA'
     
     -- Kontaktní údaje organizátora
     organizer_company VARCHAR(255),
