@@ -175,8 +175,8 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton className="hover-elevate" data-testid="button-user-menu">
+              <DropdownMenuTrigger className="w-full [&>*]:w-full">
+                <div className="flex items-center gap-2 px-2 py-2 rounded-md hover-elevate active-elevate-2 cursor-pointer" data-testid="button-user-menu">
                   <Avatar className="w-8 h-8">
                     <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                       {userInitials}
@@ -186,7 +186,7 @@ export function AppSidebar() {
                     <span className="text-sm font-medium truncate">{user?.username}</span>
                     <span className="text-xs text-muted-foreground truncate">{user?.email}</span>
                   </div>
-                </SidebarMenuButton>
+                </div>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>Můj účet</DropdownMenuLabel>

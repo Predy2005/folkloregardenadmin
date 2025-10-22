@@ -431,8 +431,8 @@ export default function Vouchers() {
                   <FormItem>
                     <FormLabel>Partner</FormLabel>
                     <Select
-                      onValueChange={(value) => field.onChange(value ? parseInt(value) : undefined)}
-                      value={field.value?.toString()}
+                      onValueChange={(value) => field.onChange(value === "0" ? undefined : parseInt(value))}
+                      value={field.value?.toString() || "0"}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -440,7 +440,7 @@ export default function Vouchers() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="">Bez partnera</SelectItem>
+                        <SelectItem value="0">Bez partnera</SelectItem>
                         {partners?.map((partner) => (
                           <SelectItem key={partner.id} value={partner.id.toString()}>
                             {partner.name}

@@ -584,8 +584,8 @@ export default function Events() {
                       <FormItem>
                         <FormLabel>Propojit s rezervací</FormLabel>
                         <Select
-                          onValueChange={(value) => field.onChange(value ? parseInt(value) : undefined)}
-                          value={field.value?.toString()}
+                          onValueChange={(value) => field.onChange(value === "0" ? undefined : parseInt(value))}
+                          value={field.value?.toString() || "0"}
                         >
                           <FormControl>
                             <SelectTrigger data-testid="select-reservation">
@@ -593,7 +593,7 @@ export default function Events() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="">Bez rezervace</SelectItem>
+                            <SelectItem value="0">Bez rezervace</SelectItem>
                             {reservations?.map((reservation) => (
                               <SelectItem key={reservation.id} value={reservation.id.toString()}>
                                 Rezervace #{reservation.id} - {reservation.firstName} {reservation.lastName}

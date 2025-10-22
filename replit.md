@@ -164,14 +164,40 @@ shared/
   - Filtrace podle typu a měny
   - Propojení s rezervacemi a akcemi
 
-#### 12. Akce/Events
-- **Events** - Plánování a správa akcí
-  - CRUD operace s akcemi
-  - Stavy (plánováno, probíhá, dokončeno, zrušeno)
-  - Sledování počtu hostů
-  - Propojení s personálem
-  - Menu planning
-  - Poznámky a organizační plán
+#### 12. Akce/Events (Rozšířený modul)
+- **Events** - Pokročilé plánování a správa akcí
+  - **Typy akcí**: Folklorní show, Svatba, Event, Soukromá akce
+  - **Prostory**: Roubenka, Terasa, Stodolka, Celý areál
+  - **Stavy**: Koncept, Plánováno, Probíhá, Dokončeno, Zrušeno
+  - **Organizační údaje**:
+    - Organizátor/klient
+    - Kontaktní osoba
+    - Interní koordinátor
+  - **Správa hostů**:
+    - Počet platících a zdarma hostů
+    - Rozvržení stolů (EventTable)
+    - Seznam hostů s typem (dospělý/dítě), národností
+    - Sledování přítomnosti (check-in)
+  - **Menu a catering**:
+    - Propojení na receptury
+    - Kalkulace porcí
+    - Poznámky k cateringu
+  - **Personál**:
+    - Přiřazení zaměstnanců k akci
+    - Role (číšník, kuchař, moderátor, tanečníci, atd.)
+  - **Organizační plán**:
+    - Časový harmonogram akce
+    - Detailní pokyny pro tým
+    - Catering požadavky
+  - **Propojení s rezervacemi**:
+    - Možnost vytvořit akci z rezervace
+    - Automatický přenos hostů a jídel
+  - **Detailní zobrazení** s 5 záložkami:
+    - Informace (základní údaje)
+    - Hosté (přehled, rozvržení stolů)
+    - Personál (přiřazený tým)
+    - Menu (jídla, catering)
+    - Plán (harmonogram, organizace)
 
 ## Design
 
@@ -350,6 +376,19 @@ Data-testid atributy jsou přidány na všechny interaktivní elementy pro snadn
 - ✅ Implementován modul **Provizní systém** (Partners, Vouchers, CommissionLogs)
 - ✅ Implementován modul **Personální evidence** (StaffMembers, StaffAttendance)
 - ✅ Implementován modul **Pokladna** (Cashbox s multi-měnou CZK/EUR)
-- ✅ Implementován modul **Akce/Events** (Events s plánováním a statusy)
+- ✅ Implementován modul **Akce/Events** (základní verze)
+- ✅ **Kompletní rozšíření Events modulu** podle detailního popisu:
+  - Přidána Event entita s poli: type, space, organizerName, contactPerson, coordinator, paidCount, freeCount
+  - Vytvořena EventTable a EventGuest entity pro rozvržení stolů a hostů
+  - Formulář se 4 záložkami (Základní údaje, Hosté, Organizační plán, Poznámky)
+  - Detailní zobrazení s 5 záložkami (Informace, Hosté, Personál, Menu, Plán)
+  - Filtrace podle typu akce a statusu
+  - Harmonogram akce, organizační plán, catering poznámky
+  - Propojení s rezervacemi
+  - Podpora pro přítomnost hostů (isPresent flag)
 - ✅ Sidebar navigace rozšířena o všechny nové moduly
-- ✅ Opravena chyba s React hooks v sidebaru (removed asChild pattern)
+- ✅ Opraveny React chyby:
+  - React hooks warning v AppSidebar (odstranění asChild pattern)
+  - SelectItem s prázdnou hodnotou (Events.tsx, Vouchers.tsx)
+  - Vnořené buttony v user menu
+- ✅ Doplněny data-testid atributy do Events modulu
