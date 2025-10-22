@@ -46,8 +46,21 @@ The system supports a wide range of functionalities:
     - **Staff Attendance**: Recording of working hours, calculation based on hourly rates, payment status, and unpaid hour statistics.
 - **Cashbox**: Multi-currency (CZK, EUR) management of income and expenses, transaction categorization, balance tracking, and filtering.
 - **Events**: Advanced planning and management module for various event types (Folklore Show, Wedding, Private Event). Includes space allocation, status tracking (Concept, Planned, Ongoing, Completed, Canceled), organizer/client details, guest management (paying/free, table layout, guest list with type/nationality, check-in), menu and catering integration, staff assignment, detailed organizational plan, and linking with reservations. Detailed views include tabs for Information, Guests, Staff, Menu, Plan, and Floor Plan.
+    - **Floor Plan Management**: Comprehensive drag-and-drop system for table assignments using @dnd-kit library. Features include room-based layout (4 rooms: Roubenka, Terasa, Stodolka, Celý areál), table CRUD operations with capacity management, automatic guest import from reservations, guest roster with nationality filtering, and visual drag-and-drop between tables and unassigned roster.
+
+## Database Schema
+### Event Tables Module (`sql/06_event_table_migration.sql`)
+- **event_table**: Stores table definitions for events
+  - `id`, `event_id`, `table_name`, `room` (roubenka/terasa/stodolka/cely_areal)
+  - `capacity`, `position_x`, `position_y` (for floor plan coordinates)
+- **event_guest**: Extended guest management (migrated from simple table_number)
+  - Added: `event_table_id` (FK to event_table), `reservation_id`, `person_index`
+  - Added: `type` (adult/child), `is_present`, `menu_item_id`
+  - Removed: `table_number`, `seat_number` (replaced by event_table_id)
+- **Migration Notes**: Automatic migration converts existing `table_number` values to `event_table` records with default room 'cely_areal' and capacity 10.
 
 ## External Dependencies
 - **External API**: `https://api.folkloregarden.cz/`
 - **Database**: PostgreSQL (via Symfony Doctrine)
 - **Payment Gateway**: Comgate API
+- **Drag & Drop**: @dnd-kit/core, @dnd-kit/sortable, @dnd-kit/utilities
