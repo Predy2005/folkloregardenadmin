@@ -57,6 +57,41 @@ interface FloorPlanManagerProps {
   reservations?: Reservation[];
 }
 
+// DroppableTableArea - ensures tables are droppable even when empty
+interface DroppableTableAreaProps {
+  tableId: number;
+  children: React.ReactNode;
+}
+
+function DroppableTableArea({ tableId, children }: DroppableTableAreaProps) {
+  const { setNodeRef } = useDroppable({
+    id: `table-${tableId}`,
+  });
+
+  return (
+    <div ref={setNodeRef} className="space-y-1 min-h-[40px]">
+      {children}
+    </div>
+  );
+}
+
+// DroppableUnassignedArea - ensures unassigned roster is droppable even when empty
+interface DroppableUnassignedAreaProps {
+  children: React.ReactNode;
+}
+
+function DroppableUnassignedArea({ children }: DroppableUnassignedAreaProps) {
+  const { setNodeRef } = useDroppable({
+    id: 'unassigned',
+  });
+
+  return (
+    <div ref={setNodeRef} className="space-y-2 max-h-[500px] overflow-y-auto min-h-[100px]">
+      {children}
+    </div>
+  );
+}
+
 interface DraggableGuestCardProps {
   guest: EventGuest;
   onRemove: () => void;
@@ -464,7 +499,7 @@ export default function FloorPlanManager({ event, reservations }: FloorPlanManag
                                 <div className="text-xs text-muted-foreground mb-2">
                                   {tableGuests.length} / {table.capacity} hostů
                                 </div>
-                                <div className="space-y-1">
+                                <DroppableTableArea tableId={table.id}>
                                   {tableGuests.map((guest) => (
                                     <DraggableGuestCard
                                       key={guest.id}
@@ -476,7 +511,7 @@ export default function FloorPlanManager({ event, reservations }: FloorPlanManag
                                       }}
                                     />
                                   ))}
-                                </div>
+                                </DroppableTableArea>
                               </CardContent>
                             </Card>
                           </SortableContext>
@@ -517,7 +552,7 @@ export default function FloorPlanManager({ event, reservations }: FloorPlanManag
                     items={filteredUnassignedGuests.map(g => `guest-${g.id}`)}
                     strategy={verticalListSortingStrategy}
                   >
-                    <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                    <DroppableUnassignedArea>
                       {filteredUnassignedGuests.map((guest) => (
                         <DraggableGuestCard
                           key={guest.id}
@@ -534,7 +569,7 @@ export default function FloorPlanManager({ event, reservations }: FloorPlanManag
                             : "Žádní hosté s touto národností"}
                         </div>
                       )}
-                    </div>
+                    </DroppableUnassignedArea>
                   </SortableContext>
                 </div>
               </div>
