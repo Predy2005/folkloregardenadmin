@@ -74,10 +74,7 @@ export default function FoodPricing() {
   // Mutations
   const updateDefaultMutation = useMutation({
     mutationFn: async (data: DefaultPriceForm) => {
-      return apiRequest('/api/food-pricing/defaults', {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      });
+      return apiRequest('PUT', '/api/food-pricing/defaults', data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/food-pricing/defaults'] });
@@ -97,10 +94,7 @@ export default function FoodPricing() {
 
   const createOverrideMutation = useMutation({
     mutationFn: async (data: OverrideForm) => {
-      return apiRequest('/api/food-pricing/date-overrides', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
+      return apiRequest('POST', '/api/food-pricing/date-overrides', data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/food-pricing/date-overrides'] });
@@ -121,10 +115,7 @@ export default function FoodPricing() {
 
   const updateOverrideMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: OverrideForm }) => {
-      return apiRequest(`/api/food-pricing/date-overrides/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      });
+      return apiRequest('PUT', `/api/food-pricing/date-overrides/${id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/food-pricing/date-overrides'] });
@@ -145,9 +136,7 @@ export default function FoodPricing() {
 
   const deleteOverrideMutation = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest(`/api/food-pricing/date-overrides/${id}`, {
-        method: 'DELETE',
-      });
+      return apiRequest('DELETE', `/api/food-pricing/date-overrides/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/food-pricing/date-overrides'] });
