@@ -49,6 +49,11 @@ The system supports a wide range of functionalities:
 - **Cashbox**: Multi-currency (CZK, EUR) management of income and expenses, transaction categorization, balance tracking, and filtering.
 - **Events**: Advanced planning and management module for various event types (Folklore Show, Wedding, Private Event). Includes space allocation, status tracking (Concept, Planned, Ongoing, Completed, Canceled), organizer/client details, guest management (paying/free, table layout, guest list with type/nationality, check-in), menu and catering integration, staff assignment, detailed organizational plan, and linking with reservations. Detailed views include tabs for Information, Guests, Staff, Menu, Plan, and Floor Plan.
     - **Floor Plan Management**: Comprehensive drag-and-drop system for table assignments using @dnd-kit library. Features include room-based layout (4 rooms: Roubenka, Terasa, Stodolka, Celý areál), table CRUD operations with capacity management, automatic guest import from reservations, guest roster with nationality filtering, and visual drag-and-drop between tables and unassigned roster.
+- **Pricing Configuration** (⚠️ Backend API Required):
+    - **Default Prices**: Management of base per-person reservation pricing for three categories: Adults (Dospělí), Children 3-12 years (Děti 3-12 let), Infants 0-2 years (Batolata 0-2 roky).
+    - **Date-Specific Overrides**: CRUD operations for special pricing on specific dates (e.g., premium dates, holidays) with optional reason field. Features include date-based filtering, status badges (Today, Past, Future), and search functionality.
+    - **Frontend Implementation**: Complete UI at `/pricing` with form validation, toast notifications, and responsive design matching the purple gradient theme.
+    - **Status**: ✅ Frontend complete, ⚠️ Backend API endpoints not yet implemented (see Backend API Requirements section below).
 
 ## Database Schema
 ### Event Tables Module (`sql/06_event_table_migration.sql`)
@@ -69,3 +74,104 @@ The system supports a wide range of functionalities:
 - **Database**: PostgreSQL (via Symfony Doctrine)
 - **Payment Gateway**: Comgate API
 - **Drag & Drop**: @dnd-kit/core, @dnd-kit/sortable, @dnd-kit/utilities
+
+## Backend API Requirements
+
+### Pricing Module Endpoints (Not Yet Implemented)
+The Pricing Configuration frontend module is complete and requires the following Symfony API endpoints:
+
+#### 1. Get Default Prices
+```
+GET /api/pricing/defaults
+Response: {
+  "id": 1,
+  "adultPrice": 1250.00,
+  "childPrice": 800.00,
+  "infantPrice": 0.00,
+  "updatedAt": "2025-10-31T12:00:00+00:00"
+}
+```
+
+#### 2. Update Default Prices
+```
+PUT /api/pricing/defaults
+Request Body: {
+  "adultPrice": 1250.00,
+  "childPrice": 800.00,
+  "infantPrice": 0.00
+}
+Response: Same as GET response
+```
+
+#### 3. List Date Overrides
+```
+GET /api/pricing/date-overrides
+Response: [
+  {
+    "id": 1,
+    "date": "2025-12-24",
+    "adultPrice": 3500.00,
+    "childPrice": 2000.00,
+    "infantPrice": 500.00,
+    "reason": "Vánoce - Premium datum",
+    "createdAt": "2025-10-31T12:00:00+00:00",
+    "updatedAt": "2025-10-31T12:00:00+00:00"
+  }
+]
+```
+
+#### 4. Create Date Override
+```
+POST /api/pricing/date-overrides
+Request Body: {
+  "date": "2025-12-24",
+  "adultPrice": 3500.00,
+  "childPrice": 2000.00,
+  "infantPrice": 500.00,
+  "reason": "Vánoce - Premium datum"
+}
+Response: Same as list item
+```
+
+#### 5. Update Date Override
+```
+PUT /api/pricing/date-overrides/{id}
+Request Body: {
+  "date": "2025-12-24",
+  "adultPrice": 3500.00,
+  "childPrice": 2000.00,
+  "infantPrice": 500.00,
+  "reason": "Štědrý den - Premium"
+}
+Response: Same as list item
+```
+
+#### 6. Delete Date Override
+```
+DELETE /api/pricing/date-overrides/{id}
+Response: 204 No Content
+```
+
+**Database Schema Suggestion**:
+```sql
+-- pricing_default table
+CREATE TABLE pricing_default (
+    id SERIAL PRIMARY KEY,
+    adult_price DECIMAL(10,2) NOT NULL,
+    child_price DECIMAL(10,2) NOT NULL,
+    infant_price DECIMAL(10,2) NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- pricing_date_override table
+CREATE TABLE pricing_date_override (
+    id SERIAL PRIMARY KEY,
+    date DATE NOT NULL UNIQUE,
+    adult_price DECIMAL(10,2) NOT NULL,
+    child_price DECIMAL(10,2) NOT NULL,
+    infant_price DECIMAL(10,2) NOT NULL,
+    reason VARCHAR(255),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
