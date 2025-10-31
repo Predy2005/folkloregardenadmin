@@ -421,17 +421,24 @@ export interface PricingDateOverride {
   updatedAt: string;
 }
 
-// Food Pricing Configuration types
-export interface FoodPricingDefault {
+// Per-Item Food Pricing and Availability types
+export interface FoodItemPriceOverride {
   id: number;
+  reservationFoodId: number;
+  dateFrom: string;
+  dateTo?: string;
   price: number;
+  reason?: string;
+  createdAt: string;
   updatedAt: string;
 }
 
-export interface FoodPricingDateOverride {
+export interface FoodItemAvailability {
   id: number;
-  date: string;
-  price: number;
+  reservationFoodId: number;
+  dateFrom: string;
+  dateTo?: string;
+  available: boolean;
   reason?: string;
   createdAt: string;
   updatedAt: string;
