@@ -84,6 +84,11 @@ const menuItems: MenuItem[] = [
     icon: UtensilsCrossed,
   },
   {
+    title: 'Cenník',
+    url: '/pricing',
+    icon: DollarSign,
+  },
+  {
     title: 'Sklad',
     icon: Package,
     items: [

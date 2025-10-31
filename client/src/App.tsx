@@ -29,6 +29,7 @@ import StaffAttendance from "@/pages/StaffAttendance";
 import Cashbox from "@/pages/Cashbox";
 import Events from "@/pages/Events";
 import Profile from "@/pages/Profile";
+import Pricing from "@/pages/Pricing";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const style = {
@@ -209,6 +210,14 @@ function Router() {
         <ProtectedRoute>
           <AuthenticatedLayout>
             <Profile />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/pricing">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <Pricing />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
