@@ -398,3 +398,23 @@ export const EVENT_STATUS_LABELS: Record<Event['status'], string> = {
   COMPLETED: 'Dokončeno',
   CANCELLED: 'Zrušeno',
 };
+
+// Pricing Configuration types
+export interface PricingDefault {
+  id: number;
+  adultPrice: number;
+  childPrice: number;
+  infantPrice: number;
+  updatedAt: string;
+}
+
+export interface PricingDateOverride {
+  id: number;
+  date: string;
+  adultPrice: number;
+  childPrice: number;
+  infantPrice: number;
+  reason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
