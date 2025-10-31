@@ -420,3 +420,19 @@ export interface PricingDateOverride {
   createdAt: string;
   updatedAt: string;
 }
+
+// Food Pricing Configuration types
+export interface FoodPricingDefault {
+  id: number;
+  price: number;
+  updatedAt: string;
+}
+
+export interface FoodPricingDateOverride {
+  id: number;
+  date: string;
+  price: number;
+  reason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
