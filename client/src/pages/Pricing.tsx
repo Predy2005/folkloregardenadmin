@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Plus, Edit, Trash2, DollarSign, Calendar, Users, Baby, User } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import type { PricingDefault, PricingDateOverride } from '@shared/types';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -21,6 +22,7 @@ const defaultPriceSchema = z.object({
   adultPrice: z.number().min(0, 'Cena musí být kladné číslo'),
   childPrice: z.number().min(0, 'Cena musí být kladné číslo'),
   infantPrice: z.number().min(0, 'Cena musí být kladné číslo'),
+  includeMeal: z.boolean(),
 });
 
 const dateOverrideSchema = z.object({
@@ -28,6 +30,7 @@ const dateOverrideSchema = z.object({
   adultPrice: z.number().min(0, 'Cena musí být kladné číslo'),
   childPrice: z.number().min(0, 'Cena musí být kladné číslo'),
   infantPrice: z.number().min(0, 'Cena musí být kladné číslo'),
+  includeMeal: z.boolean(),
   reason: z.string().optional(),
 });
 
@@ -59,6 +62,7 @@ export default function Pricing() {
       adultPrice: defaultPrices?.adultPrice ?? 0,
       childPrice: defaultPrices?.childPrice ?? 0,
       infantPrice: defaultPrices?.infantPrice ?? 0,
+      includeMeal: defaultPrices?.includeMeal ?? false,
     },
   });
 
@@ -70,6 +74,7 @@ export default function Pricing() {
       adultPrice: 0,
       childPrice: 0,
       infantPrice: 0,
+      includeMeal: false,
       reason: '',
     },
   });
@@ -139,6 +144,7 @@ export default function Pricing() {
       adultPrice: defaultPrices?.adultPrice ?? 0,
       childPrice: defaultPrices?.childPrice ?? 0,
       infantPrice: defaultPrices?.infantPrice ?? 0,
+      includeMeal: defaultPrices?.includeMeal ?? false,
       reason: '',
     });
     setIsOverrideDialogOpen(true);
@@ -151,6 +157,7 @@ export default function Pricing() {
       adultPrice: override.adultPrice,
       childPrice: override.childPrice,
       infantPrice: override.infantPrice,
+      includeMeal: override.includeMeal,
       reason: override.reason || '',
     });
     setIsOverrideDialogOpen(true);
@@ -293,6 +300,30 @@ export default function Pricing() {
                   />
                 </div>
 
+                <FormField
+                  control={defaultForm.control}
+                  name="includeMeal"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          data-testid="checkbox-include-meal"
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>
+                          Cena zahrnuje jídlo
+                        </FormLabel>
+                        <FormDescription>
+                          Pokud je zaškrtnuto, uvedená cena již zahrnuje jídlo. Pokud ne, cena jídla se bude připočítávat zvlášť.
+                        </FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+
                 <div className="flex justify-end">
                   <Button
                     type="submit"
@@ -349,6 +380,7 @@ export default function Pricing() {
                     <TableHead className="text-right">Dospělí</TableHead>
                     <TableHead className="text-right">Děti 3-12</TableHead>
                     <TableHead className="text-right">Batolata 0-2</TableHead>
+                    <TableHead>Zahrnuje jídlo</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Akce</TableHead>
                   </TableRow>
@@ -371,6 +403,15 @@ export default function Pricing() {
                         </TableCell>
                         <TableCell className="text-right font-mono">
                           {override.infantPrice.toFixed(2)} Kč
+                        </TableCell>
+                        <TableCell>
+                          {override.includeMeal ? (
+                            <Badge variant="default" className="bg-green-600">
+                              Ano
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary">Ne</Badge>
+                          )}
                         </TableCell>
                         <TableCell>
                           {isToday && (
@@ -540,6 +581,30 @@ export default function Pricing() {
                   )}
                 />
               </div>
+
+              <FormField
+                control={overrideForm.control}
+                name="includeMeal"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        data-testid="checkbox-override-include-meal"
+                      />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>
+                        Cena zahrnuje jídlo
+                      </FormLabel>
+                      <FormDescription>
+                        Pokud je zaškrtnuto, uvedená cena již zahrnuje jídlo.
+                      </FormDescription>
+                    </div>
+                  </FormItem>
+                )}
+              />
 
               <DialogFooter>
                 <Button

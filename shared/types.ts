@@ -405,6 +405,7 @@ export interface PricingDefault {
   adultPrice: number;
   childPrice: number;
   infantPrice: number;
+  includeMeal: boolean;
   updatedAt: string;
 }
 
@@ -414,6 +415,7 @@ export interface PricingDateOverride {
   adultPrice: number;
   childPrice: number;
   infantPrice: number;
+  includeMeal: boolean;
   reason?: string;
   createdAt: string;
   updatedAt: string;
