@@ -28,12 +28,12 @@ const foodSchema = z.object({
 });
 
 const defaultPriceSchema = z.object({
-  price: z.number().min(0, 'Cena musí být alespoň 0'),
+  price: z.coerce.number().min(0, 'Cena musí být alespoň 0'),
 });
 
 const overrideSchema = z.object({
   date: z.string().min(1, 'Datum je povinné'),
-  price: z.number().min(0, 'Cena musí být alespoň 0'),
+  price: z.coerce.number().min(0, 'Cena musí být alespoň 0'),
   reason: z.string().optional(),
 });
 
