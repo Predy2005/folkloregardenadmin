@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
@@ -63,13 +63,13 @@ export default function FoodPricing() {
   });
 
   // Update form when data loads
-  useState(() => {
+  useEffect(() => {
     if (defaultPrices) {
       defaultForm.reset({
         price: defaultPrices.price,
       });
     }
-  });
+  }, [defaultPrices, defaultForm]);
 
   // Mutations
   const updateDefaultMutation = useMutation({
