@@ -54,6 +54,11 @@ The system supports a wide range of functionalities:
     - **Date-Specific Overrides**: CRUD operations for special pricing on specific dates (e.g., premium dates, holidays) with optional reason field and meal inclusion flag. Features include date-based filtering, status badges (Today, Past, Future), search functionality, and visual indication of meal inclusion status.
     - **Frontend Implementation**: Complete UI at `/pricing` with form validation, checkboxes for meal inclusion control, toast notifications, and responsive design matching the purple gradient theme.
     - **Status**: ✅ Frontend complete, ⚠️ Backend API endpoints not yet implemented (see Backend API Requirements section below).
+- **Food Pricing Configuration** (⚠️ Backend API Required):
+    - **Default Food Price**: Management of base per-person food/menu pricing. Single price field for all person types.
+    - **Date-Specific Food Overrides**: CRUD operations for special food pricing on specific dates (e.g., premium dates, holidays) with optional reason field. Features include date-based filtering, status badges (Today, Past, Future), and search functionality.
+    - **Frontend Implementation**: Complete UI at `/food-pricing` with form validation, toast notifications, and responsive design matching the purple gradient theme.
+    - **Status**: ✅ Frontend complete, ⚠️ Backend API endpoints not yet implemented (see Backend API Requirements section below).
 
 ## Database Schema
 ### Event Tables Module (`sql/06_event_table_migration.sql`)
@@ -181,4 +186,92 @@ CREATE TABLE pricing_date_override (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+```
+
+### Food Pricing Module Endpoints (Not Yet Implemented)
+The Food Pricing Configuration frontend module is complete and requires the following Symfony API endpoints:
+
+#### 1. Get Default Food Price
+```
+GET /api/food-pricing/defaults
+Response: {
+  "id": 1,
+  "price": 450.00,
+  "updatedAt": "2025-10-31T12:00:00+00:00"
+}
+```
+
+#### 2. Update Default Food Price
+```
+PUT /api/food-pricing/defaults
+Request Body: {
+  "price": 450.00
+}
+Response: Same as GET response
+```
+
+#### 3. List Food Date Overrides
+```
+GET /api/food-pricing/date-overrides
+Response: [
+  {
+    "id": 1,
+    "date": "2025-12-24",
+    "price": 850.00,
+    "reason": "Vánoce - Premium datum",
+    "createdAt": "2025-10-31T12:00:00+00:00",
+    "updatedAt": "2025-10-31T12:00:00+00:00"
+  }
+]
+```
+
+#### 4. Create Food Date Override
+```
+POST /api/food-pricing/date-overrides
+Request Body: {
+  "date": "2025-12-24",
+  "price": 850.00,
+  "reason": "Vánoce - Premium datum"
+}
+Response: Same as list item
+```
+
+#### 5. Update Food Date Override
+```
+PUT /api/food-pricing/date-overrides/{id}
+Request Body: {
+  "date": "2025-12-24",
+  "price": 850.00,
+  "reason": "Štědrý den - Premium"
+}
+Response: Same as list item
+```
+
+#### 6. Delete Food Date Override
+```
+DELETE /api/food-pricing/date-overrides/{id}
+Response: 204 No Content
+```
+
+**Database Schema Suggestion**:
+```sql
+-- food_pricing_default table
+CREATE TABLE food_pricing_default (
+    id SERIAL PRIMARY KEY,
+    price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- food_pricing_date_override table
+CREATE TABLE food_pricing_date_override (
+    id SERIAL PRIMARY KEY,
+    date DATE NOT NULL UNIQUE,
+    price DECIMAL(10,2) NOT NULL,
+    reason VARCHAR(255),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create index on date for faster lookups
+CREATE INDEX idx_food_pricing_date_override_date ON food_pricing_date_override(date);
 ```
