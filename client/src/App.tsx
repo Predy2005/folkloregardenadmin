@@ -28,6 +28,7 @@ import StaffMembers from "@/pages/StaffMembers";
 import StaffAttendance from "@/pages/StaffAttendance";
 import Cashbox from "@/pages/Cashbox";
 import Events from "@/pages/Events";
+import Profile from "@/pages/Profile";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const style = {
@@ -200,6 +201,14 @@ function Router() {
         <ProtectedRoute>
           <AuthenticatedLayout>
             <Events />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/profile">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <Profile />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

@@ -191,7 +191,7 @@ export function AppSidebar() {
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>Můj účet</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem data-testid="menu-item-profile">
+                <DropdownMenuItem onClick={() => setLocation('/profile')} data-testid="menu-item-profile">
                   <User className="w-4 h-4 mr-2" />
                   Profil
                 </DropdownMenuItem>

@@ -31,7 +31,9 @@ The system supports a wide range of functionalities:
 - **Reservations**: Comprehensive management including search, detail view (guests, food, payments, billing, transfer), and status tracking (RECEIVED, WAITING_PAYMENT, PAID, CANCELLED, CONFIRMED).
 - **Payments**: Integration with Comgate API for listing and filtering payments by status, searching by transaction ID or reference, and financial statistics.
 - **Food Management**: CRUD operations for menu items, including child menus, pricing, and descriptions.
-- **User Management**: CRUD for system users, role assignment (ROLE_USER, ROLE_ADMIN), and login history.
+- **User Management**: CRUD for system users, role assignment (ROLE_USER, ROLE_ADMIN) via multi-select checkboxes, login history, and profile editing.
+    - **Role Management**: Users can be assigned multiple roles using checkboxes in create/edit forms. Frontend sends `roles: ['ROLE_USER', 'ROLE_ADMIN']` as array.
+    - **Profile Editing**: Dedicated `/profile` page accessible via user dropdown menu. Users can update username, email, and change password with validation (currentPassword required for password changes, newPassword must match confirmPassword).
 - **Disabled Dates**: Management of blocked dates for the reservation system with reasons and project association.
 - **Stock Management**:
     - **Stock Items**: CRUD for ingredients, unit management, minimum stock alerts, and categorization.
@@ -58,6 +60,9 @@ The system supports a wide range of functionalities:
   - Added: `type` (adult/child), `is_present`, `menu_item_id`
   - Removed: `table_number`, `seat_number` (replaced by event_table_id)
 - **Migration Notes**: Automatic migration converts existing `table_number` values to `event_table` records with default room 'cely_areal' and capacity 10.
+
+## Known Issues
+- **User Role Management**: While frontend correctly sends `roles: ['ROLE_ADMIN']` array to API, the Symfony backend appears to ignore this field and always assigns `ROLE_USER` to new/edited users. This is a backend API issue that requires investigation and fix on the Symfony side.
 
 ## External Dependencies
 - **External API**: `https://api.folkloregarden.cz/`

@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, Edit, Trash2, Shield } from 'lucide-react';
 import type { User } from '@shared/types';
 import { useForm } from 'react-hook-form';
@@ -20,8 +21,10 @@ import dayjs from 'dayjs';
 const userSchema = z.object({
   username: z.string().min(3, 'Uživatelské jméno musí mít alespoň 3 znaky'),
   email: z.string().email('Zadejte platný email'),
-  password: z.string().min(6, 'Heslo musí mít alespoň 6 znaků').optional(),
-  role: z.string().default('ROLE_USER'),
+  password: z.string().optional().refine((val) => !val || val.length >= 6, {
+    message: 'Heslo musí mít alespoň 6 znaků',
+  }),
+  roles: z.array(z.string()).min(1, 'Vyberte alespoň jednu roli'),
 });
 
 type UserForm = z.infer<typeof userSchema>;
@@ -42,7 +45,7 @@ export default function Users() {
       username: '',
       email: '',
       password: '',
-      role: 'ROLE_USER',
+      roles: ['ROLE_USER'],
     },
   });
 
@@ -91,7 +94,7 @@ export default function Users() {
       username: '',
       email: '',
       password: '',
-      role: 'ROLE_USER',
+      roles: ['ROLE_USER'],
     });
     setIsDialogOpen(true);
   };
@@ -102,7 +105,7 @@ export default function Users() {
       username: user.username,
       email: user.email,
       password: '',
-      role: user.roles[0] || 'ROLE_USER',
+      roles: user.roles && user.roles.length > 0 ? user.roles : ['ROLE_USER'],
     });
     setIsDialogOpen(true);
   };
@@ -118,7 +121,7 @@ export default function Users() {
       const updateData: any = {
         username: data.username,
         email: data.email,
-        role: data.role,
+        roles: data.roles,
       };
       if (data.password) {
         updateData.password = data.password;
@@ -278,6 +281,51 @@ export default function Users() {
                         {...field}
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="roles"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Role</FormLabel>
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="role-user"
+                          checked={field.value?.includes('ROLE_USER')}
+                          onCheckedChange={(checked) => {
+                            const newRoles = checked
+                              ? [...(field.value || []), 'ROLE_USER']
+                              : field.value?.filter((r) => r !== 'ROLE_USER') || [];
+                            field.onChange(newRoles);
+                          }}
+                          data-testid="checkbox-role-user"
+                        />
+                        <label htmlFor="role-user" className="text-sm cursor-pointer">
+                          ROLE_USER (Běžný uživatel)
+                        </label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="role-admin"
+                          checked={field.value?.includes('ROLE_ADMIN')}
+                          onCheckedChange={(checked) => {
+                            const newRoles = checked
+                              ? [...(field.value || []), 'ROLE_ADMIN']
+                              : field.value?.filter((r) => r !== 'ROLE_ADMIN') || [];
+                            field.onChange(newRoles);
+                          }}
+                          data-testid="checkbox-role-admin"
+                        />
+                        <label htmlFor="role-admin" className="text-sm cursor-pointer">
+                          ROLE_ADMIN (Administrátor)
+                        </label>
+                      </div>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}
