@@ -30,7 +30,10 @@ The system supports a wide range of functionalities:
 - **Dashboard**: Overview of key statistics, recent reservations, and metric visualization.
 - **Reservations**: Comprehensive management including search, detail view (guests, food, payments, billing, transfer), and status tracking (RECEIVED, WAITING_PAYMENT, PAID, CANCELLED, CONFIRMED).
 - **Payments**: Integration with Comgate API for listing and filtering payments by status, searching by transaction ID or reference, and financial statistics.
-- **Food Management**: CRUD operations for menu items, including child menus, pricing, and descriptions.
+- **Food Management**: CRUD operations for menu items, including child menus, pricing, and descriptions. Integrated with food pricing configuration via tabs:
+    - **Menu Items**: Management of menu items with descriptions, prices, and children's menu designation.
+    - **Default Food Price**: Management of base per-person food/menu pricing (single price for all person types).
+    - **Date-Specific Food Overrides**: CRUD operations for special food pricing on specific dates with optional reason field, date-based filtering, and status badges (Today, Past, Future).
 - **User Management**: CRUD for system users, role assignment (ROLE_USER, ROLE_ADMIN) via multi-select checkboxes, login history, and profile editing.
     - **Role Management**: Users can be assigned multiple roles using checkboxes in create/edit forms. Frontend sends `roles: ['ROLE_USER', 'ROLE_ADMIN']` as array.
     - **Profile Editing**: Dedicated `/profile` page accessible via user dropdown menu. Users can update username, email, and change password with validation (currentPassword required for password changes, newPassword must match confirmPassword).
@@ -53,11 +56,6 @@ The system supports a wide range of functionalities:
     - **Default Prices**: Management of base per-person reservation pricing for three categories: Adults (Dospělí), Children 3-12 years (Děti 3-12 let), Infants 0-2 years (Batolata 0-2 roky). Includes boolean flag for whether price includes meal (`includeMeal`).
     - **Date-Specific Overrides**: CRUD operations for special pricing on specific dates (e.g., premium dates, holidays) with optional reason field and meal inclusion flag. Features include date-based filtering, status badges (Today, Past, Future), search functionality, and visual indication of meal inclusion status.
     - **Frontend Implementation**: Complete UI at `/pricing` with form validation, checkboxes for meal inclusion control, toast notifications, and responsive design matching the purple gradient theme.
-    - **Status**: ✅ Frontend complete, ⚠️ Backend API endpoints not yet implemented (see Backend API Requirements section below).
-- **Food Pricing Configuration** (⚠️ Backend API Required):
-    - **Default Food Price**: Management of base per-person food/menu pricing. Single price field for all person types.
-    - **Date-Specific Food Overrides**: CRUD operations for special food pricing on specific dates (e.g., premium dates, holidays) with optional reason field. Features include date-based filtering, status badges (Today, Past, Future), and search functionality.
-    - **Frontend Implementation**: Complete UI at `/food-pricing` with form validation, toast notifications, and responsive design matching the purple gradient theme.
     - **Status**: ✅ Frontend complete, ⚠️ Backend API endpoints not yet implemented (see Backend API Requirements section below).
 
 ## Database Schema
@@ -189,7 +187,7 @@ CREATE TABLE pricing_date_override (
 ```
 
 ### Food Pricing Module Endpoints (Not Yet Implemented)
-The Food Pricing Configuration frontend module is complete and requires the following Symfony API endpoints:
+The Food Pricing Configuration is integrated into the Foods page (/foods) via tabs and requires the following Symfony API endpoints:
 
 #### 1. Get Default Food Price
 ```
