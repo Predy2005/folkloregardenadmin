@@ -50,9 +50,9 @@ The system supports a wide range of functionalities:
 - **Events**: Advanced planning and management module for various event types (Folklore Show, Wedding, Private Event). Includes space allocation, status tracking (Concept, Planned, Ongoing, Completed, Canceled), organizer/client details, guest management (paying/free, table layout, guest list with type/nationality, check-in), menu and catering integration, staff assignment, detailed organizational plan, and linking with reservations. Detailed views include tabs for Information, Guests, Staff, Menu, Plan, and Floor Plan.
     - **Floor Plan Management**: Comprehensive drag-and-drop system for table assignments using @dnd-kit library. Features include room-based layout (4 rooms: Roubenka, Terasa, Stodolka, Celý areál), table CRUD operations with capacity management, automatic guest import from reservations, guest roster with nationality filtering, and visual drag-and-drop between tables and unassigned roster.
 - **Pricing Configuration** (⚠️ Backend API Required):
-    - **Default Prices**: Management of base per-person reservation pricing for three categories: Adults (Dospělí), Children 3-12 years (Děti 3-12 let), Infants 0-2 years (Batolata 0-2 roky).
-    - **Date-Specific Overrides**: CRUD operations for special pricing on specific dates (e.g., premium dates, holidays) with optional reason field. Features include date-based filtering, status badges (Today, Past, Future), and search functionality.
-    - **Frontend Implementation**: Complete UI at `/pricing` with form validation, toast notifications, and responsive design matching the purple gradient theme.
+    - **Default Prices**: Management of base per-person reservation pricing for three categories: Adults (Dospělí), Children 3-12 years (Děti 3-12 let), Infants 0-2 years (Batolata 0-2 roky). Includes boolean flag for whether price includes meal (`includeMeal`).
+    - **Date-Specific Overrides**: CRUD operations for special pricing on specific dates (e.g., premium dates, holidays) with optional reason field and meal inclusion flag. Features include date-based filtering, status badges (Today, Past, Future), search functionality, and visual indication of meal inclusion status.
+    - **Frontend Implementation**: Complete UI at `/pricing` with form validation, checkboxes for meal inclusion control, toast notifications, and responsive design matching the purple gradient theme.
     - **Status**: ✅ Frontend complete, ⚠️ Backend API endpoints not yet implemented (see Backend API Requirements section below).
 
 ## Database Schema
@@ -88,6 +88,7 @@ Response: {
   "adultPrice": 1250.00,
   "childPrice": 800.00,
   "infantPrice": 0.00,
+  "includeMeal": false,
   "updatedAt": "2025-10-31T12:00:00+00:00"
 }
 ```
@@ -98,7 +99,8 @@ PUT /api/pricing/defaults
 Request Body: {
   "adultPrice": 1250.00,
   "childPrice": 800.00,
-  "infantPrice": 0.00
+  "infantPrice": 0.00,
+  "includeMeal": false
 }
 Response: Same as GET response
 ```
@@ -113,6 +115,7 @@ Response: [
     "adultPrice": 3500.00,
     "childPrice": 2000.00,
     "infantPrice": 500.00,
+    "includeMeal": true,
     "reason": "Vánoce - Premium datum",
     "createdAt": "2025-10-31T12:00:00+00:00",
     "updatedAt": "2025-10-31T12:00:00+00:00"
@@ -128,6 +131,7 @@ Request Body: {
   "adultPrice": 3500.00,
   "childPrice": 2000.00,
   "infantPrice": 500.00,
+  "includeMeal": true,
   "reason": "Vánoce - Premium datum"
 }
 Response: Same as list item
@@ -141,6 +145,7 @@ Request Body: {
   "adultPrice": 3500.00,
   "childPrice": 2000.00,
   "infantPrice": 500.00,
+  "includeMeal": true,
   "reason": "Štědrý den - Premium"
 }
 Response: Same as list item
@@ -160,6 +165,7 @@ CREATE TABLE pricing_default (
     adult_price DECIMAL(10,2) NOT NULL,
     child_price DECIMAL(10,2) NOT NULL,
     infant_price DECIMAL(10,2) NOT NULL,
+    include_meal BOOLEAN NOT NULL DEFAULT false,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -170,6 +176,7 @@ CREATE TABLE pricing_date_override (
     adult_price DECIMAL(10,2) NOT NULL,
     child_price DECIMAL(10,2) NOT NULL,
     infant_price DECIMAL(10,2) NOT NULL,
+    include_meal BOOLEAN NOT NULL DEFAULT false,
     reason VARCHAR(255),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
