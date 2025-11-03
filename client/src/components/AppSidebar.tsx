@@ -21,6 +21,7 @@ import {
   CalendarDays,
   ChevronRight,
   LucideIcon,
+  Calculator,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -143,6 +144,11 @@ const menuItems: MenuItem[] = [
         title: 'Docházka',
         url: '/staff-attendance',
         icon: Clock,
+      },
+      {
+        title: 'Výpočetní vzorce',
+        url: '/staffing-formulas',
+        icon: Calculator,
       },
     ],
   },

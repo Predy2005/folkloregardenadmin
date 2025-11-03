@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { api } from "@/lib/api";
-import type { Event, Reservation } from "@shared/types";
-import { EVENT_STATUS_LABELS, EVENT_TYPE_LABELS, EVENT_SPACE_LABELS } from "@shared/types";
+import type { Event, Reservation, StaffingFormula } from "@shared/types";
+import { EVENT_STATUS_LABELS, EVENT_TYPE_LABELS, EVENT_SPACE_LABELS, STAFFING_CATEGORY_LABELS } from "@shared/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -50,7 +50,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Pencil, Trash2, Search, CalendarDays, Eye, Users, UtensilsCrossed, ClipboardList, DollarSign, CheckSquare, LayoutGrid } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Calendar, CalendarDays, Eye, Users, UtensilsCrossed, ClipboardList, DollarSign, CheckSquare, LayoutGrid, Calculator } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -98,6 +98,10 @@ export default function Events() {
 
   const { data: reservations } = useQuery<Reservation[]>({
     queryKey: ["/api/reservations"],
+  });
+
+  const { data: staffingFormulas } = useQuery<StaffingFormula[]>({
+    queryKey: ["/api/staffing-formulas"],
   });
 
   const createForm = useForm<EventForm>({
@@ -869,8 +873,9 @@ export default function Events() {
           </DialogHeader>
           {viewingEvent && (
             <Tabs defaultValue="info" className="w-full">
-              <TabsList className="grid w-full grid-cols-6">
+              <TabsList className="grid w-full grid-cols-7">
                 <TabsTrigger value="info">Informace</TabsTrigger>
+                <TabsTrigger value="reservations">Rezervace</TabsTrigger>
                 <TabsTrigger value="guests">Hosté</TabsTrigger>
                 <TabsTrigger value="staff">Personál</TabsTrigger>
                 <TabsTrigger value="menu">Menu</TabsTrigger>
@@ -937,6 +942,115 @@ export default function Events() {
                 )}
               </TabsContent>
 
+              <TabsContent value="reservations" className="space-y-4 mt-4">
+                {(() => {
+                  const eventDate = dayjs(viewingEvent.date).format("YYYY-MM-DD");
+                  const matchingReservations = reservations?.filter(
+                    (r) => dayjs(r.date).format("YYYY-MM-DD") === eventDate
+                  ) || [];
+
+                  const totalPax = matchingReservations.reduce(
+                    (sum, r) => sum + (r.persons?.length || 0),
+                    0
+                  );
+
+                  return (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Calendar className="w-5 h-5" />
+                          Rezervace pro {dayjs(viewingEvent.date).format("DD.MM.YYYY")}
+                        </CardTitle>
+                        <CardDescription>
+                          Celkem {matchingReservations.length} rezervací s {totalPax} osobami
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {matchingReservations.length === 0 ? (
+                          <div className="text-center py-8 text-muted-foreground">
+                            Pro toto datum nejsou žádné rezervace
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {matchingReservations.map((reservation) => {
+                              const pax = reservation.persons?.length || 0;
+                              return (
+                                <div
+                                  key={reservation.id}
+                                  className="border rounded-lg p-4 space-y-3 hover-elevate"
+                                  data-testid={`reservation-${reservation.id}`}
+                                >
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <h4 className="font-semibold text-lg">
+                                          Rezervace #{reservation.id}
+                                        </h4>
+                                        <Badge variant="outline" className="text-xs font-mono">
+                                          {reservation.contactNationality || 'N/A'}
+                                        </Badge>
+                                      </div>
+                                      
+                                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                        <div>
+                                          <span className="text-muted-foreground">Kontakt:</span>
+                                          <p className="font-medium">{reservation.contactName}</p>
+                                        </div>
+                                        <div>
+                                          <span className="text-muted-foreground">PAX:</span>
+                                          <p className="font-medium">{pax} osob</p>
+                                        </div>
+                                        {reservation.invoiceCompany && (
+                                          <div>
+                                            <span className="text-muted-foreground">Firma:</span>
+                                            <p className="font-medium">{reservation.invoiceCompany}</p>
+                                          </div>
+                                        )}
+                                        <div>
+                                          <span className="text-muted-foreground">Email:</span>
+                                          <p className="font-medium text-xs">{reservation.contactEmail}</p>
+                                        </div>
+                                        {reservation.contactPhone && (
+                                          <div>
+                                            <span className="text-muted-foreground">Telefon:</span>
+                                            <p className="font-medium">{reservation.contactPhone}</p>
+                                          </div>
+                                        )}
+                                        {reservation.contactNote && (
+                                          <div className="col-span-2">
+                                            <span className="text-muted-foreground">Hotel/Poznámka:</span>
+                                            <p className="font-medium text-xs">{reservation.contactNote}</p>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* Osoby v rezervaci */}
+                                      {reservation.persons && reservation.persons.length > 0 && (
+                                        <div className="mt-3 pt-3 border-t">
+                                          <p className="text-xs text-muted-foreground mb-2">Osoby:</p>
+                                          <div className="flex flex-wrap gap-1">
+                                            {reservation.persons.map((person, idx) => (
+                                              <Badge key={idx} variant="secondary" className="text-xs">
+                                                {person.type === 'adult' ? 'Dospělý' : person.type === 'child' ? 'Dítě' : 'Kojenec'}
+                                                {person.menu && ` • ${person.menu}`}
+                                              </Badge>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })()}
+              </TabsContent>
+
               <TabsContent value="guests" className="space-y-4 mt-4">
                 <Card>
                   <CardHeader>
@@ -972,35 +1086,141 @@ export default function Events() {
                         Rozvržení stolů zatím není vytvořeno
                       </div>
                     )}
+
+                    {/* Přehled národností */}
+                    {(() => {
+                      const eventDate = dayjs(viewingEvent.date).format("YYYY-MM-DD");
+                      const matchingReservations = reservations?.filter(
+                        (r) => dayjs(r.date).format("YYYY-MM-DD") === eventDate
+                      ) || [];
+
+                      // Agregace národností
+                      const nationalityCounts: Record<string, number> = {};
+                      matchingReservations.forEach((reservation) => {
+                        const nationality = reservation.contactNationality || 'Neuvedeno';
+                        const pax = reservation.persons?.length || 0;
+                        nationalityCounts[nationality] = (nationalityCounts[nationality] || 0) + pax;
+                      });
+
+                      const nationalityEntries = Object.entries(nationalityCounts).sort((a, b) => b[1] - a[1]);
+
+                      if (nationalityEntries.length > 0) {
+                        return (
+                          <div className="mt-6 pt-4 border-t">
+                            <h4 className="font-semibold mb-3">Národnosti hostů</h4>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                              {nationalityEntries.map(([nationality, count]) => (
+                                <div
+                                  key={nationality}
+                                  className="flex items-center justify-between p-3 bg-muted/50 rounded-md"
+                                >
+                                  <span className="text-sm font-medium">{nationality}</span>
+                                  <Badge variant="secondary">{count}</Badge>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                   </CardContent>
                 </Card>
               </TabsContent>
 
               <TabsContent value="staff" className="space-y-4 mt-4">
+                {/* Vypočtené požadavky na personál */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Calculator className="w-5 h-5" />
+                      Automatický výpočet personálu
+                    </CardTitle>
+                    <CardDescription>
+                      Na základě výpočetních vzorců a celkového počtu {totalGuests(viewingEvent)} hostů
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {(() => {
+                      const totalGuestCount = totalGuests(viewingEvent);
+                      const activeFormulas = staffingFormulas?.filter(f => f.enabled) || [];
+
+                      if (activeFormulas.length === 0) {
+                        return (
+                          <div className="text-center py-8 text-muted-foreground">
+                            Nejsou definovány žádné aktivní výpočetní vzorce.
+                            <br />
+                            Vytvořte je v sekci Personál → Výpočetní vzorce.
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {activeFormulas.map((formula) => {
+                            const required = Math.ceil(totalGuestCount / formula.ratio);
+                            return (
+                              <div
+                                key={formula.id}
+                                className="flex items-center justify-between p-4 bg-muted/50 rounded-lg"
+                              >
+                                <div className="flex-1">
+                                  <p className="font-semibold text-sm">
+                                    {STAFFING_CATEGORY_LABELS[formula.category]}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-0.5">
+                                    1 osoba na {formula.ratio} hostů
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-2xl font-bold text-primary">{required}</p>
+                                  <p className="text-xs text-muted-foreground">potřeba</p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </CardContent>
+                </Card>
+
+                {/* Přiřazený personál */}
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Users className="w-5 h-5" />
                       Přiřazený personál
                     </CardTitle>
+                    <CardDescription>
+                      Zaměstnanci aktuálně přiřazení k této akci
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     {viewingEvent.staffAssignments && viewingEvent.staffAssignments.length > 0 ? (
                       <div className="space-y-2">
                         {viewingEvent.staffAssignments.map((assignment) => (
-                          <div key={assignment.id} className="flex items-center justify-between p-2 bg-muted/50 rounded">
-                            <span className="font-medium">
-                              {assignment.staffMember 
-                                ? `${assignment.staffMember.firstName} ${assignment.staffMember.lastName}`
-                                : `Staff ID: ${assignment.staffMemberId}`}
-                            </span>
+                          <div key={assignment.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-md hover-elevate">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                                <Users className="w-5 h-5 text-primary" />
+                              </div>
+                              <div>
+                                <p className="font-medium">
+                                  {assignment.staffMember 
+                                    ? `${assignment.staffMember.firstName} ${assignment.staffMember.lastName}`
+                                    : `Staff ID: ${assignment.staffMemberId}`}
+                                </p>
+                                <p className="text-xs text-muted-foreground">{assignment.role}</p>
+                              </div>
+                            </div>
                             <Badge variant="secondary">{assignment.role}</Badge>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <p className="text-sm text-muted-foreground text-center py-4">
-                        Zatím žádný přiřazený personál
+                      <p className="text-sm text-muted-foreground text-center py-8">
+                        Zatím žádný přiřazený personál. Použijte sekci níže pro přiřazení.
                       </p>
                     )}
                   </CardContent>

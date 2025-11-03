@@ -445,3 +445,35 @@ export interface FoodItemAvailability {
   createdAt: string;
   updatedAt: string;
 }
+
+// Staffing Formula types
+export type StaffingCategory = 
+  | 'cisniciWaiters'
+  | 'kuchariChefs'
+  | 'pomocneSilyHelpers'
+  | 'moderatoriHosts'
+  | 'muzikantiMusicians'
+  | 'tanecniciDancers'
+  | 'fotografkyPhotographers'
+  | 'sperkyJewelry';
+
+export interface StaffingFormula {
+  id: number;
+  category: StaffingCategory;
+  ratio: number;
+  enabled: boolean;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const STAFFING_CATEGORY_LABELS: Record<StaffingCategory, string> = {
+  cisniciWaiters: 'Číšníci',
+  kuchariChefs: 'Kuchaři',
+  pomocneSilyHelpers: 'Pomocné síly',
+  moderatoriHosts: 'Moderátoři',
+  muzikantiMusicians: 'Muzikanti + Kapela',
+  tanecniciDancers: 'Tanečníci',
+  fotografkyPhotographers: 'Fotografky',
+  sperkyJewelry: 'Šperky',
+};

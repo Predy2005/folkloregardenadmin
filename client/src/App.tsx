@@ -30,6 +30,7 @@ import Cashbox from "@/pages/Cashbox";
 import Events from "@/pages/Events";
 import Profile from "@/pages/Profile";
 import Pricing from "@/pages/Pricing";
+import StaffingFormulas from "@/pages/StaffingFormulas";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const style = {
@@ -218,6 +219,14 @@ function Router() {
         <ProtectedRoute>
           <AuthenticatedLayout>
             <Pricing />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/staffing-formulas">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <StaffingFormulas />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
