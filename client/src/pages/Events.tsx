@@ -46,6 +46,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -62,9 +63,7 @@ const eventSchema = z.object({
   }),
   name: z.string().min(1, "Zadejte název akce"),
   date: z.string().min(1, "Zadejte datum"),
-  space: z.enum(["roubenka", "terasa", "stodolka", "cely_areal"], {
-    required_error: "Vyberte prostor",
-  }),
+  spaces: z.array(z.enum(["roubenka", "terasa", "stodolka", "cely_areal"])).min(1, "Vyberte alespoň jeden prostor"),
   organizerName: z.string().min(1, "Zadejte jméno organizátora"),
   contactPerson: z.string().optional(),
   coordinator: z.string().optional(),
@@ -107,7 +106,7 @@ export default function Events() {
       type: "event",
       name: "",
       date: dayjs().format("YYYY-MM-DD"),
-      space: "roubenka",
+      spaces: [],
       organizerName: "",
       contactPerson: "",
       coordinator: "",
@@ -203,7 +202,7 @@ export default function Events() {
       type: event.type,
       name: event.name,
       date: dayjs(event.date).format("YYYY-MM-DD"),
-      space: event.space,
+      spaces: event.spaces || [],
       organizerName: event.organizerName,
       contactPerson: event.contactPerson || "",
       coordinator: event.coordinator || "",
@@ -342,7 +341,19 @@ export default function Events() {
                       <Badge variant="secondary">{EVENT_TYPE_LABELS[event.type]}</Badge>
                     </TableCell>
                     <TableCell>{dayjs(event.date).format("DD.MM.YYYY")}</TableCell>
-                    <TableCell>{EVENT_SPACE_LABELS[event.space]}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {event.spaces && event.spaces.length > 0 ? (
+                          event.spaces.map((space) => (
+                            <Badge key={space} variant="outline" className="text-xs">
+                              {EVENT_SPACE_LABELS[space]}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-muted-foreground text-xs">Neurčeno</span>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-sm">{event.organizerName}</TableCell>
                     <TableCell>
                       <div className="text-sm">
@@ -458,23 +469,36 @@ export default function Events() {
                     />
                     <FormField
                       control={(isEditOpen ? editForm : createForm).control}
-                      name="space"
+                      name="spaces"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Prostor *</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger data-testid="select-space">
-                                <SelectValue placeholder="Vyberte prostor" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="roubenka">Roubenka</SelectItem>
-                              <SelectItem value="terasa">Terasa</SelectItem>
-                              <SelectItem value="stodolka">Stodolka</SelectItem>
-                              <SelectItem value="cely_areal">Celý areál</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <FormLabel>Prostory * (více možností)</FormLabel>
+                          <div className="space-y-2">
+                            {[
+                              { value: "roubenka", label: "Roubenka" },
+                              { value: "terasa", label: "Terasa" },
+                              { value: "stodolka", label: "Stodolka" },
+                              { value: "cely_areal", label: "Celý areál" },
+                            ].map((space) => (
+                              <div key={space.value} className="flex items-center space-x-2">
+                                <Checkbox
+                                  checked={field.value?.includes(space.value as any)}
+                                  onCheckedChange={(checked) => {
+                                    const currentValue = field.value || [];
+                                    if (checked) {
+                                      field.onChange([...currentValue, space.value]);
+                                    } else {
+                                      field.onChange(currentValue.filter((v) => v !== space.value));
+                                    }
+                                  }}
+                                  data-testid={`checkbox-space-${space.value}`}
+                                />
+                                <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                  {space.label}
+                                </label>
+                              </div>
+                            ))}
+                          </div>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -662,6 +686,60 @@ export default function Events() {
                       Doporučený personál se vypočítá automaticky (1 číšník na 25 hostů, 1 kuchař na 50 porcí)
                     </p>
                   </div>
+
+                  {/* Hosté z rezervací se stejným datem */}
+                  {(() => {
+                    const selectedDate = (isEditOpen ? editForm : createForm).watch("date");
+                    if (!selectedDate || !reservations) return null;
+                    
+                    const matchingReservations = reservations.filter(
+                      (r) => dayjs(r.date).format("YYYY-MM-DD") === selectedDate
+                    );
+                    
+                    if (matchingReservations.length === 0) return null;
+
+                    const totalPersons = matchingReservations.reduce(
+                      (sum, r) => sum + (r.persons?.length || 0),
+                      0
+                    );
+
+                    return (
+                      <div className="border rounded-lg p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-semibold">Hosté z rezervací ({selectedDate})</h3>
+                          <Badge variant="secondary">{totalPersons} osob z {matchingReservations.length} rezervací</Badge>
+                        </div>
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                          {matchingReservations.map((reservation) => (
+                            <div key={reservation.id} className="border-l-2 border-primary/30 pl-3 py-2 bg-muted/30 rounded">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="font-medium text-sm">
+                                  Rezervace #{reservation.id} - {reservation.contactName}
+                                </span>
+                                <Badge variant="outline" className="text-xs">
+                                  {reservation.persons?.length || 0} osob
+                                </Badge>
+                              </div>
+                              {reservation.persons && reservation.persons.length > 0 && (
+                                <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
+                                  {reservation.persons.map((person, idx) => (
+                                    <div key={idx} className="flex items-center gap-1">
+                                      <Users className="w-3 h-3" />
+                                      <span>{person.type === 'adult' ? 'Dospělý' : person.type === 'child' ? 'Dítě' : 'Kojenec'}</span>
+                                      {person.menu && <span className="text-xs">• {person.menu}</span>}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          💡 Tip: Hosté z těchto rezervací mohou být automaticky importováni do plánku stolů v sekci "Plánek stolů"
+                        </p>
+                      </div>
+                    );
+                  })()}
                 </TabsContent>
 
                 <TabsContent value="plan" className="space-y-4 mt-4">
@@ -807,8 +885,18 @@ export default function Events() {
                     <Badge variant="secondary">{EVENT_TYPE_LABELS[viewingEvent.type]}</Badge>
                   </div>
                   <div>
-                    <h3 className="font-semibold mb-1">Prostor</h3>
-                    <p className="text-muted-foreground">{EVENT_SPACE_LABELS[viewingEvent.space]}</p>
+                    <h3 className="font-semibold mb-1">Prostory</h3>
+                    <div className="flex flex-wrap gap-1">
+                      {viewingEvent.spaces && viewingEvent.spaces.length > 0 ? (
+                        viewingEvent.spaces.map((space) => (
+                          <Badge key={space} variant="outline" className="text-xs">
+                            {EVENT_SPACE_LABELS[space]}
+                          </Badge>
+                        ))
+                      ) : (
+                        <span className="text-muted-foreground text-xs">Neurčeno</span>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <h3 className="font-semibold mb-1">Datum</h3>

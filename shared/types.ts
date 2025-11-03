@@ -309,12 +309,14 @@ export const CASHBOX_CATEGORY_LABELS: Record<string, string> = {
 };
 
 // Events types
+export type EventSpace = 'roubenka' | 'terasa' | 'stodolka' | 'cely_areal';
+
 export interface Event {
   id: number;
   type: 'folklorni_show' | 'svatba' | 'event' | 'privat';
   name: string;
   date: string;
-  space: 'roubenka' | 'terasa' | 'stodolka' | 'cely_areal';
+  spaces: EventSpace[];
   organizerName: string;
   contactPerson?: string;
   coordinator?: string;
@@ -384,7 +386,7 @@ export const EVENT_TYPE_LABELS: Record<Event['type'], string> = {
   privat: 'Soukromá akce',
 };
 
-export const EVENT_SPACE_LABELS: Record<Event['space'], string> = {
+export const EVENT_SPACE_LABELS: Record<EventSpace, string> = {
   roubenka: 'Roubenka',
   terasa: 'Terasa',
   stodolka: 'Stodolka',

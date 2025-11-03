@@ -57,8 +57,13 @@ The system supports:
     - **Staff Members**: CRUD for employees, role assignment, hourly rates.
     - **Staff Attendance**: Recording working hours, payment calculation.
 - **Cashbox**: Multi-currency income/expense management, transaction categorization, balance tracking.
-- **Events**: Advanced planning for various event types (Folklore Show, Wedding), including space allocation, status tracking, guest management (paying/free, table layout, check-in), menu/catering, staff assignment, organizational plan, linking with reservations.
-    - **Floor Plan Management**: Drag-and-drop table assignments using @dnd-kit (Roubenka, Terasa, Stodolka, Celý areál rooms), table CRUD, guest import, roster with nationality filtering.
+- **Events**: Advanced planning for various event types (Folklore Show, Wedding), including:
+    - **Multiple Space Support**: Events can occur in multiple venues simultaneously (checkbox selection for Roubenka, Terasa, Stodolka, Celý areál)
+    - **Guest Auto-Loading**: Automatic display of guests from reservations matching the event date, showing all persons from matching reservations with their details
+    - **Space Allocation**: Status tracking, guest management (paying/free, table layout, check-in)
+    - **Menu/Catering**: Menu assignment, staff coordination, organizational plan
+    - **Reservation Linking**: Optional connection to existing reservations
+    - **Floor Plan Management**: Drag-and-drop table assignments using @dnd-kit, table CRUD, guest import, roster with nationality filtering
 - **Pricing Configuration**: Management of base per-person reservation pricing (Adults, Children 3-12, Infants 0-2) with `includeMeal` flag. Date-specific overrides for special pricing with reasons. Frontend is complete; requires backend API.
 
 ## External Dependencies
