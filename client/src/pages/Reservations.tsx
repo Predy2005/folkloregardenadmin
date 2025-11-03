@@ -630,7 +630,7 @@ export default function Reservations() {
                   <div className="border-t pt-4 mt-4">
                     <div className="flex items-center justify-between text-lg font-semibold">
                       <span>Celková cena osob:</span>
-                      <span className="font-mono">{totalPrice} Kč</span>
+                      <span className="font-mono">{Math.round(totalPrice).toLocaleString('cs-CZ')} Kč</span>
                     </div>
                   </div>
                 </TabsContent>
@@ -880,7 +880,7 @@ export default function Reservations() {
 
                       <div className="flex items-end">
                         <div className="text-sm text-muted-foreground">
-                          Cena transferu: {(form.watch('transferCount') || 0) * 300} Kč
+                          Cena transferu: {((form.watch('transferCount') || 0) * 300).toLocaleString('cs-CZ')} Kč
                         </div>
                       </div>
 
@@ -926,7 +926,7 @@ export default function Reservations() {
                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-md">
                   <span className="text-lg font-semibold">Celková cena:</span>
                   <span className="text-2xl font-bold font-mono bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-                    {totalPrice} Kč
+                    {Math.round(totalPrice).toLocaleString('cs-CZ')} Kč
                   </span>
                 </div>
 
@@ -1033,7 +1033,7 @@ export default function Reservations() {
                             <p className="text-sm text-muted-foreground">Menu: {person.menu || 'Bez jídla'}</p>
                           </div>
                         </div>
-                        <p className="font-mono font-medium">{person.price} Kč</p>
+                        <p className="font-mono font-medium">{Math.round(person.price).toLocaleString('cs-CZ')} Kč</p>
                       </div>
                     ))}
                   </div>
