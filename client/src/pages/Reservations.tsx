@@ -602,8 +602,14 @@ export default function Reservations() {
                                       <Input
                                         type="number"
                                         step="0.01"
-                                        {...field}
-                                        onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                                        value={field.value || ''}
+                                        onChange={(e) => {
+                                          const value = e.target.value;
+                                          field.onChange(value === '' ? 0 : parseFloat(value));
+                                        }}
+                                        onBlur={field.onBlur}
+                                        name={field.name}
+                                        ref={field.ref}
                                         data-testid={`input-price-${index}`}
                                       />
                                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
@@ -856,8 +862,14 @@ export default function Reservations() {
                             <FormControl>
                               <Input
                                 type="number"
-                                {...field}
-                                onChange={(e) => field.onChange(parseInt(e.target.value))}
+                                value={field.value || ''}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  field.onChange(value === '' ? 0 : parseInt(value, 10));
+                                }}
+                                onBlur={field.onBlur}
+                                name={field.name}
+                                ref={field.ref}
                                 data-testid="input-transfer-count"
                               />
                             </FormControl>
