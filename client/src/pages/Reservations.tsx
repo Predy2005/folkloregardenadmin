@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { queryClient, apiRequest } from '@/lib/queryClient';
@@ -261,14 +261,19 @@ export default function Reservations() {
     });
   };
 
-  // Calculate total
-  const calculateTotal = () => {
-    const personsTotal = personFields.reduce((sum, person) => sum + (person.price || 0), 0);
-    const transferTotal = form.watch('transferSelected') 
-      ? (form.watch('transferCount') || 0) * 300 
+  // Watch form values for total calculation
+  const watchedPersons = form.watch('persons');
+  const watchedTransferSelected = form.watch('transferSelected');
+  const watchedTransferCount = form.watch('transferCount');
+
+  // Calculate total (memoized)
+  const totalPrice = useMemo(() => {
+    const personsTotal = (watchedPersons || []).reduce((sum, person) => sum + (person.price || 0), 0);
+    const transferTotal = watchedTransferSelected 
+      ? (watchedTransferCount || 0) * 300 
       : 0;
     return personsTotal + transferTotal;
-  };
+  }, [watchedPersons, watchedTransferSelected, watchedTransferCount]);
 
   // Filter reservations
   const filteredReservations = reservations?.filter((reservation) => {
@@ -619,7 +624,7 @@ export default function Reservations() {
                   <div className="border-t pt-4 mt-4">
                     <div className="flex items-center justify-between text-lg font-semibold">
                       <span>Celková cena osob:</span>
-                      <span className="font-mono">{calculateTotal()} Kč</span>
+                      <span className="font-mono">{totalPrice} Kč</span>
                     </div>
                   </div>
                 </TabsContent>
@@ -909,7 +914,7 @@ export default function Reservations() {
                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-md">
                   <span className="text-lg font-semibold">Celková cena:</span>
                   <span className="text-2xl font-bold font-mono bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-                    {calculateTotal()} Kč
+                    {totalPrice} Kč
                   </span>
                 </div>
 
