@@ -193,7 +193,7 @@ export default function Reservations() {
   const handleEdit = (reservation: Reservation) => {
     setEditingReservation(reservation);
     form.reset({
-      date: reservation.date,
+      date: dayjs(reservation.date).format('YYYY-MM-DD'),
       contactName: reservation.contactName,
       contactEmail: reservation.contactEmail,
       contactPhone: reservation.contactPhone,
