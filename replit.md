@@ -27,7 +27,16 @@ The Folklore Garden Admin System is a comprehensive administration panel designe
 The system supports:
 - **Authentication**: User login, registration, secure route protection.
 - **Dashboard**: Key statistics, recent reservations, metric visualization.
-- **Reservations**: Management including search, detail view (guests, food, payments, billing, transfer), status tracking.
+- **Reservations**: Full CRUD operations with comprehensive form:
+    - **Creation/Editing**: Complete multi-tab form (Basic Info, Persons, Contact, Invoice, Transfer)
+    - **Dynamic Person Management**: Add/remove adults, children, infants with individual menu selection and pricing
+    - **Price Calculation**: Automatic total calculation based on persons and transfer
+    - **Contact Information**: Name, email, phone, nationality, notes, referral source
+    - **Invoice Details**: Optional separate billing information (company, IČ, DIČ)
+    - **Transfer Options**: Configurable transfer with person count and pickup address (300 Kč/person)
+    - **Payment Email**: Send payment link with QR code and Comgate payment URL to customer
+    - **Detail View**: Read-only view with all reservation information (guests, food, payments, billing, transfer)
+    - **Status Management**: Track reservation through lifecycle (RECEIVED, WAITING_PAYMENT, PAID, AUTHORIZED, CONFIRMED, CANCELLED)
 - **Payments**: Comgate integration for listing/filtering payments, transaction search, financial statistics.
 - **Food Management**: Per-item menu management (CRUD), including:
     - **Menu Items**: CRUD with descriptions, prices, child designation.
