@@ -90,6 +90,7 @@ export default function Events() {
   const [viewingEvent, setViewingEvent] = useState<Event | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [timeFilter, setTimeFilter] = useState<"all" | "upcoming" | "past" | "nearest">("nearest");
   const { toast } = useToast();
 
   const { data: events, isLoading } = useQuery<Event[]>({
@@ -192,13 +193,63 @@ export default function Events() {
     },
   });
 
-  const filteredEvents = events?.filter((event) => {
-    const matchesSearch = event.name.toLowerCase().includes(search.toLowerCase()) ||
-      event.organizerName.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "all" || event.status === statusFilter;
-    const matchesType = typeFilter === "all" || event.type === typeFilter;
-    return matchesSearch && matchesStatus && matchesType;
-  });
+  const filteredEvents = (() => {
+    if (!events) return [];
+    
+    const now = dayjs();
+    
+    // Nejdřív aplikujeme základní filtry
+    let filtered = events.filter((event) => {
+      const matchesSearch = event.name.toLowerCase().includes(search.toLowerCase()) ||
+        event.organizerName.toLowerCase().includes(search.toLowerCase());
+      const matchesStatus = statusFilter === "all" || event.status === statusFilter;
+      const matchesType = typeFilter === "all" || event.type === typeFilter;
+      return matchesSearch && matchesStatus && matchesType;
+    });
+    
+    // Aplikujeme časový filtr
+    if (timeFilter === "upcoming") {
+      filtered = filtered.filter((event) => dayjs(event.date).isAfter(now, 'day') || dayjs(event.date).isSame(now, 'day'));
+    } else if (timeFilter === "past") {
+      filtered = filtered.filter((event) => dayjs(event.date).isBefore(now, 'day'));
+    } else if (timeFilter === "nearest") {
+      // Seřadíme podle vzdálenosti od dnešního data
+      const sortedByDistance = [...filtered].sort((a, b) => {
+        const distA = Math.abs(dayjs(a.date).diff(now, 'day'));
+        const distB = Math.abs(dayjs(b.date).diff(now, 'day'));
+        return distA - distB;
+      });
+      
+      // Rozdělíme na prošlé a budoucí
+      const pastEvents = sortedByDistance.filter((event) => dayjs(event.date).isBefore(now, 'day'));
+      const futureEvents = sortedByDistance.filter((event) => dayjs(event.date).isAfter(now, 'day') || dayjs(event.date).isSame(now, 'day'));
+      
+      // Vezmeme 4 nejbližší prošlé (seřazené od nejnovějšího) a 4 nejbližší budoucí
+      const nearestPast = pastEvents.slice(0, 4).sort((a, b) => dayjs(b.date).diff(dayjs(a.date)));
+      const nearestFuture = futureEvents.slice(0, 4).sort((a, b) => dayjs(a.date).diff(dayjs(b.date)));
+      
+      // Spojíme je - nejdřív budoucí, pak prošlé
+      filtered = [...nearestFuture, ...nearestPast];
+    } else {
+      // "all" - seřadíme podle data (nejnovější první)
+      filtered = filtered.sort((a, b) => dayjs(b.date).diff(dayjs(a.date)));
+    }
+    
+    // Pro ostatní režimy než "nearest" seřadíme podle data
+    if (timeFilter !== "nearest") {
+      filtered = filtered.sort((a, b) => {
+        if (timeFilter === "upcoming") {
+          return dayjs(a.date).diff(dayjs(b.date)); // Nejbližší první
+        } else if (timeFilter === "past") {
+          return dayjs(b.date).diff(dayjs(a.date)); // Nejnovější první
+        } else {
+          return dayjs(b.date).diff(dayjs(a.date)); // Nejnovější první
+        }
+      });
+    }
+    
+    return filtered;
+  })();
 
   const handleEdit = (event: Event) => {
     setEditingEvent(event);
@@ -269,16 +320,49 @@ export default function Events() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <CalendarDays className="w-5 h-5" />
-                Akce
-              </CardTitle>
-              <CardDescription>
-                Celkem: {events?.length || 0} akcí
-              </CardDescription>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <CalendarDays className="w-5 h-5" />
+                  Akce
+                </CardTitle>
+                <CardDescription>
+                  {timeFilter === "nearest" 
+                    ? "Nejbližší akce k dnešnímu datu" 
+                    : `Zobrazeno: ${filteredEvents?.length || 0} z ${events?.length || 0} akcí`}
+                </CardDescription>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Hledat akci..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-10 w-64"
+                  data-testid="input-search-events"
+                />
+              </div>
             </div>
+            
+            <Tabs value={timeFilter} onValueChange={(value) => setTimeFilter(value as any)} className="w-full">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="nearest" data-testid="tab-nearest">
+                  <Calendar className="w-4 h-4 mr-2" />
+                  Nejbližší
+                </TabsTrigger>
+                <TabsTrigger value="upcoming" data-testid="tab-upcoming">
+                  Nadcházející
+                </TabsTrigger>
+                <TabsTrigger value="past" data-testid="tab-past">
+                  Prošlé
+                </TabsTrigger>
+                <TabsTrigger value="all" data-testid="tab-all">
+                  Všechny
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            
             <div className="flex items-center gap-2">
               <Select value={typeFilter} onValueChange={setTypeFilter}>
                 <SelectTrigger className="w-48" data-testid="select-type-filter">
@@ -305,16 +389,6 @@ export default function Events() {
                   <SelectItem value="CANCELLED">Zrušeno</SelectItem>
                 </SelectContent>
               </Select>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Hledat akci..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-10 w-64"
-                  data-testid="input-search-events"
-                />
-              </div>
             </div>
           </div>
         </CardHeader>
