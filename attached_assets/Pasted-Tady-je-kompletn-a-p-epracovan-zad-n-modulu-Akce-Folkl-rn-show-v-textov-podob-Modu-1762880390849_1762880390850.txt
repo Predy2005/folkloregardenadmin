@@ -1,0 +1,86 @@
+Tady je kompletní a přepracované zadání modulu „Akce“ (Folklórní show) v textové podobě:
+
+⸻
+
+🟡 Modul: AKCE (Folklórní show) – Detailní zadání
+
+Tento modul zajišťuje komplexní správu folklórních akcí pořádaných v areálu Folklore Garden. Cílem je automatizovat propojení rezervací, plánování personálu, správy hostů, jídel, voucherů a výstupů pro kuchyni, účetní i klienty.
+
+⸻
+
+🔁 Automatické zakládání akcí
+	•	Pokud přijde nová rezervace na den, kdy ještě neexistuje akce typu folklorni_show, backend automaticky vytvoří novou akci (Event).
+	•	Při vytvoření se přenesou základní informace z rezervace:
+	•	datum, čas
+	•	jazyk/národnost
+	•	kontaktní údaje
+	•	transfer
+	•	zdroj rezervace (hotel, web…)
+
+⸻
+
+📋 Přehled a plánování akce
+	•	Přehled všech akcí s filtrováním podle data, prostoru, typu.
+	•	Zobrazuje se:
+	•	počet osob: placení, zdarma, voucheroví
+	•	celkový součet osob
+	•	seznam rezervací
+	•	poznámky, jazyk
+	•	Možnost manuálně doplnit další osoby (např. kolemjdoucí turisté).
+	•	QR skenování voucherů – načte údaje a zapíše do provizního systému.
+
+⸻
+
+🍽 Přiřazování osob ke stolům
+	•	Možnost vizuálně přiřadit osoby ke konkrétním stolům (např. drag&drop).
+	•	U každé osoby se eviduje:
+	•	typ: dospělý, dítě, infant
+	•	jídlo (kód nebo název)
+	•	národnost
+	•	forma platby (placený / voucher / zdarma)
+
+⸻
+
+🥘 Jídla a nápoje
+	•	Automatický výpočet porcí z rezervací (možnost ručně upravit).
+	•	Výstup pro kuchyň: sumarizace dle typu menu (např. tradiční, dětské, vegetariánské).
+	•	Doplatky za speciální menu se zobrazují.
+	•	Možnost výběru nápojů – připraví se rozšířený formulář.
+
+⸻
+
+👥 Personál a role
+	•	Výpočet kapacity dle typu akce a počtu osob:
+	•	1 číšník na 25 hostů
+	•	1 kuchař na 50 jídel
+	•	moderátor, tanečníci, muzikanti dle typu akce (pevně)
+	•	Manažer vybírá a přiřazuje personál k roli.
+	•	Evidence docházky – export přehledu personálu (např. do Excelu).
+	•	Historie: kdo se účastnil jaké akce, jak často.
+
+⸻
+
+🧾 Závěrečná fáze akce
+	•	Po skončení akce manažer:
+	•	potvrdí skutečný stav hostů: kdo přišel, kdo ne, kdo zaplatil
+	•	nesmí upravovat rezervaci (aby byla zachována integrita)
+	•	Po potvrzení se automaticky:
+	•	vygeneruje voucher
+	•	odešle e‑mailem klientovi a účetnímu
+	•	Historie potvrzení se ukládá (čas, kdo potvrdil).
+
+⸻
+
+🔗 Napojení na další moduly
+	•	Provizní systém:
+	•	Sken voucheru → načtení do systému → doplnění údajů o prodeji a provizi
+	•	Plánovač akcí:
+	•	Všechny akce se zobrazují v denním / týdenním / měsíčním kalendáři
+	•	Transféry:
+	•	Načteny z rezervací, exportovány řidiči (např. SmartDrive)
+	•	Sklad:
+	•	Výstup počtu porcí → odečítá se ze skladu dle receptur (modul skladových zásob)
+
+⸻
+
+Tento modul je klíčový pro efektivní řízení provozu během večerních show a dalších hromadných akcí, a je úzce napojen na rezervace, personál, kuchyni a finanční evidenci. Všechny operace musí být historicky dohledatelné.

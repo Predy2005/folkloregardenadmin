@@ -28,6 +28,8 @@ import StaffMembers from "@/pages/StaffMembers";
 import StaffAttendance from "@/pages/StaffAttendance";
 import Cashbox from "@/pages/Cashbox";
 import Events from "@/pages/Events";
+import EventCreate from "@/pages/EventCreate";
+import EventEdit from "@/pages/EventEdit";
 import Profile from "@/pages/Profile";
 import Pricing from "@/pages/Pricing";
 import StaffingFormulas from "@/pages/StaffingFormulas";
@@ -203,6 +205,22 @@ function Router() {
         <ProtectedRoute>
           <AuthenticatedLayout>
             <Events />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/events/new">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <EventCreate />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/events/:id/edit">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <EventEdit />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
