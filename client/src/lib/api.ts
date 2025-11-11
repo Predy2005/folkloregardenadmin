@@ -1,6 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig } from 'axios';
 
-const API_BASE_URL = 'https://api.folkloregarden.cz';
+const API_BASE_URL = 'http://localhost:8000/';
 
 // Vytvoření axios instance
 export const apiClient: AxiosInstance = axios.create({

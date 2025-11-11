@@ -70,12 +70,28 @@ app.use((req, res, next) => {
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-  });
+  const port = parseInt(process.env.PORT || '3000', 10);
+// file: server/index.ts
+
+// nahradit původní server.listen(...) tímto
+// file: server/index.ts
+
+const listenOptions: {
+  port: number;
+  host?: string;
+  reusePort?: boolean;
+} = { port };
+
+// povolit reusePort jen na Linuxu
+if (process.platform === "linux") {
+  listenOptions.reusePort = true;
+}
+
+// pokud uživatel nepřepsal HOST, bindnout na IPv6 unspecified ('::')
+// to umožní připojení přes localhost (::1) i 127.0.0.1
+listenOptions.host = process.env.HOST || "::";
+
+server.listen(listenOptions, () => {
+  log(`serving on port ${port}`);
+});
 })();
