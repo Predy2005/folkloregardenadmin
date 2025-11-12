@@ -310,76 +310,180 @@ export const CASHBOX_CATEGORY_LABELS: Record<string, string> = {
 
 // Events types
 export type EventSpace = 'roubenka' | 'terasa' | 'stodolka' | 'cely_areal';
+export type EventType = 'folklorni_show' | 'svatba' | 'event' | 'privat';
+export type EventStatus = 'DRAFT' | 'PLANNED' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 
+// Core Event interface (matches event table + nested entities)
 export interface Event {
   id: number;
-  type: 'folklorni_show' | 'svatba' | 'event' | 'privat';
   name: string;
-  date: string;
-  spaces: EventSpace[];
-  organizerName: string;
-  contactPerson?: string;
-  coordinator?: string;
-  paidCount: number;
-  freeCount: number;
+  eventType: EventType;
   reservationId?: number;
-  status: 'DRAFT' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
-  notes?: string;
-  organizationPlan?: string;
-  schedule?: string;
-  cateringNotes?: string;
+  
+  // Základní údaje
+  eventDate: string;
+  eventTime: string;
+  durationMinutes: number;
+  
+  // Počet osob (guestsTotal je readonly - vypočítává DB)
+  guestsPaid: number;
+  guestsFree: number;
+  guestsTotal: number; // COMPUTED: guests_paid + guests_free
+  
+  // Prostory (many-to-many přes event_space)
+  spaces: EventSpace[];
+  
+  // Kontaktní údaje organizátora
+  organizerCompany?: string;
+  organizerPerson?: string;
+  organizerEmail?: string;
+  organizerPhone?: string;
+  
+  // Jazyk
+  language: string;
+  
+  // Fakturační údaje
+  invoiceCompany?: string;
+  invoiceIc?: string;
+  invoiceDic?: string;
+  invoiceAddress?: string;
+  
+  // Platba
+  totalPrice?: number;
+  depositAmount?: number;
+  depositPaid: boolean;
+  paymentMethod?: string;
+  
+  // Status
+  status: EventStatus;
+  
+  // Poznámky
+  notesStaff?: string;
+  notesInternal?: string;
+  specialRequirements?: string;
+  
+  // Metadata
   createdBy?: number;
+  coordinatorId?: number;
   createdAt: string;
   updatedAt: string;
+  
+  // Nested entities (načtou se v aggregate)
+  guests?: EventGuest[];
+  menu?: EventMenu[];
+  beverages?: EventBeverage[];
   staffAssignments?: EventStaffAssignment[];
-  menuItems?: EventMenuItem[];
+  schedule?: EventScheduleItem[];
   tables?: EventTable[];
+  vouchers?: EventVoucher[];
   reservation?: Reservation;
 }
 
+// Event Guest (může být z rezervace nebo manuální)
+export interface EventGuest {
+  id: number;
+  eventId: number;
+  eventTableId?: number;
+  reservationId?: number; // pokud je z rezervace
+  personIndex?: number; // index osoby v rezervaci
+  firstName?: string;
+  lastName?: string;
+  nationality?: string;
+  type: 'adult' | 'child';
+  isPaid: boolean;
+  isPresent: boolean;
+  menuItemId?: number;
+  notes?: string;
+  createdAt?: string;
+}
+
+// Event Menu
+export interface EventMenu {
+  id: number;
+  eventId: number;
+  reservationFoodId?: number;
+  menuName: string;
+  quantity: number;
+  pricePerUnit?: number;
+  totalPrice?: number;
+  servingTime?: string;
+  notes?: string;
+  createdAt?: string;
+}
+
+// Event Beverage
+export interface EventBeverage {
+  id: number;
+  eventId: number;
+  beverageName: string;
+  quantity: number;
+  unit: string; // 'bottle', 'glass', 'liter'
+  pricePerUnit?: number;
+  totalPrice?: number;
+  notes?: string;
+  createdAt?: string;
+}
+
+// Event Staff Assignment
 export interface EventStaffAssignment {
   id: number;
   eventId: number;
   staffMemberId: number;
-  role: string;
+  staffRoleId?: number;
+  assignmentStatus: string; // 'ASSIGNED', 'CONFIRMED', 'DECLINED', 'COMPLETED'
+  attendanceStatus: string; // 'PENDING', 'PRESENT', 'ABSENT', 'LATE'
+  hoursWorked: number;
+  paymentAmount?: number;
+  paymentStatus: string; // 'PENDING', 'PAID'
+  notes?: string;
+  assignedAt?: string;
+  confirmedAt?: string;
+  attendedAt?: string;
   staffMember?: StaffMember;
 }
 
-export interface EventMenuItem {
+// Event Schedule Item
+export interface EventScheduleItem {
   id: number;
   eventId: number;
-  recipeId?: number;
-  name: string;
-  quantity: number;
-  recipe?: Recipe;
+  timeSlot: string; // TIME format
+  durationMinutes: number;
+  activity: string; // 'ARRIVAL', 'WELCOME_DRINK', 'DINNER', 'SHOW', 'DANCE', 'CLOSING'
+  description?: string;
+  responsibleStaffId?: number;
+  notes?: string;
+  createdAt?: string;
 }
 
+// Event Table (pro floor plan)
 export interface EventTable {
   id: number;
   eventId: number;
   tableName: string;
-  room: 'roubenka' | 'terasa' | 'stodolka' | 'cely_areal';
+  room: EventSpace;
   capacity: number;
   positionX?: number;
   positionY?: number;
+  createdAt?: string;
+  updatedAt?: string;
   guests?: EventGuest[];
 }
 
-export interface EventGuest {
+// Event Voucher
+export interface EventVoucher {
   id: number;
-  eventTableId?: number;
-  reservationId?: number;
-  personIndex?: number;
-  name: string;
-  type: 'adult' | 'child';
-  nationality?: string;
-  menuItemId?: number;
-  isPresent: boolean;
-  isPaid: boolean;
+  eventId: number;
+  voucherId: number;
+  quantity: number;
+  validated: boolean;
+  validatedAt?: string;
+  validatedBy?: number;
   notes?: string;
+  createdAt?: string;
+  voucher?: Voucher;
 }
 
-export const EVENT_TYPE_LABELS: Record<Event['type'], string> = {
+export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   folklorni_show: 'Folklorní show',
   svatba: 'Svatba',
   event: 'Event',
@@ -393,9 +497,10 @@ export const EVENT_SPACE_LABELS: Record<EventSpace, string> = {
   cely_areal: 'Celý areál',
 };
 
-export const EVENT_STATUS_LABELS: Record<Event['status'], string> = {
+export const EVENT_STATUS_LABELS: Record<EventStatus, string> = {
   DRAFT: 'Koncept',
   PLANNED: 'Plánováno',
+  CONFIRMED: 'Potvrzeno',
   IN_PROGRESS: 'Probíhá',
   COMPLETED: 'Dokončeno',
   CANCELLED: 'Zrušeno',
