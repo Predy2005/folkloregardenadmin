@@ -58,16 +58,35 @@ The system supports:
     - **Staff Attendance**: Recording working hours, payment calculation.
     - **Staffing Formulas**: Automatic calculation rules for staff requirements (e.g., 1 waiter per 25 guests). Categories include: Číšníci, Kuchaři, Pomocné síly, Moderátoři, Muzikanti + Kapela, Tanečníci, Fotografky, Šperky. Each formula has ratio, enabled status, and description.
 - **Cashbox**: Multi-currency income/expense management, transaction categorization, balance tracking.
-- **Events**: Advanced planning for various event types (Folklore Show, Wedding), including:
-    - **Multiple Space Support**: Events can occur in multiple venues simultaneously (checkbox selection for Roubenka, Terasa, Stodolka, Celý areál)
-    - **Guest Auto-Loading**: Automatic display of guests from reservations matching the event date, showing all persons from matching reservations with their details
-    - **Reservation Overview Tab**: Displays all reservations for event date with Company, Hotel/Note, Contact, PAX, and Nationality information aggregated from linked reservations
-    - **Nationality Aggregation**: Automatic count and display of guest nationalities from all reservations for the event date, useful for table planning
-    - **Automatic Staff Calculation**: Uses Staffing Formulas to calculate required staff count for each category based on total guest count
-    - **Space Allocation**: Status tracking, guest management (paying/free, table layout, check-in)
-    - **Menu/Catering**: Menu assignment, staff coordination, organizational plan
-    - **Reservation Linking**: Optional connection to existing reservations
-    - **Floor Plan Management**: Drag-and-drop table assignments using @dnd-kit, table CRUD, guest import, roster with nationality filtering
+- **Events**: Comprehensive event management system with 8-tab interface:
+    - **Basic Info Tab**: Complete event form with sections for:
+        - Základní údaje (name, type, date, time, duration, language, status)
+        - Počty osob (guestsPaid, guestsFree with auto-calculated guestsTotal)
+        - Prostory (multiple space selection via checkboxes)
+        - Organizátor (company, person, email, phone)
+        - Fakturace (invoice company, IČ, DIČ, address)
+        - Platba (total price, deposit amount/status, payment method)
+        - Poznámky (staff notes, internal notes, special requirements)
+    - **Guests Tab**: Guest management with dual-source data:
+        - Load guests from reservations matching event date (GET /api/events/:id/guests/from-reservations)
+        - Manual guest CRUD operations (firstName, lastName, nationality, type, isPaid, isPresent, notes)
+        - Table assignment (eventTableId)
+        - Menu item assignment (menuItemId)
+    - **Menu Tab**: Event menu management (menuName, quantity, pricePerUnit, totalPrice, servingTime, notes)
+    - **Beverages Tab**: Beverage planning (beverageName, quantity, unit, pricePerUnit, totalPrice, notes)
+    - **Schedule Tab**: Event timeline (timeSlot, durationMinutes, activity, description, responsibleStaffId, notes)
+    - **Tables Tab**: Floor plan management (tableName, room, capacity, positionX, positionY) with drag-and-drop support
+    - **Staff Tab**: Staff assignment (staffMemberId, assignmentStatus, attendanceStatus, hoursWorked, paymentAmount, paymentStatus, notes)
+    - **Vouchers Tab**: Voucher tracking (voucherId, quantity, validated, notes)
+    - **Technical Features**:
+        - Lazy loading per tab (enabled when tab is active)
+        - Explicit queryFn in all useQuery hooks
+        - Targeted cache invalidation per resource
+        - Toast notifications for all operations
+        - Data-testid attributes on all interactive elements
+        - Guest count auto-calculation from reservations with discrepancy notes
+        - Single aggregate endpoint (GET /api/events/:id) returns full event with all nested entities
+        - Separate CRUD endpoints for each resource type
 - **Pricing Configuration**: Management of base per-person reservation pricing (Adults, Children 3-12, Infants 0-2) with `includeMeal` flag. Date-specific overrides for special pricing with reasons. Frontend is complete; requires backend API.
 
 ## External Dependencies
