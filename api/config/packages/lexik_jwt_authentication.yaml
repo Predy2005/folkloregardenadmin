@@ -1,0 +1,9 @@
+#lexik_jwt_authentication:
+#    secret_key: '%env(resolve:JWT_SECRET_KEY)%'
+#    public_key: '%env(resolve:JWT_PUBLIC_KEY)%'
+#    pass_phrase: '%env(JWT_PASSPHRASE)%'
+lexik_jwt_authentication:
+  secret_key: '%kernel.project_dir%/config/jwt/private.pem' # cesta k soukromému klíči
+  public_key: '%kernel.project_dir%/config/jwt/public.pem'  # cesta k veřejnému klíči
+  pass_phrase: 'KillPrd2005'                     # heslo k soukromému klíči
+  token_ttl: 3600                                         # platnost tokenu v sekundách

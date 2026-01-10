@@ -1,0 +1,3 @@
+// Stock module
+export { default as StockItemsPage } from './pages/StockItemsPage';
+export { default as StockMovementsPage } from './pages/StockMovementsPage';

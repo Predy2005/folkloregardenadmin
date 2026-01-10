@@ -1,38 +1,64 @@
 import { Switch, Route, useLocation } from "wouter";
-import { queryClient } from "./lib/queryClient";
+import { queryClient } from "@/shared/lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { ThemeProvider } from "@/contexts/ThemeContext";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import { AppSidebar } from "@/components/AppSidebar";
-import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { Toaster } from "@/shared/components/ui/toaster";
+import { TooltipProvider } from "@/shared/components/ui/tooltip";
+import { SidebarProvider, SidebarTrigger } from "@/shared/components/ui/sidebar";
+import { ThemeProvider } from "@/shared/contexts/ThemeContext";
+import { ThemeToggle } from "@/shared/components/ThemeToggle";
+import { AppSidebar } from "@/shared/components/AppSidebar";
+
+// Auth module
+import {
+  AuthProvider,
+  useAuth,
+  ProtectedRoute,
+  LoginPage as Login,
+  RegisterPage as Register,
+  ProfilePage as Profile
+} from "@modules/auth";
+
+// Dashboard module
+import { DashboardPage as Dashboard } from "@modules/dashboard";
+
+// Reservations module
+import { ReservationsPage as Reservations, ReservationEditPage as ReservationEdit } from "@modules/reservations";
+
+// Events module
+import { EventsPage as Events, EventCreatePage as EventCreate, EventEditPage as EventEdit, EventDashboardPage as EventDashboard, WaiterViewPage as WaiterView } from "@modules/events";
+
+// Staff module
+import { StaffMembersPage as StaffMembers, StaffAttendancePage as StaffAttendance, StaffingFormulasPage as StaffingFormulas } from "@modules/staff";
+
+// Contacts module
+import { ContactsPage as Contacts, ContactEditPage as ContactEdit } from "@modules/contacts";
+
+// Partners module
+import { PartnersPage as Partners, VouchersPage as Vouchers } from "@modules/partners";
+
+// Payments module
+import { PaymentsPage as Payments } from "@modules/payments";
+
+// Invoices module
+import { InvoicesPage as Invoices, InvoiceEditPage as InvoiceEdit } from "@modules/invoices";
+
+// Cashbox module
+import { CashboxPage as Cashbox, CommissionLogsPage as CommissionLogs } from "@modules/cashbox";
+
+// Foods module
+import { FoodsPage as Foods, FoodEditPage as FoodEdit } from "@modules/foods";
+
+// Recipes module
+import { RecipesPage as Recipes } from "@modules/recipes";
+
+// Stock module
+import { StockItemsPage as StockItems, StockMovementsPage as StockMovements } from "@modules/stock";
+
+// Admin module
+import { UsersPage as Users, RolesPage as Roles, SettingsPage as Settings, PricingPage as Pricing, DisabledDatesPage as DisabledDates } from "@modules/admin";
+
+// Other
 import NotFound from "@/pages/not-found";
-import Login from "@/pages/Login";
-import Register from "@/pages/Register";
-import Dashboard from "@/pages/Dashboard";
-import Reservations from "@/pages/Reservations";
-import Payments from "@/pages/Payments";
-import Foods from "@/pages/Foods";
-import Users from "@/pages/Users";
-import DisabledDates from "@/pages/DisabledDates";
-import StockItems from "@/pages/StockItems";
-import Recipes from "@/pages/Recipes";
-import StockMovements from "@/pages/StockMovements";
-import Partners from "@/pages/Partners";
-import Vouchers from "@/pages/Vouchers";
-import CommissionLogs from "@/pages/CommissionLogs";
-import StaffMembers from "@/pages/StaffMembers";
-import StaffAttendance from "@/pages/StaffAttendance";
-import Cashbox from "@/pages/Cashbox";
-import Events from "@/pages/Events";
-import EventCreate from "@/pages/EventCreate";
-import EventEdit from "@/pages/EventEdit";
-import Profile from "@/pages/Profile";
-import Pricing from "@/pages/Pricing";
-import StaffingFormulas from "@/pages/StaffingFormulas";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const style = {
@@ -50,7 +76,7 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
             <ThemeToggle />
           </header>
           <main className="flex-1 overflow-y-auto p-6 bg-background">
-            <div className="max-w-7xl mx-auto">
+            <div className="container_muj mx-auto">
               {children}
             </div>
           </main>
@@ -89,6 +115,22 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/reservations/new">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <ReservationEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/reservations/:id/edit">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <ReservationEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/reservations">
         <ProtectedRoute>
           <AuthenticatedLayout>
@@ -105,6 +147,38 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/invoices">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <Invoices />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/invoices/new">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <InvoiceEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/invoices/:id/edit">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <InvoiceEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/settings">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <Settings />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/foods">
         <ProtectedRoute>
           <AuthenticatedLayout>
@@ -113,10 +187,50 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/foods/new">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <FoodEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/foods/:id/edit">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <FoodEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contacts">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <Contacts />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contacts/:id/edit">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <ContactEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/users">
         <ProtectedRoute>
           <AuthenticatedLayout>
             <Users />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/roles">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <Roles />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -217,11 +331,23 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/events/:id/dashboard">
+        <ProtectedRoute>
+          <EventDashboard />
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/events/:id/edit">
         <ProtectedRoute>
           <AuthenticatedLayout>
             <EventEdit />
           </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/events/:id/waiter">
+        <ProtectedRoute>
+          <WaiterView />
         </ProtectedRoute>
       </Route>
 

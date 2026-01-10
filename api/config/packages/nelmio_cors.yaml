@@ -1,0 +1,18 @@
+nelmio_cors:
+  defaults:
+    allow_credentials: true
+    origin_regex: true
+    allow_origin: [ '^https?://(.*\.)?folkloregarden\.cz$','localhost:3000','localhost:3001','localhost:8080','^https?://(.*\.)?testujeme\.online$','^https?://(.*\.)?replit\.com','^https?://(.*\.)?replit\.app','^https?://(.*\.)?replit\.dev' ]
+    allow_headers: [ '*' ]
+    allow_methods: [ 'GET', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE' ]
+    expose_headers: [ 'Authorization' ]
+    max_age: 3600
+  paths:
+    '^/':
+      origin_regex: true
+      allow_credentials: true
+      allow_origin: [ '^https?://(.*\.)?folkloregarden\.cz$','localhost:3000','localhost:8080','localhost:3001','^https?://(.*\.)?testujeme\.online$','^https?://(.*\.)?replit\.com','^https?://(.*\.)?replit\.app','^https?://(.*\.)?replit\.dev' ]
+      allow_headers: [ '*' ]
+      allow_methods: [ 'GET', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE' ]
+      expose_headers: [ 'Authorization' ]
+      max_age: 3600

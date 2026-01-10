@@ -1,0 +1,46 @@
+security:
+  password_hashers:
+    App\Entity\User:
+      algorithm: auto # Automaticky vybere nejlepší algoritmus (bcrypt, argon2id apod.)
+
+  providers:
+    app_user_provider:
+      entity:
+        class: App\Entity\User
+        property: username # Identifikátor je username
+
+  firewalls:
+    public:
+      pattern: ^/auth/register
+      security: false # Registrace nevyžaduje autentizaci
+    auth:
+      pattern: ^/auth
+      stateless: true
+      provider: app_user_provider
+      json_login:
+        check_path: /auth/login
+        username_path: username
+        password_path: password
+        success_handler: lexik_jwt_authentication.handler.authentication_success
+        failure_handler: lexik_jwt_authentication.handler.authentication_failure
+      jwt: ~ # Přidání JWT autentizace pro zpracování Bearer tokenů
+      logout:
+        path: /auth/logout
+        target: /
+    main:
+      pattern: ^/
+      stateless: true
+      provider: app_user_provider
+      jwt: ~ # Přidání JWT autentizace i pro ostatní cesty
+
+  access_control:
+    - { path: ^/auth/login, roles: IS_AUTHENTICATED_ANONYMOUSLY }
+    - { path: ^/auth/register, roles: IS_AUTHENTICATED_ANONYMOUSLY }
+    - { path: ^/auth/logout, roles: IS_AUTHENTICATED_ANONYMOUSLY }
+    - { path: ^/auth/forgot-password, roles: IS_AUTHENTICATED_ANONYMOUSLY }
+    - { path: ^/auth/reset-password, roles: IS_AUTHENTICATED_ANONYMOUSLY }
+    - { path: ^/auth/user, roles: IS_AUTHENTICATED_FULLY }
+    - { path: ^/auth/profile, roles: IS_AUTHENTICATED_FULLY }
+    - { path: ^/user-api, roles: IS_AUTHENTICATED_FULLY }
+    - { path: ^/admin-api, roles: ROLE_ADMIN }
+    - { path: ^/public-api, roles: IS_AUTHENTICATED_ANONYMOUSLY }
