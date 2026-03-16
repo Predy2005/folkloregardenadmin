@@ -15,13 +15,13 @@ import type {
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, LayoutDashboard, Loader2 } from "lucide-react";
 import { api } from "@/shared/lib/api";
 
 // Extracted tab components
 import BasicInfoTab from "../components/BasicInfoTab";
 import GuestsTab from "../components/GuestsTab";
-import { MenuTab, BeveragesTab, ScheduleTab, TablesTab, StaffTab, VouchersTab } from "../components/tabs";
+import { MenuTab, BeveragesTab, ScheduleTab, TablesTab, StaffTab, VouchersTab, FinanceTab } from "../components/tabs";
 
 // Notes panel
 import { EventNotesProvider } from "../contexts/EventNotesContext";
@@ -48,61 +48,37 @@ export default function EventEdit() {
 
   const { data: menu, isLoading: menuLoading } = useQuery<EventMenu[]>({
     queryKey: ["/api/events", eventId, "menu"],
-    queryFn: async () => {
-      const res = await fetch(`/api/events/${eventId}/menu`);
-      if (!res.ok) throw new Error("Failed to fetch menu");
-      return res.json();
-    },
+    queryFn: () => api.get(`/api/events/${eventId}/menu`),
     enabled: !!eventId && activeTab === "menu",
   });
 
   const { data: beverages, isLoading: beveragesLoading } = useQuery<EventBeverage[]>({
     queryKey: ["/api/events", eventId, "beverages"],
-    queryFn: async () => {
-      const res = await fetch(`/api/events/${eventId}/beverages`);
-      if (!res.ok) throw new Error("Failed to fetch beverages");
-      return res.json();
-    },
+    queryFn: () => api.get(`/api/events/${eventId}/beverages`),
     enabled: !!eventId && activeTab === "beverages",
   });
 
   const { data: schedule, isLoading: scheduleLoading } = useQuery<EventScheduleItem[]>({
     queryKey: ["/api/events", eventId, "schedule"],
-    queryFn: async () => {
-      const res = await fetch(`/api/events/${eventId}/schedule`);
-      if (!res.ok) throw new Error("Failed to fetch schedule");
-      return res.json();
-    },
+    queryFn: () => api.get(`/api/events/${eventId}/schedule`),
     enabled: !!eventId && activeTab === "schedule",
   });
 
   const { data: tables, isLoading: tablesLoading } = useQuery<EventTable[]>({
     queryKey: ["/api/events", eventId, "tables"],
-    queryFn: async () => {
-      const res = await fetch(`/api/events/${eventId}/tables`);
-      if (!res.ok) throw new Error("Failed to fetch tables");
-      return res.json();
-    },
+    queryFn: () => api.get(`/api/events/${eventId}/tables`),
     enabled: !!eventId && activeTab === "tables",
   });
 
   const { data: staffAssignments, isLoading: staffLoading } = useQuery<EventStaffAssignment[]>({
     queryKey: ["/api/events", eventId, "staff-assignments"],
-    queryFn: async () => {
-      const res = await fetch(`/api/events/${eventId}/staff-assignments`);
-      if (!res.ok) throw new Error("Failed to fetch staff assignments");
-      return res.json();
-    },
+    queryFn: () => api.get(`/api/events/${eventId}/staff-assignments`),
     enabled: !!eventId && activeTab === "staff",
   });
 
   const { data: eventVouchers, isLoading: vouchersLoading } = useQuery<EventVoucher[]>({
     queryKey: ["/api/events", eventId, "vouchers"],
-    queryFn: async () => {
-      const res = await fetch(`/api/events/${eventId}/vouchers`);
-      if (!res.ok) throw new Error("Failed to fetch vouchers");
-      return res.json();
-    },
+    queryFn: () => api.get(`/api/events/${eventId}/vouchers`),
     enabled: !!eventId && activeTab === "vouchers",
   });
 
@@ -156,14 +132,24 @@ export default function EventEdit() {
     >
       <div className="container mx-auto p-6 space-y-6">
         <div className="flex items-center justify-between">
-          <Button
-            variant="ghost"
-            onClick={() => setLocation("/events")}
-            data-testid="button-back"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Zpět na seznam
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setLocation("/events")}
+              data-testid="button-back"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Zpět na seznam
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setLocation(`/events/${eventId}/dashboard`)}
+              data-testid="button-dashboard"
+            >
+              <LayoutDashboard className="mr-2 h-4 w-4" />
+              Dashboard
+            </Button>
+          </div>
         </div>
 
         <div className="flex gap-6">
@@ -174,7 +160,7 @@ export default function EventEdit() {
             </CardHeader>
             <CardContent>
               <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="grid w-full grid-cols-8" data-testid="tabs-list">
+                <TabsList className="grid w-full grid-cols-9" data-testid="tabs-list">
                   <TabsTrigger value="basic" data-testid="tab-trigger-basic">
                     Základní
                   </TabsTrigger>
@@ -195,6 +181,9 @@ export default function EventEdit() {
                   </TabsTrigger>
                   <TabsTrigger value="staff" data-testid="tab-trigger-staff">
                     Personál
+                  </TabsTrigger>
+                  <TabsTrigger value="finance" data-testid="tab-trigger-finance">
+                    Finance
                   </TabsTrigger>
                   <TabsTrigger value="vouchers" data-testid="tab-trigger-vouchers">
                     Vouchery
@@ -217,6 +206,7 @@ export default function EventEdit() {
                 <TabsContent value="menu" className="mt-6">
                   <MenuTab
                     eventId={eventId}
+                    eventType={event.eventType}
                     menu={menu || []}
                     isLoading={menuLoading}
                   />
@@ -253,6 +243,10 @@ export default function EventEdit() {
                     staffMembers={staffMembers || []}
                     isLoading={staffLoading}
                   />
+                </TabsContent>
+
+                <TabsContent value="finance" className="mt-6">
+                  <FinanceTab eventId={eventId} />
                 </TabsContent>
 
                 <TabsContent value="vouchers" className="mt-6">

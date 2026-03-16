@@ -2,6 +2,7 @@ import { useFormContext } from 'react-hook-form';
 import { Checkbox } from '@/shared/components/ui/checkbox';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/shared/components/ui/form';
 import { Input } from '@/shared/components/ui/input';
+import { formatCurrency } from '@/shared/lib/formatting';
 
 export function TransferTab() {
   const form = useFormContext();
@@ -52,7 +53,7 @@ export function TransferTab() {
 
           <div className="flex items-end">
             <div className="text-sm text-muted-foreground">
-              Cena transferu: {(Number(transferCount || 0) * 300).toLocaleString('cs-CZ')} Kč
+              Cena transferu: {formatCurrency(Number(transferCount || 0) * 300)}
             </div>
           </div>
 

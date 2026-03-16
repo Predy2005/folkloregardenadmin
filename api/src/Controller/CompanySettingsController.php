@@ -123,6 +123,9 @@ class CompanySettingsController extends AbstractController
         if (isset($data['isVatPayer'])) {
             $settings->setIsVatPayer((bool) $data['isVatPayer']);
         }
+        if (array_key_exists('mainCashboxHidden', $data)) {
+            $settings->setMainCashboxHidden((bool) $data['mainCashboxHidden']);
+        }
 
         $settings->setUpdatedAt(new \DateTime());
 
@@ -235,6 +238,8 @@ class CompanySettingsController extends AbstractController
             'invoiceFooterText' => $settings->getInvoiceFooterText(),
             'registrationInfo' => $settings->getRegistrationInfo(),
             'isVatPayer' => $settings->isVatPayer(),
+
+            'mainCashboxHidden' => $settings->isMainCashboxHidden(),
 
             'createdAt' => $settings->getCreatedAt()->format('Y-m-d H:i:s'),
             'updatedAt' => $settings->getUpdatedAt()->format('Y-m-d H:i:s'),

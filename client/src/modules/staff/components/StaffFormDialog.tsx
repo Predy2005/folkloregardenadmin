@@ -27,23 +27,19 @@ import { Switch } from "@/shared/components/ui/switch";
 import { Button } from "@/shared/components/ui/button";
 import type { UseFormReturn } from "react-hook-form";
 import { Textarea } from "@/shared/components/ui/textarea";
+import type { Option } from "../types";
 
-interface Option {
-  value: number;
-  label: string;
-}
-
-interface StaffFormDialogProps<T> {
+interface StaffFormDialogProps {
   open: boolean;
   isEdit: boolean;
-  form: UseFormReturn<T>;
+  form: UseFormReturn<any>;
   onClose: () => void;
-  onSubmit: (data: T) => void;
+  onSubmit: (data: any) => void;
   options: Option[];
   pending: boolean;
 }
 
-export function StaffFormDialog<T extends Record<string, any>>({
+export function StaffFormDialog({
   open,
   isEdit,
   form,
@@ -51,7 +47,7 @@ export function StaffFormDialog<T extends Record<string, any>>({
   onSubmit,
   options,
   pending,
-}: StaffFormDialogProps<T>) {
+}: StaffFormDialogProps) {
   return (
     <Dialog
       open={open}
@@ -184,7 +180,7 @@ export function StaffFormDialog<T extends Record<string, any>>({
             </div>
 
             <FormField
-              control={form.address}
+              control={form.control}
               name={"address" as any}
               render={({ field }) => (
                 <FormItem>
@@ -203,8 +199,8 @@ export function StaffFormDialog<T extends Record<string, any>>({
                 <FormItem>
                   <FormLabel>Role / pozice *</FormLabel>
                   <Select
-                    onValueChange={(v) => field.onChange(Number(v))}
-                    value={field.value}
+                    onValueChange={field.onChange}
+                    value={field.value ?? ""}
                   >
                     <FormControl>
                       <SelectTrigger data-testid="select-role">
@@ -212,8 +208,8 @@ export function StaffFormDialog<T extends Record<string, any>>({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {options.map((opt) => (
-                        <SelectItem key={opt.value} value={String(opt.value)}>
+                      {options.map((opt: Option) => (
+                        <SelectItem key={opt.value} value={opt.value}>
                           {opt.label}
                         </SelectItem>
                       ))}

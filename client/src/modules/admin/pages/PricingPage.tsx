@@ -14,9 +14,13 @@ import type { PricingDefault, PricingDateOverride } from '@shared/types';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useToast } from '@/shared/hooks/use-toast';
+import { successToast, errorToast } from '@/shared/lib/toast-helpers';
+import { formatCurrency } from '@/shared/lib/formatting';
+import { useFormDialog } from '@/shared/hooks/useFormDialog';
+import { useCrudMutations } from '@/shared/hooks/useCrudMutations';
 import dayjs from 'dayjs';
 import { Badge } from '@/shared/components/ui/badge';
+import { PageHeader } from "@/shared/components/PageHeader";
 
 const defaultPriceSchema = z.object({
   adultPrice: z.number().min(0, 'Cena musí být kladné číslo'),
@@ -38,10 +42,8 @@ type DefaultPriceForm = z.infer<typeof defaultPriceSchema>;
 type DateOverrideForm = z.infer<typeof dateOverrideSchema>;
 
 export default function Pricing() {
-  const [isOverrideDialogOpen, setIsOverrideDialogOpen] = useState(false);
-  const [editingOverride, setEditingOverride] = useState<PricingDateOverride | null>(null);
+  const dialog = useFormDialog<PricingDateOverride>();
   const [searchTerm, setSearchTerm] = useState('');
-  const { toast } = useToast();
 
   // Fetch default prices
   const { data: defaultPrices, isLoading: isLoadingDefaults } = useQuery({
@@ -79,58 +81,25 @@ export default function Pricing() {
     },
   });
 
-  // Update default prices mutation
+  // Update default prices mutation (custom, doesn't fit useCrudMutations)
   const updateDefaultMutation = useMutation({
     mutationFn: (data: DefaultPriceForm) => api.put('/api/pricing/defaults', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/pricing/defaults'] });
-      toast({ title: 'Výchozí ceny byly úspěšně aktualizovány' });
+      successToast('Výchozí ceny byly úspěšně aktualizovány');
     },
-    onError: () => {
-      toast({ title: 'Chyba při aktualizaci výchozích cen', variant: 'destructive' });
-    },
-  });
-
-  // Create date override mutation
-  const createOverrideMutation = useMutation({
-    mutationFn: (data: DateOverrideForm) => api.post('/api/pricing/date-overrides', data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/pricing/date-overrides'] });
-      setIsOverrideDialogOpen(false);
-      overrideForm.reset();
-      toast({ title: 'Cenový přepis byl úspěšně vytvořen' });
-    },
-    onError: () => {
-      toast({ title: 'Chyba při vytváření cenového přepisu', variant: 'destructive' });
+    onError: (error: Error) => {
+      errorToast(error);
     },
   });
 
-  // Update date override mutation
-  const updateOverrideMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: DateOverrideForm }) =>
-      api.put(`/api/pricing/date-overrides/${id}`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/pricing/date-overrides'] });
-      setIsOverrideDialogOpen(false);
-      setEditingOverride(null);
-      overrideForm.reset();
-      toast({ title: 'Cenový přepis byl úspěšně upraven' });
-    },
-    onError: () => {
-      toast({ title: 'Chyba při úpravě cenového přepisu', variant: 'destructive' });
-    },
-  });
-
-  // Delete date override mutation
-  const deleteOverrideMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/api/pricing/date-overrides/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/pricing/date-overrides'] });
-      toast({ title: 'Cenový přepis byl úspěšně smazán' });
-    },
-    onError: () => {
-      toast({ title: 'Chyba při mazání cenového přepisu', variant: 'destructive' });
-    },
+  // Date override CRUD mutations
+  const { createMutation: createOverrideMutation, updateMutation: updateOverrideMutation, deleteMutation: deleteOverrideMutation } = useCrudMutations<DateOverrideForm>({
+    endpoint: '/api/pricing/date-overrides',
+    queryKey: ['/api/pricing/date-overrides'],
+    entityName: 'Cenový přepis',
+    onCreateSuccess: () => { dialog.close(); overrideForm.reset(); },
+    onUpdateSuccess: () => { dialog.close(); overrideForm.reset(); },
   });
 
   const handleUpdateDefaults = (data: DefaultPriceForm) => {
@@ -138,7 +107,6 @@ export default function Pricing() {
   };
 
   const handleCreateOverride = () => {
-    setEditingOverride(null);
     overrideForm.reset({
       date: '',
       adultPrice: defaultPrices?.adultPrice ?? 0,
@@ -147,11 +115,10 @@ export default function Pricing() {
       includeMeal: defaultPrices?.includeMeal ?? false,
       reason: '',
     });
-    setIsOverrideDialogOpen(true);
+    dialog.openCreate();
   };
 
   const handleEditOverride = (override: PricingDateOverride) => {
-    setEditingOverride(override);
     overrideForm.reset({
       date: override.date,
       adultPrice: override.adultPrice,
@@ -160,7 +127,7 @@ export default function Pricing() {
       includeMeal: override.includeMeal,
       reason: override.reason || '',
     });
-    setIsOverrideDialogOpen(true);
+    dialog.openEdit(override);
   };
 
   const handleDeleteOverride = (id: number) => {
@@ -170,8 +137,8 @@ export default function Pricing() {
   };
 
   const onSubmitOverride = (data: DateOverrideForm) => {
-    if (editingOverride) {
-      updateOverrideMutation.mutate({ id: editingOverride.id, data });
+    if (dialog.editingItem) {
+      updateOverrideMutation.mutate({ id: dialog.editingItem.id, data });
     } else {
       createOverrideMutation.mutate(data);
     }
@@ -188,23 +155,14 @@ export default function Pricing() {
   });
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-            Cenník
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Nastavení cen rezervací na osobu podle typu
-          </p>
-        </div>
-      </div>
+    <div className="p-6 space-y-6">
+      <PageHeader title="Cenník" description="Nastavení cen rezervací na osobu podle typu" />
 
       {/* Default Prices Section */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <DollarSign className="w-5 h-5 text-purple-600" />
+            <DollarSign className="w-5 h-5" />
             Výchozí ceny
           </CardTitle>
         </CardHeader>
@@ -328,7 +286,7 @@ export default function Pricing() {
                   <Button
                     type="submit"
                     disabled={updateDefaultMutation.isPending}
-                    className="bg-gradient-to-r from-purple-600 to-pink-600"
+                    className="bg-gradient-to-r from-primary to-purple-600"
                     data-testid="button-save-defaults"
                   >
                     {updateDefaultMutation.isPending ? 'Ukládání...' : 'Uložit výchozí ceny'}
@@ -345,12 +303,12 @@ export default function Pricing() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-purple-600" />
+              <Calendar className="w-5 h-5" />
               Datum-specifické ceny
             </CardTitle>
             <Button
               onClick={handleCreateOverride}
-              className="bg-gradient-to-r from-purple-600 to-pink-600"
+              className="bg-gradient-to-r from-primary to-purple-600"
               data-testid="button-create-override"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -396,13 +354,13 @@ export default function Pricing() {
                         </TableCell>
                         <TableCell>{override.reason || '-'}</TableCell>
                         <TableCell className="text-right font-mono">
-                          {override.adultPrice.toFixed(2)} Kč
+                          {formatCurrency(override.adultPrice)}
                         </TableCell>
                         <TableCell className="text-right font-mono">
-                          {override.childPrice.toFixed(2)} Kč
+                          {formatCurrency(override.childPrice)}
                         </TableCell>
                         <TableCell className="text-right font-mono">
-                          {override.infantPrice.toFixed(2)} Kč
+                          {formatCurrency(override.infantPrice)}
                         </TableCell>
                         <TableCell>
                           {override.includeMeal ? (
@@ -463,11 +421,11 @@ export default function Pricing() {
       </Card>
 
       {/* Date Override Dialog */}
-      <Dialog open={isOverrideDialogOpen} onOpenChange={setIsOverrideDialogOpen}>
+      <Dialog open={dialog.isOpen} onOpenChange={dialog.setIsOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editingOverride ? 'Upravit cenový přepis' : 'Nový cenový přepis'}
+              {dialog.isEditing ? 'Upravit cenový přepis' : 'Nový cenový přepis'}
             </DialogTitle>
           </DialogHeader>
 
@@ -610,7 +568,7 @@ export default function Pricing() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setIsOverrideDialogOpen(false)}
+                  onClick={() => dialog.close()}
                   data-testid="button-cancel-override"
                 >
                   Zrušit
@@ -618,12 +576,12 @@ export default function Pricing() {
                 <Button
                   type="submit"
                   disabled={createOverrideMutation.isPending || updateOverrideMutation.isPending}
-                  className="bg-gradient-to-r from-purple-600 to-pink-600"
+                  className="bg-gradient-to-r from-primary to-purple-600"
                   data-testid="button-submit-override"
                 >
                   {createOverrideMutation.isPending || updateOverrideMutation.isPending
                     ? 'Ukládání...'
-                    : editingOverride
+                    : dialog.isEditing
                     ? 'Uložit změny'
                     : 'Vytvořit'}
                 </Button>

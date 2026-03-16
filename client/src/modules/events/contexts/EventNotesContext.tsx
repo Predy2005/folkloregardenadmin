@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/shared/lib/queryClient";
 import { api } from "@/shared/lib/api";
-import { useToast } from "@/shared/hooks/use-toast";
+import { errorToast } from "@/shared/lib/toast-helpers";
 
 interface NotesState {
   notesInternal: string;
@@ -28,7 +28,6 @@ interface EventNotesProviderProps {
 }
 
 export function EventNotesProvider({ eventId, initialNotes, children }: EventNotesProviderProps) {
-  const { toast } = useToast();
   const [notes, setNotes] = useState<NotesState>(initialNotes);
   const [isDirty, setIsDirty] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -49,13 +48,7 @@ export function EventNotesProvider({ eventId, initialNotes, children }: EventNot
       setLastSaved(new Date());
       setIsDirty(false);
     },
-    onError: (error: Error) => {
-      toast({
-        title: "Chyba při ukládání poznámek",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
+    onError: (error: Error) => errorToast(error),
   });
 
   const saveNotes = useCallback(() => {

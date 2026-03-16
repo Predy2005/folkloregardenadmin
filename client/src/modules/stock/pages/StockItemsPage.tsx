@@ -1,9 +1,8 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient } from "@/shared/lib/queryClient";
-import { api } from "@/shared/lib/api";
-import type { StockItem } from "@shared/types";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import type { StockItem, Recipe } from "@shared/types";
 import { STOCK_UNIT_LABELS } from "@shared/types";
+import { api } from "@/shared/lib/api";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import {
@@ -48,16 +47,104 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Pencil, Trash2, Search, Package, AlertTriangle } from "lucide-react";
-import { useToast } from "@/shared/hooks/use-toast";
+import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
+import { cn } from "@/shared/lib/utils";
+import { useFormDialog } from "@/shared/hooks/useFormDialog";
+import { useCrudMutations } from "@/shared/hooks/useCrudMutations";
 
+// --- Autocomplete dropdown component ---
+interface Suggestion {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+function AutocompleteInput({
+  value,
+  onChange,
+  suggestions,
+  placeholder,
+  onSelect,
+  "data-testid": testId,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  suggestions: Suggestion[];
+  placeholder?: string;
+  onSelect?: (suggestion: Suggestion) => void;
+  "data-testid"?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  const filtered = useMemo(() => {
+    if (!value) return suggestions.slice(0, 15);
+    const lower = value.toLowerCase();
+    return suggestions.filter((s) => s.value.toLowerCase().includes(lower)).slice(0, 15);
+  }, [value, suggestions]);
+
+  // Close on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <Input
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        placeholder={placeholder}
+        autoComplete="off"
+        data-testid={testId}
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-md border bg-popover shadow-md max-h-60 overflow-y-auto">
+          {filtered.map((s) => (
+            <button
+              key={s.value}
+              type="button"
+              className={cn(
+                "w-full text-left px-3 py-2 text-sm hover:bg-accent cursor-pointer",
+                value === s.value && "bg-accent"
+              )}
+              onMouseDown={(e) => {
+                e.preventDefault(); // prevent blur before click
+                onChange(s.value);
+                onSelect?.(s);
+                setOpen(false);
+              }}
+            >
+              <div className="font-medium">{s.label}</div>
+              {s.description && (
+                <div className="text-xs text-muted-foreground">{s.description}</div>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Schema ---
 const stockItemSchema = z.object({
   name: z.string().min(1, "Zadejte název položky"),
   description: z.string().optional(),
   unit: z.string().min(1, "Vyberte jednotku"),
-  quantityAvailable: z.number().min(0, "Množství musí být kladné"),
-  minQuantity: z.number().min(0).optional(),
-  pricePerUnit: z.number().min(0).optional(),
+  quantityAvailable: z.coerce.number().min(0, "Množství musí být kladné"),
+  minQuantity: z.coerce.number().min(0).nullable().optional(),
+  pricePerUnit: z.coerce.number().min(0).nullable().optional(),
   supplier: z.string().optional(),
 });
 
@@ -65,94 +152,109 @@ type StockItemForm = z.infer<typeof stockItemSchema>;
 
 export default function StockItems() {
   const [search, setSearch] = useState("");
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<StockItem | null>(null);
-  const { toast } = useToast();
+  const dialog = useFormDialog<StockItem>();
 
   const { data: stockItems, isLoading } = useQuery<StockItem[]>({
     queryKey: ["/api/stock-items"],
+    queryFn: () => api.get("/api/stock-items"),
   });
 
-  const createForm = useForm<StockItemForm>({
+  const { data: recipes } = useQuery<Recipe[]>({
+    queryKey: ["/api/recipes"],
+    queryFn: () => api.get("/api/recipes"),
+  });
+
+  // Build unique ingredient name suggestions from recipes + existing stock items
+  const ingredientSuggestions = useMemo((): Suggestion[] => {
+    const namesFromRecipes = new Map<string, { recipeName: string; unit?: string }>();
+    recipes?.forEach((recipe) => {
+      recipe.ingredients?.forEach((ing) => {
+        const name = ing.stockItem?.name;
+        const unit = ing.stockItem?.unit;
+        if (name && !namesFromRecipes.has(name)) {
+          namesFromRecipes.set(name, { recipeName: recipe.name, unit });
+        }
+      });
+    });
+
+    const existingNames = new Set(stockItems?.map((si) => si.name) ?? []);
+
+    const suggestions: Suggestion[] = [];
+
+    namesFromRecipes.forEach(({ recipeName, unit }, name) => {
+      const exists = existingNames.has(name);
+      suggestions.push({
+        value: name,
+        label: name,
+        description: `Receptura: ${recipeName}${unit ? ` (${unit})` : ""}${exists ? " — již ve skladu" : ""}`,
+      });
+    });
+
+    stockItems?.forEach((si) => {
+      if (!namesFromRecipes.has(si.name)) {
+        suggestions.push({
+          value: si.name,
+          label: si.name,
+          description: `Skladová položka (${si.unit})`,
+        });
+      }
+    });
+
+    return suggestions.sort((a, b) => a.value.localeCompare(b.value, "cs"));
+  }, [recipes, stockItems]);
+
+  // Build unique supplier suggestions from existing stock items
+  const supplierSuggestions = useMemo((): Suggestion[] => {
+    const suppliers = new Map<string, number>();
+    stockItems?.forEach((si) => {
+      if (si.supplier) {
+        suppliers.set(si.supplier, (suppliers.get(si.supplier) || 0) + 1);
+      }
+    });
+    return Array.from(suppliers.entries())
+      .map(([name, count]) => ({
+        value: name,
+        label: name,
+        description: `${count} ${count === 1 ? "položka" : count < 5 ? "položky" : "položek"}`,
+      }))
+      .sort((a, b) => a.value.localeCompare(b.value, "cs"));
+  }, [stockItems]);
+
+  // Unit lookup from ingredient suggestions for auto-fill
+  const ingredientUnitMap = useMemo(() => {
+    const map = new Map<string, string>();
+    recipes?.forEach((recipe) => {
+      recipe.ingredients?.forEach((ing) => {
+        const name = ing.stockItem?.name;
+        const unit = ing.stockItem?.unit;
+        if (name && unit && !map.has(name)) map.set(name, unit);
+      });
+    });
+    stockItems?.forEach((si) => {
+      if (!map.has(si.name)) map.set(si.name, si.unit);
+    });
+    return map;
+  }, [recipes, stockItems]);
+
+  const form = useForm<StockItemForm>({
     resolver: zodResolver(stockItemSchema),
     defaultValues: {
       name: "",
       description: "",
       unit: "kg",
       quantityAvailable: 0,
-      minQuantity: 0,
-      pricePerUnit: 0,
+      minQuantity: null,
+      pricePerUnit: null,
       supplier: "",
     },
   });
 
-  const editForm = useForm<StockItemForm>({
-    resolver: zodResolver(stockItemSchema),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async (data: StockItemForm) => {
-      return await api.post("/api/stock-items", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/stock-items"] });
-      setIsCreateOpen(false);
-      createForm.reset();
-      toast({
-        title: "Úspěch",
-        description: "Skladová položka byla vytvořena",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se vytvořit skladovou položku",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: StockItemForm }) => {
-      return await api.put(`/api/stock-items/${id}`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/stock-items"] });
-      setIsEditOpen(false);
-      setEditingItem(null);
-      toast({
-        title: "Úspěch",
-        description: "Skladová položka byla aktualizována",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se aktualizovat skladovou položku",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return await api.delete(`/api/stock-items/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/stock-items"] });
-      toast({
-        title: "Úspěch",
-        description: "Skladová položka byla smazána",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se smazat skladovou položku",
-        variant: "destructive",
-      });
-    },
+  const { createMutation, updateMutation, deleteMutation, isPending } = useCrudMutations<StockItemForm>({
+    endpoint: "/api/stock-items",
+    queryKey: ["/api/stock-items"],
+    entityName: "Položka skladu",
+    onCreateSuccess: () => { dialog.close(); form.reset(); },
+    onUpdateSuccess: () => dialog.close(),
   });
 
   const filteredItems = stockItems?.filter((item) =>
@@ -160,17 +262,16 @@ export default function StockItems() {
   );
 
   const handleEdit = (item: StockItem) => {
-    setEditingItem(item);
-    editForm.reset({
+    dialog.openEdit(item);
+    form.reset({
       name: item.name,
       description: item.description || "",
       unit: item.unit,
-      quantityAvailable: item.quantityAvailable,
-      minQuantity: item.minQuantity || 0,
-      pricePerUnit: item.pricePerUnit || 0,
+      quantityAvailable: parseFloat(String(item.quantityAvailable)) || 0,
+      minQuantity: item.minQuantity != null ? parseFloat(String(item.minQuantity)) : null,
+      pricePerUnit: item.pricePerUnit != null ? parseFloat(String(item.pricePerUnit)) : null,
       supplier: item.supplier || "",
     });
-    setIsEditOpen(true);
   };
 
   const handleDelete = (id: number) => {
@@ -185,20 +286,16 @@ export default function StockItems() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-serif font-bold text-foreground">Sklad</h1>
-          <p className="text-muted-foreground">Správa skladových položek a surovin</p>
-        </div>
+      <PageHeader title="Sklad" description="Správa skladových položek a surovin">
         <Button
-          onClick={() => setIsCreateOpen(true)}
+          onClick={() => { dialog.openCreate(); form.reset(); }}
           className="bg-gradient-to-r from-primary to-purple-600"
           data-testid="button-create-stock-item"
         >
           <Plus className="w-4 h-4 mr-2" />
           Nová položka
         </Button>
-      </div>
+      </PageHeader>
 
       {lowStockItems && lowStockItems.length > 0 && (
         <Card className="border-yellow-500/50 bg-yellow-50 dark:bg-yellow-950/20">
@@ -334,29 +431,43 @@ export default function StockItems() {
         </CardContent>
       </Card>
 
-      {/* Create Dialog */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+      {/* Create/Edit Dialog */}
+      <Dialog open={dialog.isOpen} onOpenChange={(open) => { if (!open) dialog.close(); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Nová skladová položka</DialogTitle>
-            <DialogDescription>Přidejte novou položku do skladu</DialogDescription>
+            <DialogTitle>
+              {dialog.isEditing ? "Upravit skladovou položku" : "Nová skladová položka"}
+            </DialogTitle>
+            <DialogDescription>
+              {dialog.isEditing ? "Upravte detaily skladové položky" : "Přidejte novou položku do skladu"}
+            </DialogDescription>
           </DialogHeader>
-          <Form {...createForm}>
+          <Form {...form}>
             <form
-              onSubmit={createForm.handleSubmit((data) => createMutation.mutate(data))}
+              onSubmit={form.handleSubmit((data) =>
+                dialog.isEditing && dialog.editingItem
+                  ? updateMutation.mutate({ id: dialog.editingItem.id, data })
+                  : createMutation.mutate(data)
+              )}
               className="space-y-4"
             >
               <FormField
-                control={createForm.control}
+                control={form.control}
                 name="name"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Název *</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="Např. Mouka hladká"
+                      <AutocompleteInput
+                        value={field.value}
+                        onChange={(val) => field.onChange(val)}
+                        suggestions={ingredientSuggestions}
+                        placeholder={dialog.isEditing ? "Název položky" : "Např. Mouka hladká"}
                         data-testid="input-name"
-                        {...field}
+                        onSelect={(s) => {
+                          const unit = ingredientUnitMap.get(s.value);
+                          if (unit) form.setValue("unit", unit);
+                        }}
                       />
                     </FormControl>
                     <FormMessage />
@@ -364,7 +475,7 @@ export default function StockItems() {
                 )}
               />
               <FormField
-                control={createForm.control}
+                control={form.control}
                 name="description"
                 render={({ field }) => (
                   <FormItem>
@@ -378,12 +489,12 @@ export default function StockItems() {
               />
               <div className="grid grid-cols-2 gap-4">
                 <FormField
-                  control={createForm.control}
+                  control={form.control}
                   name="unit"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Jednotka *</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger data-testid="select-unit">
                             <SelectValue placeholder="Vyberte jednotku" />
@@ -402,7 +513,7 @@ export default function StockItems() {
                   )}
                 />
                 <FormField
-                  control={createForm.control}
+                  control={form.control}
                   name="quantityAvailable"
                   render={({ field }) => (
                     <FormItem>
@@ -412,8 +523,8 @@ export default function StockItems() {
                           type="number"
                           step="0.01"
                           placeholder="0"
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                          value={field.value ?? ""}
+                          onChange={(e) => field.onChange(e.target.value === "" ? 0 : parseFloat(e.target.value))}
                         />
                       </FormControl>
                       <FormMessage />
@@ -423,7 +534,7 @@ export default function StockItems() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <FormField
-                  control={createForm.control}
+                  control={form.control}
                   name="minQuantity"
                   render={({ field }) => (
                     <FormItem>
@@ -432,9 +543,9 @@ export default function StockItems() {
                         <Input
                           type="number"
                           step="0.01"
-                          placeholder="0"
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                          placeholder=""
+                          value={field.value ?? ""}
+                          onChange={(e) => field.onChange(e.target.value === "" ? null : parseFloat(e.target.value))}
                         />
                       </FormControl>
                       <FormMessage />
@@ -442,7 +553,7 @@ export default function StockItems() {
                   )}
                 />
                 <FormField
-                  control={createForm.control}
+                  control={form.control}
                   name="pricePerUnit"
                   render={({ field }) => (
                     <FormItem>
@@ -451,9 +562,9 @@ export default function StockItems() {
                         <Input
                           type="number"
                           step="0.01"
-                          placeholder="0"
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                          placeholder=""
+                          value={field.value ?? ""}
+                          onChange={(e) => field.onChange(e.target.value === "" ? null : parseFloat(e.target.value))}
                         />
                       </FormControl>
                       <FormMessage />
@@ -462,13 +573,18 @@ export default function StockItems() {
                 />
               </div>
               <FormField
-                control={createForm.control}
+                control={form.control}
                 name="supplier"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Dodavatel</FormLabel>
                     <FormControl>
-                      <Input placeholder="Název dodavatele" {...field} />
+                      <AutocompleteInput
+                        value={field.value ?? ""}
+                        onChange={(val) => field.onChange(val)}
+                        suggestions={supplierSuggestions}
+                        placeholder="Název dodavatele"
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -478,175 +594,18 @@ export default function StockItems() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setIsCreateOpen(false)}
+                  onClick={() => dialog.close()}
                 >
                   Zrušit
                 </Button>
                 <Button
                   type="submit"
-                  disabled={createMutation.isPending}
+                  disabled={isPending}
                   className="bg-gradient-to-r from-primary to-purple-600"
                 >
-                  {createMutation.isPending ? "Vytváření..." : "Vytvořit"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Dialog */}
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Upravit skladovou položku</DialogTitle>
-            <DialogDescription>Upravte detaily skladové položky</DialogDescription>
-          </DialogHeader>
-          <Form {...editForm}>
-            <form
-              onSubmit={editForm.handleSubmit((data) =>
-                editingItem && updateMutation.mutate({ id: editingItem.id, data })
-              )}
-              className="space-y-4"
-            >
-              <FormField
-                control={editForm.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Název *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Název položky" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Popis</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Popis položky" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={editForm.control}
-                  name="unit"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jednotka *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Vyberte jednotku" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {Object.entries(STOCK_UNIT_LABELS).map(([value, label]) => (
-                            <SelectItem key={value} value={value}>
-                              {label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={editForm.control}
-                  name="quantityAvailable"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Množství skladem *</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0"
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={editForm.control}
-                  name="minQuantity"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Minimální zásoba</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0"
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={editForm.control}
-                  name="pricePerUnit"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Cena za jednotku (Kč)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0"
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <FormField
-                control={editForm.control}
-                name="supplier"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Dodavatel</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Název dodavatele" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsEditOpen(false)}
-                >
-                  Zrušit
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={updateMutation.isPending}
-                  className="bg-gradient-to-r from-primary to-purple-600"
-                >
-                  {updateMutation.isPending ? "Ukládání..." : "Uložit"}
+                  {dialog.isEditing
+                    ? (isPending ? "Ukládání..." : "Uložit")
+                    : (isPending ? "Vytváření..." : "Vytvořit")}
                 </Button>
               </DialogFooter>
             </form>

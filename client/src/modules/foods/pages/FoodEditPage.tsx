@@ -3,7 +3,7 @@ import { useLocation, useRoute } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
 import { queryClient } from "@/shared/lib/queryClient";
-import { useToast } from "@/shared/hooks/use-toast";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,8 +16,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/shared/components/ui/form";
-import { ArrowLeft, DollarSign, Edit, Eye, EyeOff, Plus, Trash2 } from "lucide-react";
-import type { FoodItemAvailability, FoodItemPriceOverride, ReservationFood } from "@shared/types";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/components/ui/select";
+import { ArrowLeft, DollarSign, Edit, Eye, EyeOff, Plus, Trash2, ChefHat, Loader2, AlertCircle } from "lucide-react";
+import type { FoodItemAvailability, FoodItemPriceOverride, ReservationFood, MenuRecipe, Recipe } from "@shared/types";
+import { COURSE_TYPE_LABELS } from "@shared/types";
 import dayjs from "dayjs";
 import { useState } from "react";
 
@@ -53,8 +55,6 @@ export default function FoodEdit() {
   const [isEditMatch, params] = useRoute("/foods/:id/edit");
   const isEdit = !!isEditMatch;
   const foodId = params?.id ? Number(params.id) : null;
-  const { toast } = useToast();
-
   // Dialog states
   const [isPriceOverrideDialogOpen, setIsPriceOverrideDialogOpen] = useState(false);
   const [editingPriceOverride, setEditingPriceOverride] = useState<FoodItemPriceOverride | null>(null);
@@ -96,17 +96,73 @@ export default function FoodEdit() {
 
   // Fetch price overrides
   const { data: priceOverrides } = useQuery<FoodItemPriceOverride[]>({
-    queryKey: ["/api/food-price-overrides", foodId],
+    queryKey: ["/api/food-pricing/overrides", foodId],
     enabled: isEdit && !!foodId,
-    queryFn: () => api.get<FoodItemPriceOverride[]>(`/api/food-price-overrides?foodId=${foodId}`),
+    queryFn: () => api.get<FoodItemPriceOverride[]>(`/api/food-pricing/overrides?foodId=${foodId}`),
   });
 
   // Fetch availability
   const { data: availabilities } = useQuery<FoodItemAvailability[]>({
-    queryKey: ["/api/food-availability", foodId],
+    queryKey: ["/api/food-pricing/availability", foodId],
     enabled: isEdit && !!foodId,
-    queryFn: () => api.get<FoodItemAvailability[]>(`/api/food-availability?foodId=${foodId}`),
+    queryFn: () => api.get<FoodItemAvailability[]>(`/api/food-pricing/availability?foodId=${foodId}`),
   });
+
+  // Fetch menu recipes (linked recipes for this food)
+  const { data: menuRecipes, isLoading: isLoadingMenuRecipes, isError: isMenuRecipesError } = useQuery<MenuRecipe[]>({
+    queryKey: ["/api/menu-recipes", foodId],
+    enabled: isEdit && !!foodId,
+    queryFn: () => api.get<MenuRecipe[]>(`/api/menu-recipes?reservationFoodId=${foodId}`),
+  });
+
+  // Fetch all recipes for the dropdown
+  const { data: allRecipes, isLoading: isLoadingRecipes } = useQuery<Recipe[]>({
+    queryKey: ["/api/recipes"],
+    enabled: isEdit && !!foodId,
+    queryFn: () => api.get<Recipe[]>("/api/recipes"),
+  });
+
+  // State for adding new recipe link
+  const [selectedRecipeId, setSelectedRecipeId] = useState<string>("");
+  const [selectedCourseType, setSelectedCourseType] = useState<string>("");
+  const [editingMenuRecipeId, setEditingMenuRecipeId] = useState<number | null>(null);
+
+  // Menu recipe mutations
+  const createMenuRecipeMutation = useMutation({
+    mutationFn: (data: { reservationFoodId: number; recipeId: number; courseType?: string }) =>
+      api.post("/api/menu-recipes", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-recipes", foodId] });
+      setSelectedRecipeId("");
+      setSelectedCourseType("");
+      successToast("Receptura byla přiřazena");
+    },
+    onError: (err: any) => errorToast(err?.response?.data?.error || "Chyba při přiřazování receptury"),
+  });
+
+  const updateMenuRecipeMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { portionsPerServing?: number; courseType?: string } }) =>
+      api.put(`/api/menu-recipes/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-recipes", foodId] });
+      setEditingMenuRecipeId(null);
+      successToast("Receptura byla aktualizována");
+    },
+    onError: (err: any) => errorToast(err?.response?.data?.error || "Chyba při aktualizaci receptury"),
+  });
+
+  const deleteMenuRecipeMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/api/menu-recipes/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-recipes", foodId] });
+      successToast("Receptura byla odebrána");
+    },
+    onError: (err: any) => errorToast(err?.response?.data?.error || "Chyba při odebírání receptury"),
+  });
+
+  // Filter out already-linked recipes from dropdown
+  const linkedRecipeIds = new Set(menuRecipes?.map((mr) => mr.recipeId) ?? []);
+  const availableRecipes = allRecipes?.filter((r) => !linkedRecipeIds.has(r.id)) ?? [];
 
   // Load food data into form
   useEffect(() => {
@@ -127,11 +183,11 @@ export default function FoodEdit() {
     mutationFn: (data: FoodForm) => api.post("/api/reservation-foods", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/reservation-foods"] });
-      toast({ title: "Jídlo bylo úspěšně vytvořeno" });
+      successToast("Jídlo bylo úspěšně vytvořeno");
       navigate("/foods");
     },
     onError: () => {
-      toast({ title: "Chyba při vytváření jídla", variant: "destructive" });
+      errorToast("Chyba při vytváření jídla");
     },
   });
 
@@ -139,92 +195,92 @@ export default function FoodEdit() {
     mutationFn: (data: FoodForm) => api.put(`/api/reservation-foods/${foodId}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/reservation-foods"] });
-      toast({ title: "Jídlo bylo úspěšně aktualizováno" });
+      successToast("Jídlo bylo úspěšně aktualizováno");
     },
     onError: () => {
-      toast({ title: "Chyba při aktualizaci jídla", variant: "destructive" });
+      errorToast("Chyba při aktualizaci jídla");
     },
   });
 
   // Price override mutations
   const createPriceOverrideMutation = useMutation({
     mutationFn: (data: PriceOverrideForm & { reservationFoodId: number }) =>
-      api.post("/api/food-price-overrides", data),
+      api.post("/api/food-pricing/overrides", data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/food-price-overrides", foodId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/food-pricing/overrides", foodId] });
       setIsPriceOverrideDialogOpen(false);
       priceOverrideForm.reset();
-      toast({ title: "Cenový přepis byl úspěšně vytvořen" });
+      successToast("Cenový přepis byl úspěšně vytvořen");
     },
     onError: () => {
-      toast({ title: "Chyba při vytváření cenového přepisu", variant: "destructive" });
+      errorToast("Chyba při vytváření cenového přepisu");
     },
   });
 
   const updatePriceOverrideMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: PriceOverrideForm }) =>
-      api.put(`/api/food-price-overrides/${id}`, data),
+      api.put(`/api/food-pricing/overrides/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/food-price-overrides", foodId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/food-pricing/overrides", foodId] });
       setIsPriceOverrideDialogOpen(false);
       setEditingPriceOverride(null);
       priceOverrideForm.reset();
-      toast({ title: "Cenový přepis byl úspěšně aktualizován" });
+      successToast("Cenový přepis byl úspěšně aktualizován");
     },
     onError: () => {
-      toast({ title: "Chyba při aktualizaci cenového přepisu", variant: "destructive" });
+      errorToast("Chyba při aktualizaci cenového přepisu");
     },
   });
 
   const deletePriceOverrideMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/api/food-price-overrides/${id}`),
+    mutationFn: (id: number) => api.delete(`/api/food-pricing/overrides/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/food-price-overrides", foodId] });
-      toast({ title: "Cenový přepis byl úspěšně smazán" });
+      queryClient.invalidateQueries({ queryKey: ["/api/food-pricing/overrides", foodId] });
+      successToast("Cenový přepis byl úspěšně smazán");
     },
     onError: () => {
-      toast({ title: "Chyba při mazání cenového přepisu", variant: "destructive" });
+      errorToast("Chyba při mazání cenového přepisu");
     },
   });
 
   // Availability mutations
   const createAvailabilityMutation = useMutation({
     mutationFn: (data: AvailabilityForm & { reservationFoodId: number }) =>
-      api.post("/api/food-availability", data),
+      api.post("/api/food-pricing/availability", data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/food-availability", foodId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/food-pricing/availability", foodId] });
       setIsAvailabilityDialogOpen(false);
       availabilityForm.reset();
-      toast({ title: "Dostupnost byla úspěšně vytvořena" });
+      successToast("Dostupnost byla úspěšně vytvořena");
     },
     onError: () => {
-      toast({ title: "Chyba při vytváření dostupnosti", variant: "destructive" });
+      errorToast("Chyba při vytváření dostupnosti");
     },
   });
 
   const updateAvailabilityMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: AvailabilityForm }) =>
-      api.put(`/api/food-availability/${id}`, data),
+      api.put(`/api/food-pricing/availability/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/food-availability", foodId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/food-pricing/availability", foodId] });
       setIsAvailabilityDialogOpen(false);
       setEditingAvailability(null);
       availabilityForm.reset();
-      toast({ title: "Dostupnost byla úspěšně aktualizována" });
+      successToast("Dostupnost byla úspěšně aktualizována");
     },
     onError: () => {
-      toast({ title: "Chyba při aktualizaci dostupnosti", variant: "destructive" });
+      errorToast("Chyba při aktualizaci dostupnosti");
     },
   });
 
   const deleteAvailabilityMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/api/food-availability/${id}`),
+    mutationFn: (id: number) => api.delete(`/api/food-pricing/availability/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/food-availability", foodId] });
-      toast({ title: "Dostupnost byla úspěšně smazána" });
+      queryClient.invalidateQueries({ queryKey: ["/api/food-pricing/availability", foodId] });
+      successToast("Dostupnost byla úspěšně smazána");
     },
     onError: () => {
-      toast({ title: "Chyba při mazání dostupnosti", variant: "destructive" });
+      errorToast("Chyba při mazání dostupnosti");
     },
   });
 
@@ -340,6 +396,10 @@ export default function FoodEdit() {
           </TabsTrigger>
           <TabsTrigger value="availability" disabled={!isEdit}>
             Dostupnost
+          </TabsTrigger>
+          <TabsTrigger value="recipes" disabled={!isEdit}>
+            <ChefHat className="w-4 h-4 mr-1" />
+            Receptury
           </TabsTrigger>
         </TabsList>
 
@@ -641,6 +701,194 @@ export default function FoodEdit() {
               ) : (
                 <div className="text-center py-8 text-muted-foreground border rounded-md">
                   Žádná pravidla dostupnosti
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Recipes Tab */}
+        <TabsContent value="recipes">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <ChefHat className="w-5 h-5" />
+                    Receptury
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Propojte receptury, které tvoří toto menu (předkrm, polévka, hlavní chod, příloha, dezert)
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {isMenuRecipesError && (
+                <div className="flex items-center gap-2 text-destructive bg-destructive/10 p-3 rounded-md text-sm">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  Chyba při načítání propojených receptur. Zkuste obnovit stránku.
+                </div>
+              )}
+
+              {/* Add recipe form */}
+              <div className="flex items-end gap-3 p-4 bg-muted/30 rounded-lg border">
+                <div className="flex-1 space-y-1">
+                  <label className="text-sm font-medium">Receptura</label>
+                  <Select value={selectedRecipeId} onValueChange={setSelectedRecipeId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={isLoadingRecipes ? "Načítání..." : "Vyberte recepturu..."} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableRecipes.map((r) => (
+                        <SelectItem key={r.id} value={String(r.id)}>
+                          {r.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-40 space-y-1">
+                  <label className="text-sm font-medium">Typ chodu</label>
+                  <Select value={selectedCourseType} onValueChange={setSelectedCourseType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Vyberte..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(COURSE_TYPE_LABELS).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  onClick={() => {
+                    if (!foodId || !selectedRecipeId) return;
+                    createMenuRecipeMutation.mutate({
+                      reservationFoodId: foodId,
+                      recipeId: Number(selectedRecipeId),
+                      courseType: selectedCourseType || undefined,
+                    });
+                  }}
+                  disabled={!selectedRecipeId || createMenuRecipeMutation.isPending}
+                >
+                  {createMenuRecipeMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  ) : (
+                    <Plus className="w-4 h-4 mr-1" />
+                  )}
+                  Přidat
+                </Button>
+              </div>
+
+              {/* Linked recipes table */}
+              {isLoadingMenuRecipes ? (
+                <div className="flex items-center justify-center py-8 text-muted-foreground">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                  Načítání receptur...
+                </div>
+              ) : menuRecipes && menuRecipes.length > 0 ? (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Receptura</TableHead>
+                        <TableHead>Typ chodu</TableHead>
+                        <TableHead className="text-right">Porcí na porci menu</TableHead>
+                        <TableHead className="text-right">Akce</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {menuRecipes.map((mr) => (
+                        <TableRow key={mr.id}>
+                          <TableCell className="font-medium">
+                            {mr.recipe?.name || `Receptura #${mr.recipeId}`}
+                          </TableCell>
+                          <TableCell>
+                            {editingMenuRecipeId === mr.id ? (
+                              <Select
+                                value={mr.courseType || ""}
+                                onValueChange={(val) =>
+                                  updateMenuRecipeMutation.mutate({
+                                    id: mr.id,
+                                    data: { courseType: val || undefined },
+                                  })
+                                }
+                              >
+                                <SelectTrigger className="w-32">
+                                  <SelectValue placeholder="Vyberte..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {Object.entries(COURSE_TYPE_LABELS).map(([value, label]) => (
+                                    <SelectItem key={value} value={value}>
+                                      {label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <span className="text-sm">
+                                {mr.courseType
+                                  ? COURSE_TYPE_LABELS[mr.courseType] || mr.courseType
+                                  : "-"}
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
+                            {editingMenuRecipeId === mr.id ? (
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0.01"
+                                defaultValue={mr.portionsPerServing}
+                                className="w-24 ml-auto"
+                                onBlur={(e) => {
+                                  const val = parseFloat(e.target.value);
+                                  if (val && val !== mr.portionsPerServing) {
+                                    updateMenuRecipeMutation.mutate({
+                                      id: mr.id,
+                                      data: { portionsPerServing: val },
+                                    });
+                                  }
+                                }}
+                              />
+                            ) : (
+                              mr.portionsPerServing
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  setEditingMenuRecipeId(
+                                    editingMenuRecipeId === mr.id ? null : mr.id
+                                  )
+                                }
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => deleteMenuRecipeMutation.mutate(mr.id)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground border rounded-md">
+                  Žádné receptury propojeny s tímto menu
                 </div>
               )}
             </CardContent>

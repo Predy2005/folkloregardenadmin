@@ -4,6 +4,7 @@ import { Badge } from "@/shared/components/ui/badge";
 import { Loader2, Users, AlertCircle, CheckCircle2, MinusCircle } from "lucide-react";
 import { api } from "@/shared/lib/api";
 import type { EventStaffAssignment, StaffMember } from "@shared/types";
+import { translateStaffRole } from "@modules/staff/utils/staffRoles";
 
 interface StaffCategory {
   category: string;
@@ -24,17 +25,10 @@ interface StaffRecommendationCardProps {
   staffMembers: StaffMember[];
 }
 
-// Category labels in Czech
-const CATEGORY_LABELS: Record<string, string> = {
-  WAITER: "Číšník",
-  COORDINATOR: "Koordinátor",
+// Additional category labels not in central STAFF_ROLE_LABELS
+const EXTRA_CATEGORY_LABELS: Record<string, string> = {
   COOK: "Kuchař",
-  BARTENDER: "Barman",
-  MUSICIAN: "Hudebník",
-  DANCER: "Tanečník",
   HOST: "Hosteska",
-  SECURITY: "Security",
-  CLEANER: "Uklízečka",
   DEFAULT: "Ostatní",
 };
 
@@ -60,9 +54,14 @@ export default function StaffRecommendationCard({
     currentByCategory[category] = (currentByCategory[category] || 0) + 1;
   });
 
-  // Get category label
+  // Get category label - uses central translations first, then fallback
   const getCategoryLabel = (category: string) => {
-    return CATEGORY_LABELS[category.toUpperCase()] || category;
+    const translated = translateStaffRole(category);
+    // If translateStaffRole returns the original code, check extra labels
+    if (translated === category) {
+      return EXTRA_CATEGORY_LABELS[category.toUpperCase()] || category;
+    }
+    return translated;
   };
 
   // Calculate difference

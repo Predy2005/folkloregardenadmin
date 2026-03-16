@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { Skeleton } from "@/shared/components/ui/skeleton";
-import { useToast } from "@/shared/hooks/use-toast";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 
 const voucherSchema = z.object({
@@ -36,17 +36,12 @@ export interface VouchersTabProps {
 }
 
 export default function VouchersTab({ eventId, vouchers, isLoading }: VouchersTabProps) {
-  const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<EventVoucher | null>(null);
 
   const { data: availableVouchers } = useQuery<Voucher[]>({
     queryKey: ["/api/vouchers"],
-    queryFn: async () => {
-      const res = await fetch("/api/vouchers");
-      if (!res.ok) throw new Error("Failed to fetch vouchers");
-      return res.json();
-    },
+    queryFn: () => api.get("/api/vouchers"),
   });
 
   const form = useForm<VoucherForm>({
@@ -66,12 +61,12 @@ export default function VouchersTab({ eventId, vouchers, isLoading }: VouchersTa
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "vouchers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
-      toast({ title: "Úspěch", description: "Voucher byl přidán" });
+      successToast("Voucher byl přidán");
       setDialogOpen(false);
       form.reset();
     },
     onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
+      errorToast(error);
     },
   });
 
@@ -82,13 +77,13 @@ export default function VouchersTab({ eventId, vouchers, isLoading }: VouchersTa
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "vouchers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
-      toast({ title: "Úspěch", description: "Voucher byl aktualizován" });
+      successToast("Voucher byl aktualizován");
       setDialogOpen(false);
       setEditingItem(null);
       form.reset();
     },
     onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
+      errorToast(error);
     },
   });
 
@@ -99,10 +94,10 @@ export default function VouchersTab({ eventId, vouchers, isLoading }: VouchersTa
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "vouchers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
-      toast({ title: "Úspěch", description: "Voucher byl odebrán" });
+      successToast("Voucher byl odebrán");
     },
     onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
+      errorToast(error);
     },
   });
 

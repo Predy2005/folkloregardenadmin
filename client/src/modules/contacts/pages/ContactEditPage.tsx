@@ -3,16 +3,17 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
-import { queryClient } from "@/shared/lib/queryClient";
+import { invalidateContactQueries } from "@/shared/lib/query-helpers";
 import type { Contact, Reservation } from "@shared/types";
 import { RESERVATION_STATUS_LABELS } from "@shared/types";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
-import { useToast } from "@/shared/hooks/use-toast";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import ContactForm from "../components/ContactForm";
 import { StatusBadge } from "@/shared/components/StatusBadge";
 import { ArrowLeft, Loader2, Plus, Calendar, Users, Banknote } from "lucide-react";
+import { formatCurrency } from "@/shared/lib/formatting";
 import dayjs from "dayjs";
 
 interface ContactReservation {
@@ -36,7 +37,6 @@ export default function ContactEdit() {
   const [, params] = useRoute("/contacts/:id/edit");
   const id = useMemo(() => Number(params?.id), [params?.id]);
   const [, navigate] = useLocation();
-  const { toast } = useToast();
 
   const { data, isLoading } = useQuery<Contact>({
     queryKey: ["/api/contacts", id],
@@ -92,14 +92,12 @@ export default function ContactEdit() {
 
   const updateMutation = useMutation({
     mutationFn: async () => api.put(`/api/contacts/${id}`, form),
-    onSuccess: async () => {
-      toast({ title: "Kontakt uložen" });
-      // Refresh contacts list cache if present
-      await queryClient.invalidateQueries({ queryKey: ["/api/contacts/all"] });
-      await queryClient.invalidateQueries({ queryKey: ["/api/contacts", id] });
+    onSuccess: () => {
+      successToast("Kontakt uložen");
+      invalidateContactQueries(Number(id));
       navigate("/contacts");
     },
-    onError: () => toast({ title: "Chyba", description: "Nepodařilo se uložit kontakt", variant: "destructive" }),
+    onError: () => errorToast("Nepodařilo se uložit kontakt"),
   });
 
   const reservations = reservationsData?.items ?? [];
@@ -188,7 +186,7 @@ export default function ContactEdit() {
                   <div className="flex items-center gap-3">
                     <Banknote className="h-8 w-8 text-green-500" />
                     <div>
-                      <p className="text-2xl font-bold">{stats.totalRevenue.toLocaleString("cs-CZ")} Kč</p>
+                      <p className="text-2xl font-bold">{formatCurrency(stats.totalRevenue)}</p>
                       <p className="text-sm text-muted-foreground">Celkový obrat</p>
                     </div>
                   </div>
@@ -241,7 +239,7 @@ export default function ContactEdit() {
                             </td>
                             <td className="py-2 pr-4">{r.personsCount}</td>
                             <td className="py-2 pr-4 text-right">
-                              {r.totalPrice.toLocaleString("cs-CZ")} Kč
+                              {formatCurrency(r.totalPrice)}
                             </td>
                             <td className="py-2 pr-4 text-right">
                               <Button

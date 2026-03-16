@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient } from "@/shared/lib/queryClient";
-import { api } from "@/shared/lib/api";
+import { useQuery } from "@tanstack/react-query";
 import type { Partner } from "@shared/types";
+import { useFormDialog } from "@/shared/hooks/useFormDialog";
+import { useCrudMutations } from "@/shared/hooks/useCrudMutations";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import {
@@ -41,7 +41,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/components/ui/tooltip";
 import { Plus, Pencil, Trash2, Search, Users2, Eye } from "lucide-react";
-import { useToast } from "@/shared/hooks/use-toast";
+import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
 import { Switch } from "@/shared/components/ui/switch";
 
@@ -57,18 +57,15 @@ type PartnerForm = z.infer<typeof partnerSchema>;
 
 export default function Partners() {
   const [search, setSearch] = useState("");
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
-  const [editingPartner, setEditingPartner] = useState<Partner | null>(null);
   const [viewingPartner, setViewingPartner] = useState<Partner | null>(null);
-  const { toast } = useToast();
+  const dialog = useFormDialog<Partner>();
 
   const { data: partners, isLoading } = useQuery<Partner[]>({
     queryKey: ["/api/partners"],
   });
 
-  const createForm = useForm<PartnerForm>({
+  const form = useForm<PartnerForm>({
     resolver: zodResolver(partnerSchema),
     defaultValues: {
       name: "",
@@ -79,72 +76,12 @@ export default function Partners() {
     },
   });
 
-  const editForm = useForm<PartnerForm>({
-    resolver: zodResolver(partnerSchema),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async (data: PartnerForm) => {
-      return await api.post("/api/partners", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/partners"] });
-      setIsCreateOpen(false);
-      createForm.reset();
-      toast({
-        title: "Úspěch",
-        description: "Partner byl vytvořen",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se vytvořit partnera",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: PartnerForm }) => {
-      return await api.put(`/api/partners/${id}`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/partners"] });
-      setIsEditOpen(false);
-      setEditingPartner(null);
-      toast({
-        title: "Úspěch",
-        description: "Partner byl aktualizován",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se aktualizovat partnera",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return await api.delete(`/api/partners/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/partners"] });
-      toast({
-        title: "Úspěch",
-        description: "Partner byl smazán",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se smazat partnera",
-        variant: "destructive",
-      });
-    },
+  const { createMutation, updateMutation, deleteMutation, isPending } = useCrudMutations<PartnerForm>({
+    endpoint: "/api/partners",
+    queryKey: ["/api/partners"],
+    entityName: "Partner",
+    onCreateSuccess: () => { dialog.close(); form.reset(); },
+    onUpdateSuccess: () => dialog.close(),
   });
 
   const filteredPartners = partners?.filter((partner) =>
@@ -153,15 +90,14 @@ export default function Partners() {
   );
 
   const handleEdit = (partner: Partner) => {
-    setEditingPartner(partner);
-    editForm.reset({
+    dialog.openEdit(partner);
+    form.reset({
       name: partner.name,
       contactEmail: partner.contactEmail,
       contactPhone: partner.contactPhone || "",
       commissionPercent: partner.commissionPercent,
       active: partner.active,
     });
-    setIsEditOpen(true);
   };
 
   const handleDelete = (id: number) => {
@@ -177,20 +113,16 @@ export default function Partners() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-serif font-bold text-foreground">Partneři</h1>
-          <p className="text-muted-foreground">Správa affiliate partnerů a provizí</p>
-        </div>
+      <PageHeader title="Partneři" description="Správa affiliate partnerů a provizí">
         <Button
-          onClick={() => setIsCreateOpen(true)}
+          onClick={() => { dialog.openCreate(); form.reset(); }}
           className="bg-gradient-to-r from-primary to-purple-600"
           data-testid="button-create-partner"
         >
           <Plus className="w-4 h-4 mr-2" />
           Nový partner
         </Button>
-      </div>
+      </PageHeader>
 
       <Card>
         <CardHeader>
@@ -315,20 +247,24 @@ export default function Partners() {
         </CardContent>
       </Card>
 
-      {/* Create Dialog */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+      {/* Create/Edit Dialog */}
+      <Dialog open={dialog.isOpen} onOpenChange={(open) => { if (!open) dialog.close(); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Nový partner</DialogTitle>
-            <DialogDescription>Vytvořte nového affiliate partnera</DialogDescription>
+            <DialogTitle>{dialog.isEditing ? "Upravit partnera" : "Nový partner"}</DialogTitle>
+            <DialogDescription>{dialog.isEditing ? "Upravte údaje partnera" : "Vytvořte nového affiliate partnera"}</DialogDescription>
           </DialogHeader>
-          <Form {...createForm}>
+          <Form {...form}>
             <form
-              onSubmit={createForm.handleSubmit((data) => createMutation.mutate(data))}
+              onSubmit={form.handleSubmit((data) =>
+                dialog.isEditing && dialog.editingItem
+                  ? updateMutation.mutate({ id: dialog.editingItem.id, data })
+                  : createMutation.mutate(data)
+              )}
               className="space-y-4"
             >
               <FormField
-                control={createForm.control}
+                control={form.control}
                 name="name"
                 render={({ field }) => (
                   <FormItem>
@@ -341,7 +277,7 @@ export default function Partners() {
                 )}
               />
               <FormField
-                control={createForm.control}
+                control={form.control}
                 name="contactEmail"
                 render={({ field }) => (
                   <FormItem>
@@ -354,7 +290,7 @@ export default function Partners() {
                 )}
               />
               <FormField
-                control={createForm.control}
+                control={form.control}
                 name="contactPhone"
                 render={({ field }) => (
                   <FormItem>
@@ -367,7 +303,7 @@ export default function Partners() {
                 )}
               />
               <FormField
-                control={createForm.control}
+                control={form.control}
                 name="commissionPercent"
                 render={({ field }) => (
                   <FormItem>
@@ -387,7 +323,7 @@ export default function Partners() {
                 )}
               />
               <FormField
-                control={createForm.control}
+                control={form.control}
                 name="active"
                 render={({ field }) => (
                   <FormItem className="flex items-center justify-between">
@@ -400,118 +336,15 @@ export default function Partners() {
                 )}
               />
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
+                <Button type="button" variant="outline" onClick={() => dialog.close()}>
                   Zrušit
                 </Button>
                 <Button
                   type="submit"
-                  disabled={createMutation.isPending}
+                  disabled={isPending}
                   className="bg-gradient-to-r from-primary to-purple-600"
                 >
-                  {createMutation.isPending ? "Vytváření..." : "Vytvořit"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Dialog */}
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Upravit partnera</DialogTitle>
-            <DialogDescription>Upravte údaje partnera</DialogDescription>
-          </DialogHeader>
-          <Form {...editForm}>
-            <form
-              onSubmit={editForm.handleSubmit((data) =>
-                editingPartner && updateMutation.mutate({ id: editingPartner.id, data })
-              )}
-              className="space-y-4"
-            >
-              <FormField
-                control={editForm.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Jméno *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Jméno partnera" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="contactEmail"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email *</FormLabel>
-                    <FormControl>
-                      <Input type="email" placeholder="email@example.com" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="contactPhone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Telefon</FormLabel>
-                    <FormControl>
-                      <Input placeholder="+420..." {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="commissionPercent"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Provize (%) *</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.1"
-                        {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="active"
-                render={({ field }) => (
-                  <FormItem className="flex items-center justify-between">
-                    <FormLabel>Aktivní</FormLabel>
-                    <FormControl>
-                      <Switch checked={field.value} onCheckedChange={field.onChange} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)}>
-                  Zrušit
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={updateMutation.isPending}
-                  className="bg-gradient-to-r from-primary to-purple-600"
-                >
-                  {updateMutation.isPending ? "Ukládání..." : "Uložit"}
+                  {isPending ? "Ukládání..." : dialog.isEditing ? "Uložit" : "Vytvořit"}
                 </Button>
               </DialogFooter>
             </form>

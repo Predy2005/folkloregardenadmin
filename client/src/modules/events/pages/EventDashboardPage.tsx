@@ -1,19 +1,60 @@
 import { useParams, useLocation } from "wouter";
-import { useEventDashboard } from "../hooks/useEventDashboard";
-import { DashboardHeader } from "../components/dashboard/DashboardHeader";
-import { GuestOverviewCard } from "../components/dashboard/GuestOverviewCard";
-import { StaffPlanningCard } from "../components/dashboard/StaffPlanningCard";
-import { ExpenseTrackerCard } from "../components/dashboard/ExpenseTrackerCard";
-import { SettlementCard } from "../components/dashboard/SettlementCard";
-import { QuickActionsBar } from "../components/dashboard/QuickActionsBar";
-import { Loader2 } from "lucide-react";
+import { useEventDashboard, useGuestSummary } from "../hooks";
+import {
+  DashboardHeader,
+  GuestCommandCenter,
+  StaffPlanningCard,
+  ExpenseTrackerCard,
+  SettlementCard,
+  TransportCard,
+  QuickActionsBar,
+  StockRequirementsCard,
+} from "../components/dashboard";
+import {
+  DashboardLayoutProvider,
+  DashboardGrid,
+} from "../components/dashboard/layout";
+import {
+  Loader2,
+  Users,
+  UserCheck,
+  Wallet,
+  HandCoins,
+  Bus,
+  Package,
+} from "lucide-react";
+import { Badge } from "@/shared/components/ui/badge";
+import { InfoTooltip } from "@/shared/components/ui/info-tooltip";
+import { cn } from "@/shared/lib/utils";
+import type { ReactNode } from "react";
 
 export default function EventDashboardPage() {
   const params = useParams<{ id: string }>();
   const eventId = Number(params.id);
   const [, navigate] = useLocation();
 
-  const { data, isLoading, error, refetch, dataUpdatedAt } = useEventDashboard(eventId);
+  // Main dashboard data
+  const {
+    data: dashboardData,
+    isLoading: isDashboardLoading,
+    error: dashboardError,
+    refetch: refetchDashboard,
+    dataUpdatedAt,
+  } = useEventDashboard(eventId);
+
+  // Guest summary - single source of truth for guest data
+  const {
+    data: guestData,
+    isLoading: isGuestLoading,
+    error: guestError,
+  } = useGuestSummary(eventId);
+
+  const isLoading = isDashboardLoading || isGuestLoading;
+  const error = dashboardError || guestError;
+
+  const handleRefresh = () => {
+    refetchDashboard();
+  };
 
   if (isLoading) {
     return (
@@ -23,12 +64,12 @@ export default function EventDashboardPage() {
     );
   }
 
-  if (error || !data) {
+  if (error || !dashboardData) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-4">
         <p className="text-destructive text-lg">Nepodařilo se načíst data dashboardu</p>
         <button
-          onClick={() => refetch()}
+          onClick={handleRefresh}
           className="px-4 py-2 bg-primary text-white rounded-lg touch-manipulation"
         >
           Zkusit znovu
@@ -37,51 +78,126 @@ export default function EventDashboardPage() {
     );
   }
 
+  // Define box configurations for the grid
+  // Note: Guest Command Center combines stats + check-in + spaces into one box
+  const boxConfigs: Array<{
+    id: string;
+    title: string;
+    icon: ReactNode;
+    badge?: ReactNode;
+    render: () => ReactNode;
+  }> = [
+    {
+      id: "guests",
+      title: "Hosté",
+      icon: <Users className="h-4 w-4" />,
+      badge: guestData ? (
+        <InfoTooltip
+          content={
+            <div className="space-y-2">
+              <div>
+                <span className="font-medium">Celkem hostů:</span> {guestData.types.total}
+              </div>
+              <div>
+                <span className="font-medium">Přítomno:</span> {guestData.presence.present} z {guestData.presence.total} ({guestData.presence.percentage}%)
+              </div>
+              <div className="text-xs text-muted-foreground pt-1 border-t">
+                Platících: {guestData.types.paying} | Zdarma: {guestData.types.free}
+              </div>
+            </div>
+          }
+        >
+          <Badge variant="secondary" className="text-xs font-bold gap-1 cursor-help">
+            {guestData.types.total}
+            <span className={cn(
+              "text-[10px]",
+              guestData.presence.percentage >= 80 ? "text-green-600" :
+              guestData.presence.percentage >= 50 ? "text-yellow-600" : "text-muted-foreground"
+            )}>
+              ({guestData.presence.present}/{guestData.presence.total})
+            </span>
+          </Badge>
+        </InfoTooltip>
+      ) : null,
+      render: () =>
+        guestData ? (
+          <GuestCommandCenter data={guestData} eventId={eventId} />
+        ) : (
+          <div className="h-48 bg-muted rounded-lg animate-pulse" />
+        ),
+    },
+    {
+      id: "staff-planning",
+      title: "Plánování personálu",
+      icon: <UserCheck className="h-4 w-4" />,
+      render: () => (
+        <StaffPlanningCard staffing={dashboardData.staffing} eventId={eventId} />
+      ),
+    },
+    {
+      id: "transport",
+      title: "Doprava",
+      icon: <Bus className="h-4 w-4" />,
+      badge: (
+        <Badge variant="secondary" className="text-xs">
+          {dashboardData.transport.totalReservations} rez.
+        </Badge>
+      ),
+      render: () => <TransportCard transport={dashboardData.transport} />,
+    },
+    {
+      id: "stock",
+      title: "Sklad",
+      icon: <Package className="h-4 w-4" />,
+      render: () => <StockRequirementsCard eventId={eventId} />,
+    },
+    {
+      id: "expenses",
+      title: "Výdaje",
+      icon: <Wallet className="h-4 w-4" />,
+      render: () => (
+        <ExpenseTrackerCard financials={dashboardData.financials} eventId={eventId} pendingTransfers={dashboardData.pendingTransfers} />
+      ),
+    },
+    {
+      id: "settlement",
+      title: "Vyúčtování",
+      icon: <HandCoins className="h-4 w-4" />,
+      render: () => (
+        <SettlementCard
+          settlement={dashboardData.financials.settlement}
+          cashbox={dashboardData.financials.cashbox}
+          eventId={eventId}
+        />
+      ),
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-background pb-24">
-      {/* Header */}
-      <DashboardHeader
-        event={data.event}
-        stats={data.stats}
-        onRefresh={refetch}
-        lastUpdated={dataUpdatedAt}
-        onBack={() => navigate("/events")}
-        onEditDetail={() => navigate(`/events/${eventId}/edit`)}
-      />
+    <DashboardLayoutProvider eventId={eventId}>
+      <div className="min-h-screen bg-background pb-24">
+        {/* Header */}
+        <DashboardHeader
+          event={dashboardData.event}
+          stats={dashboardData.stats}
+          onRefresh={handleRefresh}
+          lastUpdated={dataUpdatedAt}
+          onBack={() => navigate("/events")}
+          onEditDetail={() => navigate(`/events/${eventId}/edit`)}
+        />
 
-      {/* Main Content - Responsive Grid */}
-      <div className="p-4 space-y-4">
-        {/* Top Row - Guests and Staff */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <GuestOverviewCard
-            guestsBySpace={data.guestsBySpace}
-            totalPaid={data.event.guestsPaid}
-            totalFree={data.event.guestsFree}
-          />
-          <StaffPlanningCard
-            staffing={data.staffing}
-            eventId={eventId}
-          />
+        {/* Main Content - Draggable Grid */}
+        <div className="p-4">
+          <DashboardGrid boxes={boxConfigs} />
         </div>
 
-        {/* Expenses and Settlement */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <ExpenseTrackerCard
-            financials={data.financials}
-            eventId={eventId}
-          />
-          <SettlementCard
-            settlement={data.financials.settlement}
-            cashbox={data.financials.cashbox}
-          />
-        </div>
+        {/* Floating Quick Actions Bar */}
+        <QuickActionsBar
+          eventId={eventId}
+          eventDate={dashboardData.event.eventDate}
+          onNavigateToEdit={() => navigate(`/events/${eventId}/edit`)}
+        />
       </div>
-
-      {/* Floating Quick Actions Bar */}
-      <QuickActionsBar
-        eventId={eventId}
-        onNavigateToEdit={() => navigate(`/events/${eventId}/edit`)}
-      />
-    </div>
+    </DashboardLayoutProvider>
   );
 }

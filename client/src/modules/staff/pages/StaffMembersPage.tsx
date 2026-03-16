@@ -1,42 +1,22 @@
 // file: `client/src/pages/StaffMembers.tsx`
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { queryClient } from "@/shared/lib/queryClient";
-import { api } from "@/shared/lib/api";
+import { useQuery } from "@tanstack/react-query";
 import type { StaffMember } from "@shared/types";
 import { Card, CardContent } from "@/shared/components/ui/card";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { useToast } from "@/shared/hooks/use-toast";
-import { staffRoleOptions, useStaffRoles } from "@modules/staff/utils/staffRoles";
+import { staffRoleOptions, useStaffRoles, translateStaffRole } from "@modules/staff/utils/staffRoles";
+import { staffSchema, type StaffForm } from "../types";
 import { StaffHeader, StaffListHeader } from "../components/StaffHeader";
 import { StaffTable } from "../components/StaffTable";
 import { StaffFormDialog } from "../components/StaffFormDialog";
-
-const staffSchema = z.object({
-  firstName: z.string().min(1, "Zadejte jméno"),
-  lastName: z.string().min(1, "Zadejte příjmení"),
-  email: z.string().email("Zadejte platný email"),
-  phone: z.string().optional(),
-  emergencyContact: z.string().optional(),
-  dateOfBirth: z.string().optional(),
-  emergencyPhone: z.string().optional(),
-  address: z.string().optional(),
-  fixedRate: z.string().optional(),
-  position: z.number().int().min(1, "Vyberte roli"),
-  hourlyRate: z.number().optional(),
-  isActive: z.boolean().default(true),
-});
-
-type StaffForm = z.infer<typeof staffSchema>;
+import { useFormDialog } from "@/shared/hooks/useFormDialog";
+import { useCrudMutations } from "@/shared/hooks/useCrudMutations";
+import { api } from "@/shared/lib/api";
 
 export default function StaffMembers() {
   const [search, setSearch] = useState("");
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
-  const { toast } = useToast();
+  const dialog = useFormDialog<StaffMember>();
 
   const { data: staff, isLoading } = useQuery<StaffMember[]>({
     queryKey: ["/api/staff"],
@@ -47,12 +27,12 @@ export default function StaffMembers() {
   const { data: roles } = useStaffRoles();
   const options = staffRoleOptions(roles ?? []);
 
-  const createForm = useForm<StaffForm>({
+  const form = useForm<StaffForm>({
     resolver: zodResolver(staffSchema),
     defaultValues: {
       dateOfBirth: "",
       firstName: "",
-      position: 1,
+      position: "",
       lastName: "",
       email: "",
       phone: "",
@@ -64,72 +44,12 @@ export default function StaffMembers() {
     },
   });
 
-  const editForm = useForm<StaffForm>({
-    resolver: zodResolver(staffSchema),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async (data: StaffForm) => {
-      return await api.post("/api/staff", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
-      setIsCreateOpen(false);
-      createForm.reset();
-      toast({
-        title: "Úspěch",
-        description: "Člen personálu byl vytvořen",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se vytvořit člena personálu",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: StaffForm }) => {
-      return await api.put(`/api/staff/${id}`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
-      setIsEditOpen(false);
-      setEditingStaff(null);
-      toast({
-        title: "Úspěch",
-        description: "Člen personálu byl aktualizován",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se aktualizovat člena personálu",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return await api.delete(`/api/staff/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
-      toast({
-        title: "Úspěch",
-        description: "Člen personálu byl smazán",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se smazat člena personálu",
-        variant: "destructive",
-      });
-    },
+  const { createMutation, updateMutation, deleteMutation, isPending } = useCrudMutations<StaffForm>({
+    endpoint: "/api/staff",
+    queryKey: ["/api/staff"],
+    entityName: "Člen personálu",
+    onCreateSuccess: () => { dialog.close(); form.reset(); },
+    onUpdateSuccess: () => dialog.close(),
   });
 
   const filteredStaff = staff?.filter(
@@ -140,30 +60,27 @@ export default function StaffMembers() {
       member.email.toLowerCase().includes(search.toLowerCase()),
   );
 
-  function resolveRoleLabel(position: number) {
-    const found = roles?.find((r) => Number(r.id) === Number(position));
-
-    return found?.name;
+  function resolveRoleLabel(position: string | number | null | undefined) {
+    if (!position) return "Nepřiřazeno";
+    return translateStaffRole(String(position));
   }
 
   const handleEdit = (member: StaffMember) => {
-    setEditingStaff(member);
-
-    editForm.reset({
+    dialog.openEdit(member);
+    form.reset({
       firstName: member.firstName,
       lastName: member.lastName,
       email: member.email,
-      dateOfBirth: member.dateOfBirth,
-      address: member.address,
+      dateOfBirth: member.dateOfBirth ?? "",
+      address: member.address ?? "",
       phone: member.phone || "",
       emergencyContact: (member as any).emergencyContact || "",
       emergencyPhone: (member as any).emergencyPhone || "",
-      position: member.position,
+      position: member.position ?? "",
       hourlyRate:
         member.hourlyRate != null ? Number(member.hourlyRate) : undefined,
       isActive: member.isActive,
     });
-    setIsEditOpen(true);
   };
 
   const handleDelete = (id: number) => {
@@ -178,7 +95,7 @@ export default function StaffMembers() {
         search={search}
         onSearchChange={setSearch}
         staffCount={staff?.length || 0}
-        onCreateClick={() => setIsCreateOpen(true)}
+        onCreateClick={() => { dialog.openCreate(); form.reset(); }}
       />
 
       <Card>
@@ -208,21 +125,17 @@ export default function StaffMembers() {
       </Card>
 
       <StaffFormDialog
-        open={isCreateOpen || isEditOpen}
-        isEdit={isEditOpen}
-        form={isEditOpen ? (editForm as any) : (createForm as any)}
-        onClose={() => {
-          setIsCreateOpen(false);
-          setIsEditOpen(false);
-          setEditingStaff(null);
-        }}
+        open={dialog.isOpen}
+        isEdit={dialog.isEditing}
+        form={form as any}
+        onClose={dialog.close}
         onSubmit={(data: any) =>
-          isEditOpen && editingStaff
-            ? updateMutation.mutate({ id: editingStaff.id, data })
+          dialog.isEditing && dialog.editingItem
+            ? updateMutation.mutate({ id: dialog.editingItem.id, data })
             : createMutation.mutate(data)
         }
         options={options}
-        pending={createMutation.isPending || updateMutation.isPending}
+        pending={isPending}
       />
     </div>
   );

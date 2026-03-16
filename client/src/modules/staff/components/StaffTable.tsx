@@ -16,7 +16,7 @@ import type { StaffMember } from "@shared/types";
 
 interface StaffTableProps {
   members: StaffMember[];
-  resolveRoleLabel: (position: number) => React.ReactNode;
+  resolveRoleLabel: (position: string | number | null | undefined) => React.ReactNode;
   onEdit: (member: StaffMember) => void;
   onDelete: (id: number) => void;
 }

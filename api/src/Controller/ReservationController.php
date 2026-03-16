@@ -11,7 +11,10 @@ use App\Repository\ContactRepository;
 use App\Repository\ReservationPersonRepository;
 use App\Repository\ReservationRepository;
 use App\Config\SpecialDateRules;
+use App\Repository\ReservationTypeRepository;
+use App\Entity\Event;
 use App\Service\AutoEventService;
+use App\Service\CashboxService;
 use App\Service\ReservationPaymentService;
 use App\Service\InvoiceService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -35,6 +38,8 @@ class ReservationController extends AbstractController
     private AutoEventService $autoEventService;
     private ReservationPaymentService $paymentService;
     private InvoiceService $invoiceService;
+    private ReservationTypeRepository $reservationTypeRepository;
+    private CashboxService $cashboxService;
 
     public function __construct(
         EntityManagerInterface $entityManager,
@@ -42,7 +47,9 @@ class ReservationController extends AbstractController
         ReservationFoodsRepository $foodsRepository,
         AutoEventService $autoEventService,
         ReservationPaymentService $paymentService,
-        InvoiceService $invoiceService
+        InvoiceService $invoiceService,
+        ReservationTypeRepository $reservationTypeRepository,
+        CashboxService $cashboxService
     ) {
         $this->entityManager = $entityManager;
         $this->mailer = $mailer;
@@ -50,6 +57,8 @@ class ReservationController extends AbstractController
         $this->autoEventService = $autoEventService;
         $this->paymentService = $paymentService;
         $this->invoiceService = $invoiceService;
+        $this->reservationTypeRepository = $reservationTypeRepository;
+        $this->cashboxService = $cashboxService;
     }
 
     /**
@@ -98,6 +107,7 @@ class ReservationController extends AbstractController
                     'menu' => $menuCode,
                     'menuName' => $foodNameMap[$menuCode] ?? $this->getFoodNameByExternalId($menuCode) ?? 'Neznámé jídlo',
                     'price' => $person->getPrice(),
+                    'nationality' => $person->getNationality(),
                 ];
             }
 
@@ -108,6 +118,15 @@ class ReservationController extends AbstractController
                     'transactionId' => $payment->getTransactionId(),
                     'status' => $payment->getStatus(),
                     'amount' => $payment->getAmount(),
+                ];
+            }
+
+            $transfersData = [];
+            foreach ($reservation->getTransfers() as $transfer) {
+                $transfersData[] = [
+                    'id' => $transfer->getId(),
+                    'personCount' => $transfer->getPersonCount(),
+                    'address' => $transfer->getAddress(),
                 ];
             }
 
@@ -143,8 +162,16 @@ class ReservationController extends AbstractController
                     'phone' => $reservation->getContactPhone(),
                     'clientComeFrom' => $reservation->getClientComeFrom(),
                 ],
+                'reservationTypeId' => $reservation->getReservationType()?->getId(),
+                'reservationType' => $reservation->getReservationType() ? [
+                    'id' => $reservation->getReservationType()->getId(),
+                    'name' => $reservation->getReservationType()->getName(),
+                    'code' => $reservation->getReservationType()->getCode(),
+                    'color' => $reservation->getReservationType()->getColor(),
+                ] : null,
                 'persons' => $personsData,
                 'payments' => $paymentsData,
+                'transfers' => $transfersData,
             ];
         }
         return $this->json($data);
@@ -174,6 +201,7 @@ class ReservationController extends AbstractController
                 'menu' => $menuCode,
                 'menuName' => $foodNameMap[$menuCode] ?? $food?->getName() ?? 'Neznámé jídlo',
                 'price' => $person->getPrice(),
+                'nationality' => $person->getNationality(),
                 'food' => $food ? [
                     'id' => $food->getId(),
                     'name' => $food->getName(),
@@ -200,6 +228,15 @@ class ReservationController extends AbstractController
             'price' => $f->getPrice(),
             'externalId' => $f->getExternalId(),
         ], $this->foodsRepository->findAll());
+
+        $transfersData = [];
+        foreach ($reservation->getTransfers() as $transfer) {
+            $transfersData[] = [
+                'id' => $transfer->getId(),
+                'personCount' => $transfer->getPersonCount(),
+                'address' => $transfer->getAddress(),
+            ];
+        }
 
         return $this->json([
             'foods' => $allFoods,
@@ -232,6 +269,7 @@ class ReservationController extends AbstractController
             ],
             'persons' => $personData,
             'payments' => $paymentsData,
+            'transfers' => $transfersData,
         ]);
     }
 
@@ -360,6 +398,16 @@ class ReservationController extends AbstractController
         $withPayment = $data['withPayment'] ?? false;
         $reservation->setStatus($data['status'] ?? ($withPayment ? 'WAITING_PAYMENT' : 'CONFIRMED'));
 
+        // Set reservation type
+        if (!empty($data['reservationTypeId'])) {
+            $resType = $this->reservationTypeRepository->find((int)$data['reservationTypeId']);
+            $reservation->setReservationType($resType);
+        } else {
+            // Default to "standard" type
+            $defaultType = $this->reservationTypeRepository->findDefault();
+            $reservation->setReservationType($defaultType);
+        }
+
         // Process persons and calculate price
         $price = 0;
         $allowedMenus = SpecialDateRules::getAllowedMenus($reservation->getDate());
@@ -378,6 +426,7 @@ class ReservationController extends AbstractController
                 }
 
                 $person->setMenu($menuCode);
+                $person->setNationality($personData['nationality'] ?? null);
 
                 // Compute base price by type, ignore client provided price
                 $basePrice = SpecialDateRules::getBasePrice($type, $reservation->getDate());
@@ -682,6 +731,7 @@ class ReservationController extends AbstractController
                 'menu' => $menuCode,
                 'menuName' => $foodNameMap[$menuCode] ?? $this->getFoodNameByExternalId($menuCode) ?? 'Neznámé jídlo',
                 'price' => $person->getPrice(),
+                'nationality' => $person->getNationality(),
             ];
         }
 
@@ -719,6 +769,13 @@ class ReservationController extends AbstractController
             'createdAt' => $reservation->getCreatedAt()?->format('Y-m-d H:i:s'),
             'updatedAt' => $reservation->getUpdatedAt()?->format('Y-m-d H:i:s'),
             'status' => $reservation->getStatus(),
+            'reservationTypeId' => $reservation->getReservationType()?->getId(),
+            'reservationType' => $reservation->getReservationType() ? [
+                'id' => $reservation->getReservationType()->getId(),
+                'name' => $reservation->getReservationType()->getName(),
+                'code' => $reservation->getReservationType()->getCode(),
+                'color' => $reservation->getReservationType()->getColor(),
+            ] : null,
             'persons' => $personsData,
             'payments' => $paymentsData,
         ]);
@@ -738,12 +795,28 @@ class ReservationController extends AbstractController
             return $this->json(['error' => 'Invalid JSON'], JsonResponse::HTTP_BAD_REQUEST);
         }
 
+        // Track old date for event sync if date is being changed
+        $oldDate = $reservation->getDate();
+        $dateChanged = false;
+
         // Aktualizace kontaktnich udaju
         if (isset($data['date'])) {
-            $reservation->setDate(new \DateTime($data['date']));
+            $newDate = new \DateTime($data['date']);
+            if ($oldDate->format('Y-m-d') !== $newDate->format('Y-m-d')) {
+                $dateChanged = true;
+            }
+            $reservation->setDate($newDate);
         }
         if (isset($data['status'])) {
             $reservation->setStatus($data['status']);
+        }
+        if (array_key_exists('reservationTypeId', $data)) {
+            if ($data['reservationTypeId']) {
+                $type = $this->reservationTypeRepository->find((int)$data['reservationTypeId']);
+                $reservation->setReservationType($type);
+            } else {
+                $reservation->setReservationType(null);
+            }
         }
         if (isset($data['contactName'])) {
             $reservation->setContactName($data['contactName']);
@@ -835,7 +908,79 @@ class ReservationController extends AbstractController
 
         $reservation->setUpdatedAt(new \DateTime());
 
+        // Update persons if provided
+        if (isset($data['persons']) && is_array($data['persons'])) {
+            // Remove existing persons
+            foreach ($reservation->getPersons() as $existingPerson) {
+                $this->entityManager->remove($existingPerson);
+            }
+            $reservation->getPersons()->clear();
+
+            // Add new persons
+            $totalPrice = 0;
+            foreach ($data['persons'] as $personData) {
+                $person = new ReservationPerson();
+                $person->setReservation($reservation);
+                $person->setType($personData['type'] ?? 'adult');
+                $person->setMenu($personData['menu'] ?? '');
+                $person->setNationality($personData['nationality'] ?? null);
+                $personPrice = (float) ($personData['price'] ?? 0);
+                $person->setPrice((string) $personPrice);
+                $totalPrice += $personPrice;
+
+                $this->entityManager->persist($person);
+                $reservation->addPerson($person);
+            }
+
+            // Update total price
+            $reservation->setTotalPrice((string) $totalPrice);
+        }
+
+        // Update transfers if provided
+        if (isset($data['transfers']) && is_array($data['transfers'])) {
+            // Remove existing transfers
+            foreach ($reservation->getTransfers() as $existingTransfer) {
+                $this->entityManager->remove($existingTransfer);
+            }
+            $reservation->getTransfers()->clear();
+
+            // Add new transfers
+            foreach ($data['transfers'] as $transferData) {
+                $transfer = new \App\Entity\ReservationTransfer();
+                $transfer->setReservation($reservation);
+                $transfer->setPersonCount((int) ($transferData['personCount'] ?? 1));
+                $transfer->setAddress($transferData['address'] ?? '');
+
+                $this->entityManager->persist($transfer);
+                $reservation->addTransfer($transfer);
+            }
+
+            // Update transferSelected based on whether there are transfers
+            $reservation->setTransferSelected(count($data['transfers']) > 0);
+        }
+
         $this->entityManager->flush();
+
+        // If date changed, sync events for both old and new dates
+        if ($dateChanged) {
+            try {
+                // Sync old date event (remove guests from old event)
+                $this->autoEventService->handleReservationDeleted($oldDate);
+                // Sync new date event (add guests to new event)
+                $this->autoEventService->syncReservationToEvent($reservation);
+            } catch (\Exception $e) {
+                error_log('AutoEvent sync on date change failed: ' . $e->getMessage());
+            }
+        }
+
+        // Also sync event guests when persons are updated
+        if (isset($data['persons'])) {
+            try {
+                $this->autoEventService->syncReservationToEvent($reservation);
+            } catch (\Exception $e) {
+                error_log('AutoEvent sync on persons update failed: ' . $e->getMessage());
+            }
+        }
 
         return $this->json([
             'id' => $reservation->getId(),
@@ -969,6 +1114,7 @@ class ReservationController extends AbstractController
      * - amount?: float (pokud null, použije se zbývající částka)
      * - paymentMethod?: string (CASH, BANK_TRANSFER, ...)
      * - note?: string
+     * - cashboxTarget?: string ('event' | 'main' | null) - kam zapsat hotovostní platbu
      */
     #[Route('/api/reservations/{id}/mark-paid', name: 'api_reservations_mark_paid', methods: ['POST'])]
     #[IsGranted('reservations.update')]
@@ -983,8 +1129,25 @@ class ReservationController extends AbstractController
         $amount = isset($data['amount']) ? (float)$data['amount'] : null;
         $paymentMethod = $data['paymentMethod'] ?? 'CASH';
         $note = $data['note'] ?? null;
+        $cashboxTarget = $data['cashboxTarget'] ?? null;
+
+        // Calculate the actual payment amount (before markAsPaid changes the state)
+        $totalPrice = (float)($reservation->getTotalPrice() ?? 0);
+        $currentPaid = (float)($reservation->getPaidAmount() ?? 0);
+        $remaining = $totalPrice - $currentPaid;
+        $paymentAmount = $amount ?? $remaining;
 
         $this->paymentService->markAsPaid($reservation, $amount, $paymentMethod, $note);
+
+        // Record to cashbox if requested (only for CASH payments)
+        $cashboxRecorded = null;
+        if ($cashboxTarget && $paymentMethod === 'CASH' && $paymentAmount > 0) {
+            try {
+                $cashboxRecorded = $this->recordToCashbox($reservation, $cashboxTarget, $paymentAmount);
+            } catch (\Exception $e) {
+                error_log('Cashbox record after mark-paid failed: ' . $e->getMessage());
+            }
+        }
 
         // Re-sync event guest counts (now that reservation is paid, guests should move from free to paid)
         try {
@@ -998,7 +1161,80 @@ class ReservationController extends AbstractController
             'paymentStatus' => $reservation->getPaymentStatus(),
             'paidAmount' => $reservation->getPaidAmount(),
             'totalPrice' => $reservation->getTotalPrice(),
+            'cashboxRecorded' => $cashboxRecorded,
         ]);
+    }
+
+    /**
+     * Vrátí informace o propojeném eventu pro rezervaci (podle data)
+     */
+    #[Route('/api/reservations/{id}/linked-event', name: 'api_reservations_linked_event', methods: ['GET'])]
+    #[IsGranted('reservations.read')]
+    public function getLinkedEvent(int $id, ReservationRepository $reservationRepository): JsonResponse
+    {
+        $reservation = $reservationRepository->find($id);
+        if (!$reservation) {
+            return $this->json(['error' => 'Reservation not found'], JsonResponse::HTTP_NOT_FOUND);
+        }
+
+        $event = $this->findEventByReservationDate($reservation);
+        if (!$event) {
+            return $this->json(['event' => null]);
+        }
+
+        $eventCashbox = $this->cashboxService->getEventCashbox($event);
+
+        return $this->json([
+            'event' => [
+                'id' => $event->getId(),
+                'name' => $event->getName(),
+                'eventDate' => $event->getEventDate(),
+                'hasCashbox' => $eventCashbox !== null,
+                'cashboxId' => $eventCashbox?->getId(),
+            ],
+        ]);
+    }
+
+    private function findEventByReservationDate(Reservation $reservation): ?Event
+    {
+        $date = \DateTime::createFromInterface($reservation->getDate())->setTime(0, 0, 0);
+        return $this->entityManager->createQueryBuilder()
+            ->select('e')
+            ->from(Event::class, 'e')
+            ->where('e.eventDate = :date')
+            ->setParameter('date', $date)
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+    }
+
+    /**
+     * Zapíše hotovostní platbu do pokladny (event nebo hlavní)
+     */
+    private function recordToCashbox(Reservation $reservation, string $target, float $amount): string
+    {
+        if ($target === 'event') {
+            $event = $this->findEventByReservationDate($reservation);
+            if (!$event) {
+                throw new \RuntimeException('No event found for this reservation date');
+            }
+            $cashbox = $this->cashboxService->getOrCreateEventCashbox($event);
+            $cashboxName = 'Kasa eventu: ' . $event->getName();
+        } else {
+            $cashbox = $this->cashboxService->getOrCreateMainCashbox();
+            $cashboxName = 'Hlavní kasa';
+        }
+
+        $contactName = $reservation->getContactName() ?? 'Neznámý';
+        $movement = $this->cashboxService->addMovement($cashbox, 'INCOME', number_format($amount, 2, '.', ''), [
+            'category' => 'Platba rezervace',
+            'description' => "Platba hotově - rezervace #{$reservation->getId()} ({$contactName})",
+            'paymentMethod' => 'CASH',
+        ]);
+        $movement->setReservation($reservation);
+        $this->entityManager->flush();
+
+        return $cashboxName;
     }
 
     /**
@@ -1040,6 +1276,83 @@ class ReservationController extends AbstractController
             'message' => 'Payment recorded',
             'paymentStatus' => $reservation->getPaymentStatus(),
             'paidAmount' => $reservation->getPaidAmount(),
+            'remainingAmount' => $reservation->getRemainingAmount(),
+        ]);
+    }
+
+    /**
+     * Upraví stav platby rezervace (nastaví zaplacenou částku, metodu a status)
+     *
+     * Body params:
+     * - paidAmount: float (nová zaplacená částka)
+     * - paymentMethod?: string (CASH, BANK_TRANSFER, ONLINE, ...)
+     * - paymentStatus?: string (UNPAID, PARTIAL, PAID) - pokud null, automaticky se dopočítá
+     * - note?: string
+     */
+    #[Route('/api/reservations/{id}/adjust-payment', name: 'api_reservations_adjust_payment', methods: ['POST'])]
+    #[IsGranted('reservations.update')]
+    public function adjustPayment(int $id, Request $request, ReservationRepository $reservationRepository): JsonResponse
+    {
+        $reservation = $reservationRepository->find($id);
+        if (!$reservation) {
+            return $this->json(['error' => 'Reservation not found'], JsonResponse::HTTP_NOT_FOUND);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        $paidAmount = isset($data['paidAmount']) ? (float)$data['paidAmount'] : null;
+        $paymentMethod = $data['paymentMethod'] ?? null;
+        $paymentStatus = $data['paymentStatus'] ?? null;
+        $note = $data['note'] ?? null;
+
+        if ($paidAmount === null || $paidAmount < 0) {
+            return $this->json(['error' => 'paidAmount is required and must be >= 0'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        $reservation->setPaidAmount(number_format($paidAmount, 2, '.', ''));
+
+        if ($paymentMethod !== null) {
+            $reservation->setPaymentMethod($paymentMethod ?: null);
+        }
+
+        // Přidej poznámku o úpravě
+        $noteText = date('d.m.Y H:i') . ': Platba ručně upravena na ' . number_format($paidAmount, 0, ',', ' ') . ' Kč';
+        if ($note) {
+            $noteText .= ' (' . $note . ')';
+        }
+        $existingNote = $reservation->getPaymentNote();
+        $reservation->setPaymentNote($existingNote ? $existingNote . "\n" . $noteText : $noteText);
+
+        // Automaticky dopočítej status pokud není explicitně zadán
+        if ($paymentStatus) {
+            $reservation->setPaymentStatus($paymentStatus);
+            if ($paymentStatus === 'PAID') {
+                $reservation->setStatus('PAID');
+            } elseif ($reservation->getStatus() === 'PAID') {
+                $reservation->setStatus('CONFIRMED');
+            }
+        } else {
+            $this->paymentService->updatePaymentStatus($reservation);
+            if ($reservation->getPaymentStatus() !== 'PAID' && $reservation->getStatus() === 'PAID') {
+                $reservation->setStatus('CONFIRMED');
+            }
+        }
+
+        $reservation->setUpdatedAt(new \DateTime());
+        $this->entityManager->flush();
+
+        // Re-sync event
+        try {
+            $this->autoEventService->syncReservationToEvent($reservation);
+        } catch (\Exception $e) {
+            error_log('AutoEvent sync after adjust-payment failed: ' . $e->getMessage());
+        }
+
+        return $this->json([
+            'message' => 'Payment adjusted',
+            'paymentStatus' => $reservation->getPaymentStatus(),
+            'paymentMethod' => $reservation->getPaymentMethod(),
+            'paidAmount' => $reservation->getPaidAmount(),
+            'totalPrice' => $reservation->getTotalPrice(),
             'remainingAmount' => $reservation->getRemainingAmount(),
         ]);
     }

@@ -31,10 +31,40 @@ class EventGuestSyncService
     public function syncForEvent(Event $event): void
     {
         // 1) Remove current guests and menu items for this event (full rebuild strategy)
+        // But first, preserve space assignments so we can restore them
         $guestRepo = $this->em->getRepository(EventGuest::class);
         $menuRepo  = $this->em->getRepository(EventMenu::class);
 
-        foreach ($guestRepo->findBy(['event' => $event]) as $g) {
+        // Store space and presence status keyed by reservation ID + local person position
+        // Position is counted per reservation to handle reordering
+        $preservedData = []; // key => ['space' => string|null, 'isPresent' => bool]
+        $guestsByRes = []; // group guests by reservation to count position
+
+        $existingGuests = $guestRepo->findBy(['event' => $event]);
+        foreach ($existingGuests as $g) {
+            $resId = $g->getReservation()?->getId();
+            if ($resId !== null) {
+                $guestsByRes[$resId][] = $g;
+            }
+        }
+
+        // Now create keys with per-reservation position
+        foreach ($guestsByRes as $resId => $guests) {
+            // Sort by personIndex to ensure consistent ordering
+            usort($guests, fn($a, $b) => ($a->getPersonIndex() ?? 0) - ($b->getPersonIndex() ?? 0));
+            $localPosition = 0;
+            foreach ($guests as $g) {
+                $key = $resId . '_' . $localPosition;
+                $preservedData[$key] = [
+                    'space' => $g->getSpace(),
+                    'isPresent' => $g->isPresent(),
+                ];
+                $localPosition++;
+            }
+        }
+
+        // Now remove all guests
+        foreach ($existingGuests as $g) {
             $this->em->remove($g);
         }
         foreach ($menuRepo->findBy(['event' => $event]) as $m) {
@@ -53,9 +83,20 @@ class EventGuestSyncService
         $personIndex = 0;
         /** @var array<string, EventMenu> $menuCache */
         $menuCache = [];
+        // Track local position per reservation for restoring space/presence
+        $localPositionByRes = [];
 
         foreach ($reservations as $reservation) {
+            $resId = $reservation->getId();
+            if (!isset($localPositionByRes[$resId])) {
+                $localPositionByRes[$resId] = 0;
+            }
+
             foreach ($reservation->getPersons() as $person) {
+                // Build key to look up preserved data
+                $preserveKey = $resId . '_' . $localPositionByRes[$resId];
+                $localPositionByRes[$resId]++;
+
                 $guest = new EventGuest();
                 $guest
                     ->setEvent($event)
@@ -66,6 +107,17 @@ class EventGuestSyncService
                     ->setPersonIndex(++$personIndex)
                     ->setNationality($reservation->getContactNationality());
 
+                // Restore preserved space and presence status if available
+                if (isset($preservedData[$preserveKey])) {
+                    $preserved = $preservedData[$preserveKey];
+                    if ($preserved['space'] !== null) {
+                        $guest->setSpace($preserved['space']);
+                    }
+                    if ($preserved['isPresent']) {
+                        $guest->setIsPresent(true);
+                    }
+                }
+
                 // Pick menu from ReservationPerson -> link to ReservationFoods if possible
                 $menuRaw = trim((string)$person->getMenu());
                 if ($menuRaw !== '') {
@@ -74,18 +126,21 @@ class EventGuestSyncService
                     if (ctype_digit($menuRaw)) {
                         $rf = $this->em->getRepository(ReservationFoods::class)->find((int)$menuRaw);
                         if ($rf) {
-                            $menuKey = 'id:' . $rf->getId();
+                            $menuKey = 'res:' . $resId . ':id:' . $rf->getId();
                         }
                     }
                     if (!$rf) {
                         // Fallback: find by name for backward compatibility
                         $rf = $this->em->getRepository(ReservationFoods::class)->findOneBy(['name' => $menuRaw]);
-                        $menuKey = $rf ? ('id:' . $rf->getId()) : ('name:' . $menuRaw);
+                        $menuKey = $rf
+                            ? ('res:' . $resId . ':id:' . $rf->getId())
+                            : ('res:' . $resId . ':name:' . $menuRaw);
                     }
 
                     if (!isset($menuCache[$menuKey])) {
                         $emItem = new EventMenu();
                         $emItem->setEvent($event)
+                            ->setReservation($reservation)
                             ->setMenuName($rf ? $rf->getName() : $menuRaw)
                             ->setQuantity(0)
                             ->setPricePerUnit(null)

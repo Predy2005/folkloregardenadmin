@@ -49,7 +49,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { ArrowLeft, Check, ChevronsUpDown } from "lucide-react";
-import { useToast } from "@/shared/hooks/use-toast";
+import { PageHeader } from "@/shared/components/PageHeader";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import dayjs from "dayjs";
 import { cn } from "@/shared/lib/utils";
 
@@ -79,7 +80,6 @@ type EventForm = z.infer<typeof eventSchema>;
 
 export default function EventCreate() {
   const [, setLocation] = useLocation();
-  const { toast } = useToast();
   const [contactPersonOpen, setContactPersonOpen] = useState(false);
   const [coordinatorOpen, setCoordinatorOpen] = useState(false);
 
@@ -124,19 +124,10 @@ export default function EventCreate() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      toast({
-        title: "Úspěch",
-        description: "Akce byla vytvořena",
-      });
+      successToast("Akce byla vytvořena");
       setLocation("/events");
     },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se vytvořit akci",
-        variant: "destructive",
-      });
-    },
+    onError: (error: Error) => errorToast(error),
   });
 
   const handleSubmit = (data: EventForm) => {
@@ -162,10 +153,7 @@ export default function EventCreate() {
         >
           <ArrowLeft className="w-5 h-5" />
         </Button>
-        <div>
-          <h1 className="text-3xl font-serif font-bold text-foreground">Nová akce</h1>
-          <p className="text-muted-foreground">Vytvořte novou akci</p>
-        </div>
+        <PageHeader title="Nová akce" description="Vytvořte novou akci" />
       </div>
 
       <Card>

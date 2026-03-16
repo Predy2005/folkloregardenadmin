@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '@/shared/lib/api';
 import { queryClient } from '@/shared/lib/queryClient';
+import { successToast, errorToast } from '@/shared/lib/toast-helpers';
+import { useFormDialog } from '@/shared/hooks/useFormDialog';
+import { useCrudMutations } from '@/shared/hooks/useCrudMutations';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
@@ -9,39 +12,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/shared/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/shared/components/ui/form';
 import { Plus, Edit, Trash2, Calculator, Users } from 'lucide-react';
+import { PageHeader } from "@/shared/components/PageHeader";
 import type { StaffingFormula, StaffingCategory } from '@shared/types';
 import { STAFFING_CATEGORY_LABELS } from '@shared/types';
 import { useForm } from 'react-hook-form';
-import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useToast } from '@/shared/hooks/use-toast';
+import { staffingFormulaSchema, type StaffingFormulaForm } from '../types';
 import { Badge } from '@/shared/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
 import { Switch } from '@/shared/components/ui/switch';
 import { Textarea } from '@/shared/components/ui/textarea';
 
-const staffingFormulaSchema = z.object({
-  category: z.enum([
-    'cisniciWaiters',
-    'kuchariChefs',
-    'pomocneSilyHelpers',
-    'moderatoriHosts',
-    'muzikantiMusicians',
-    'tanecniciDancers',
-    'fotografkyPhotographers',
-    'sperkyJewelry',
-  ] as const, { required_error: 'Vyberte kategorii' }),
-  ratio: z.coerce.number().min(1, 'Poměr musí být alespoň 1'),
-  enabled: z.boolean().default(true),
-  description: z.string().optional(),
-});
-
-type StaffingFormulaForm = z.infer<typeof staffingFormulaSchema>;
-
 export default function StaffingFormulas() {
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingFormula, setEditingFormula] = useState<StaffingFormula | null>(null);
-  const { toast } = useToast();
+  const dialog = useFormDialog<StaffingFormula>();
 
   const { data: formulas, isLoading } = useQuery({
     queryKey: ['/api/staffing-formulas'],
@@ -58,43 +41,12 @@ export default function StaffingFormulas() {
     },
   });
 
-  const createMutation = useMutation({
-    mutationFn: (data: StaffingFormulaForm) => api.post('/api/staffing-formulas', data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/staffing-formulas'] });
-      setIsDialogOpen(false);
-      form.reset();
-      toast({ title: 'Vzorec byl úspěšně vytvořen' });
-    },
-    onError: () => {
-      toast({ title: 'Chyba při vytváření vzorce', variant: 'destructive' });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: StaffingFormulaForm }) =>
-      api.put(`/api/staffing-formulas/${id}`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/staffing-formulas'] });
-      setIsDialogOpen(false);
-      setEditingFormula(null);
-      form.reset();
-      toast({ title: 'Vzorec byl úspěšně upraven' });
-    },
-    onError: () => {
-      toast({ title: 'Chyba při úpravě vzorce', variant: 'destructive' });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/api/staffing-formulas/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/staffing-formulas'] });
-      toast({ title: 'Vzorec byl úspěšně smazán' });
-    },
-    onError: () => {
-      toast({ title: 'Chyba při mazání vzorce', variant: 'destructive' });
-    },
+  const { createMutation, updateMutation, deleteMutation, isPending } = useCrudMutations<StaffingFormulaForm>({
+    endpoint: '/api/staffing-formulas',
+    queryKey: ['/api/staffing-formulas'],
+    entityName: 'Vzorec',
+    onCreateSuccess: () => { dialog.close(); form.reset(); },
+    onUpdateSuccess: () => { dialog.close(); form.reset(); },
   });
 
   const toggleEnabledMutation = useMutation({
@@ -102,33 +54,29 @@ export default function StaffingFormulas() {
       api.put(`/api/staffing-formulas/${id}`, { enabled }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/staffing-formulas'] });
-      toast({ title: 'Vzorec byl aktualizován' });
+      successToast('Vzorec byl aktualizován');
     },
-    onError: () => {
-      toast({ title: 'Chyba při aktualizaci vzorce', variant: 'destructive' });
-    },
+    onError: (error: Error) => errorToast(error),
   });
 
   const handleCreate = () => {
-    setEditingFormula(null);
+    dialog.openCreate();
     form.reset({
       category: 'cisniciWaiters',
       ratio: 25,
       enabled: true,
       description: '',
     });
-    setIsDialogOpen(true);
   };
 
   const handleEdit = (formula: StaffingFormula) => {
-    setEditingFormula(formula);
+    dialog.openEdit(formula);
     form.reset({
       category: formula.category,
       ratio: formula.ratio,
       enabled: formula.enabled,
       description: formula.description || '',
     });
-    setIsDialogOpen(true);
   };
 
   const handleDelete = (id: number) => {
@@ -142,8 +90,8 @@ export default function StaffingFormulas() {
   };
 
   const onSubmit = (data: StaffingFormulaForm) => {
-    if (editingFormula) {
-      updateMutation.mutate({ id: editingFormula.id, data });
+    if (dialog.editingItem) {
+      updateMutation.mutate({ id: dialog.editingItem.id, data });
     } else {
       createMutation.mutate(data);
     }
@@ -155,15 +103,7 @@ export default function StaffingFormulas() {
 
   return (
     <div className="container mx-auto py-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-            Výpočetní vzorce personálu
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Nastavení automatických výpočtů potřebného personálu pro akce
-          </p>
-        </div>
+      <PageHeader title="Výpočetní vzorce personálu" description="Nastavení automatických výpočtů potřebného personálu pro akce">
         <Button
           onClick={handleCreate}
           className="bg-gradient-to-r from-primary to-purple-600"
@@ -172,7 +112,7 @@ export default function StaffingFormulas() {
           <Plus className="mr-2 h-4 w-4" />
           Nový vzorec
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -349,11 +289,11 @@ export default function StaffingFormulas() {
       )}
 
       {/* Create/Edit Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={dialog.isOpen} onOpenChange={dialog.setIsOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              {editingFormula ? 'Upravit vzorec' : 'Nový vzorec'}
+              {dialog.editingItem ? 'Upravit vzorec' : 'Nový vzorec'}
             </DialogTitle>
             <DialogDescription>
               Nastavte poměr personálu vůči počtu hostů. Například "1 : 25" znamená 1 osoba na každých 25 hostů.
@@ -370,7 +310,7 @@ export default function StaffingFormulas() {
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
-                      disabled={!!editingFormula}
+                      disabled={!!dialog.editingItem}
                     >
                       <FormControl>
                         <SelectTrigger data-testid="select-category">
@@ -385,7 +325,7 @@ export default function StaffingFormulas() {
                         ))}
                       </SelectContent>
                     </Select>
-                    {editingFormula && (
+                    {dialog.editingItem && (
                       <FormDescription>
                         Kategorie nelze měnit u existujícího vzorce
                       </FormDescription>
@@ -467,7 +407,7 @@ export default function StaffingFormulas() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setIsDialogOpen(false)}
+                  onClick={() => dialog.setIsOpen(false)}
                   data-testid="button-cancel"
                 >
                   Zrušit
@@ -480,7 +420,7 @@ export default function StaffingFormulas() {
                 >
                   {createMutation.isPending || updateMutation.isPending
                     ? 'Ukládání...'
-                    : editingFormula
+                    : dialog.editingItem
                     ? 'Uložit'
                     : 'Vytvořit'}
                 </Button>

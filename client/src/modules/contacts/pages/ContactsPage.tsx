@@ -2,8 +2,9 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
-import { queryClient } from "@/shared/lib/queryClient";
+import { invalidateContactQueries } from "@/shared/lib/query-helpers";
 import type { Contact } from "@shared/types";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { Card, CardContent } from "@/shared/components/ui/card";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -13,16 +14,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/shared/components/ui/dialog";
-import { useToast } from "@/shared/hooks/use-toast";
 import { useLocation } from "wouter";
 import ContactForm from "../components/ContactForm";
 import { ContactTable } from "../components/ContactTable";
 import { Plus, Upload } from "lucide-react";
+import { PageHeader } from "@/shared/components/PageHeader";
 
 export default function Contacts() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const { toast } = useToast();
   const [, navigate] = useLocation();
 
   // Fetch all contacts (no server-side pagination for now - filtering is client-side)
@@ -73,30 +73,30 @@ export default function Contacts() {
   const createMutation = useMutation({
     mutationFn: async () => api.post("/api/contacts", form),
     onSuccess: () => {
-      toast({ title: "Kontakt vytvořen" });
+      successToast("Kontakt vytvořen");
       setIsCreateOpen(false);
       resetForm();
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/all"] });
+      invalidateContactQueries();
     },
-    onError: () => toast({ title: "Chyba", description: "Nepodařilo se vytvořit kontakt", variant: "destructive" }),
+    onError: (error: Error) => errorToast(error),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => api.delete(`/api/contacts/${id}`),
     onSuccess: () => {
-      toast({ title: "Kontakt smazán" });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/all"] });
+      successToast("Kontakt smazán");
+      invalidateContactQueries();
     },
-    onError: () => toast({ title: "Chyba", description: "Nepodařilo se smazat kontakt", variant: "destructive" }),
+    onError: (error: Error) => errorToast(error),
   });
 
   const seedMutation = useMutation({
     mutationFn: async () => api.post(`/api/contacts/seed-from-reservations`),
     onSuccess: (res: any) => {
-      toast({ title: "Načteno z rezervací", description: `Vytvořeno: ${res.created ?? "?"}, Aktualizováno: ${res.updated ?? "?"}` });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/all"] });
+      successToast(`Načteno z rezervací - Vytvořeno: ${res.created ?? "?"}, Aktualizováno: ${res.updated ?? "?"}`);
+      invalidateContactQueries();
     },
-    onError: () => toast({ title: "Chyba", description: "Načtení z rezervací selhalo", variant: "destructive" }),
+    onError: (error: Error) => errorToast(error),
   });
 
   const handleEdit = (contact: Contact) => {
@@ -126,29 +126,19 @@ export default function Contacts() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-            Adresář
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Celkem {contacts?.length ?? 0} kontaktů
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => seedMutation.mutate()}>
-            <Upload className="w-4 h-4 mr-2" />
-            Načíst z rezervací
-          </Button>
-          <Button
-            onClick={() => setIsCreateOpen(true)}
-            className="bg-gradient-to-r from-primary to-purple-600"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Přidat kontakt
-          </Button>
-        </div>
-      </div>
+      <PageHeader title="Adresář" description={`Celkem ${contacts?.length ?? 0} kontaktů`}>
+        <Button variant="outline" onClick={() => seedMutation.mutate()}>
+          <Upload className="w-4 h-4 mr-2" />
+          Načíst z rezervací
+        </Button>
+        <Button
+          onClick={() => setIsCreateOpen(true)}
+          className="bg-gradient-to-r from-primary to-purple-600"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Přidat kontakt
+        </Button>
+      </PageHeader>
 
       <Card>
         <CardContent>

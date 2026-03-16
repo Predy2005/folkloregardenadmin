@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { Skeleton } from "@/shared/components/ui/skeleton";
-import { useToast } from "@/shared/hooks/use-toast";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 
 const scheduleSchema = z.object({
@@ -34,7 +34,6 @@ export interface ScheduleTabProps {
 }
 
 export default function ScheduleTab({ eventId, schedule, isLoading }: ScheduleTabProps) {
-  const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<EventScheduleItem | null>(null);
 
@@ -57,12 +56,12 @@ export default function ScheduleTab({ eventId, schedule, isLoading }: ScheduleTa
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "schedule"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
-      toast({ title: "Úspěch", description: "Položka harmonogramu byla přidána" });
+      successToast("Položka harmonogramu byla přidána");
       setDialogOpen(false);
       form.reset();
     },
     onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
+      errorToast(error);
     },
   });
 
@@ -73,13 +72,13 @@ export default function ScheduleTab({ eventId, schedule, isLoading }: ScheduleTa
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "schedule"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
-      toast({ title: "Úspěch", description: "Položka harmonogramu byla aktualizována" });
+      successToast("Položka harmonogramu byla aktualizována");
       setDialogOpen(false);
       setEditingItem(null);
       form.reset();
     },
     onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
+      errorToast(error);
     },
   });
 
@@ -90,10 +89,10 @@ export default function ScheduleTab({ eventId, schedule, isLoading }: ScheduleTa
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "schedule"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
-      toast({ title: "Úspěch", description: "Položka harmonogramu byla smazána" });
+      successToast("Položka harmonogramu byla smazána");
     },
     onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
+      errorToast(error);
     },
   });
 

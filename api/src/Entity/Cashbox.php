@@ -23,6 +23,9 @@ class Cashbox
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $description = null;
 
+    #[ORM\Column(name: 'cashbox_type', type: Types::STRING, length: 20, options: ['default' => 'EVENT'])]
+    private string $cashboxType = 'EVENT'; // 'MAIN' | 'EVENT'
+
     #[ORM\Column(type: Types::STRING, length: 3, options: ['default' => 'CZK'])]
     private string $currency = 'CZK';
 
@@ -36,6 +39,10 @@ class Cashbox
     #[ORM\JoinColumn(name: 'reservation_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
     private ?Reservation $reservation = null;
 
+    #[ORM\ManyToOne(targetEntity: Event::class)]
+    #[ORM\JoinColumn(name: 'event_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?Event $event = null;
+
     #[ORM\Column(name: 'opened_at', type: Types::DATETIME_MUTABLE)]
     private \DateTimeInterface $openedAt;
 
@@ -48,6 +55,13 @@ class Cashbox
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'user_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
     private ?User $user = null; // kdo otevřel pokladnu
+
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'locked_by_user_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?User $lockedBy = null;
+
+    #[ORM\Column(name: 'locked_at', type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTimeInterface $lockedAt = null;
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $notes = null;
@@ -88,6 +102,18 @@ class Cashbox
 
     public function getUser(): ?User { return $this->user; }
     public function setUser(?User $u): self { $this->user = $u; return $this; }
+
+    public function getCashboxType(): string { return $this->cashboxType; }
+    public function setCashboxType(string $t): self { $this->cashboxType = $t; return $this; }
+
+    public function getEvent(): ?Event { return $this->event; }
+    public function setEvent(?Event $e): self { $this->event = $e; return $this; }
+
+    public function getLockedBy(): ?User { return $this->lockedBy; }
+    public function setLockedBy(?User $u): self { $this->lockedBy = $u; return $this; }
+
+    public function getLockedAt(): ?\DateTimeInterface { return $this->lockedAt; }
+    public function setLockedAt(?\DateTimeInterface $t): self { $this->lockedAt = $t; return $this; }
 
     public function getNotes(): ?string { return $this->notes; }
     public function setNotes(?string $n): self { $this->notes = $n; return $this; }

@@ -13,9 +13,11 @@ import type { DisabledDate } from '@shared/types';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useToast } from '@/shared/hooks/use-toast';
+import { successToast, errorToast } from '@/shared/lib/toast-helpers';
+import { useFormDialog } from '@/shared/hooks/useFormDialog';
 import dayjs from 'dayjs';
 import { Badge } from '@/shared/components/ui/badge';
+import { PageHeader } from "@/shared/components/PageHeader";
 
 // České státní svátky
 // Velikonoční pondělí pro jednotlivé roky (pohyblivý svátek)
@@ -65,10 +67,8 @@ const disabledDateSchema = z.object({
 type DisabledDateForm = z.infer<typeof disabledDateSchema>;
 
 export default function DisabledDates() {
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingDate, setEditingDate] = useState<DisabledDate | null>(null);
+  const dialog = useFormDialog<DisabledDate>();
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const { toast } = useToast();
 
   const czechHolidays = getCzechHolidays(selectedYear);
 
@@ -101,12 +101,12 @@ export default function DisabledDates() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/disable-dates'] });
-      setIsDialogOpen(false);
+      dialog.close();
       form.reset();
-      toast({ title: 'Blokace byla úspěšně vytvořena' });
+      successToast('Blokace byla úspěšně vytvořena');
     },
-    onError: () => {
-      toast({ title: 'Chyba při vytváření blokace', variant: 'destructive' });
+    onError: (error: Error) => {
+      errorToast(error);
     },
   });
 
@@ -115,13 +115,12 @@ export default function DisabledDates() {
       api.put(`/api/disable-dates/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/disable-dates'] });
-      setIsDialogOpen(false);
-      setEditingDate(null);
+      dialog.close();
       form.reset();
-      toast({ title: 'Blokace byla úspěšně upravena' });
+      successToast('Blokace byla úspěšně upravena');
     },
-    onError: () => {
-      toast({ title: 'Chyba při úpravě blokace', variant: 'destructive' });
+    onError: (error: Error) => {
+      errorToast(error);
     },
   });
 
@@ -129,33 +128,31 @@ export default function DisabledDates() {
     mutationFn: (id: number) => api.delete(`/api/disable-dates/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/disable-dates'] });
-      toast({ title: 'Blokace byla úspěšně smazána' });
+      successToast('Blokace byla úspěšně smazána');
     },
-    onError: () => {
-      toast({ title: 'Chyba při mazání blokace', variant: 'destructive' });
+    onError: (error: Error) => {
+      errorToast(error);
     },
   });
 
   const handleCreate = () => {
-    setEditingDate(null);
     form.reset({
       dateFrom: '',
       dateTo: '',
       reason: '',
       project: 'reservations',
     });
-    setIsDialogOpen(true);
+    dialog.openCreate();
   };
 
   const handleEdit = (date: DisabledDate) => {
-    setEditingDate(date);
     form.reset({
       dateFrom: date.dateFrom,
       dateTo: date.dateTo || '',
       reason: date.reason || '',
       project: date.project || 'reservations',
     });
-    setIsDialogOpen(true);
+    dialog.openEdit(date);
   };
 
   const handleDelete = (id: number) => {
@@ -165,8 +162,8 @@ export default function DisabledDates() {
   };
 
   const onSubmit = (data: DisabledDateForm) => {
-    if (editingDate) {
-      updateMutation.mutate({ id: editingDate.id, data });
+    if (dialog.editingItem) {
+      updateMutation.mutate({ id: dialog.editingItem.id, data });
     } else {
       createMutation.mutate(data);
     }
@@ -179,11 +176,7 @@ export default function DisabledDates() {
     );
 
     if (exists) {
-      toast({
-        title: 'Svátek už je blokovaný',
-        description: `${holiday.name} je již v seznamu blokovaných datumů`,
-        variant: 'destructive',
-      });
+      errorToast(`${holiday.name} je již v seznamu blokovaných datumů`);
       return;
     }
 
@@ -198,13 +191,9 @@ export default function DisabledDates() {
   const handleAddDateRange = () => {
     const dateFrom = form.getValues('dateFrom');
     const dateTo = form.getValues('dateTo');
-    
+
     if (!dateFrom) {
-      toast({
-        title: 'Chybí datum',
-        description: 'Vyplňte alespoň datum "Od"',
-        variant: 'destructive',
-      });
+      errorToast('Vyplňte alespoň datum "Od"');
       return;
     }
 
@@ -231,10 +220,7 @@ export default function DisabledDates() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-serif font-bold mb-2">Blokované termíny</h1>
-        <p className="text-muted-foreground">Správa blokovaných dat pro rezervace</p>
-      </div>
+      <PageHeader title="Blokované termíny" description="Správa blokovaných dat pro rezervace" />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Add Form & Holidays */}
@@ -437,11 +423,11 @@ export default function DisabledDates() {
       </div>
 
       {/* Create/Edit Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={dialog.isOpen} onOpenChange={dialog.setIsOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="font-serif">
-              {editingDate ? 'Upravit blokaci' : 'Nová blokace'}
+              {dialog.isEditing ? 'Upravit blokaci' : 'Nová blokace'}
             </DialogTitle>
           </DialogHeader>
 
@@ -493,7 +479,7 @@ export default function DisabledDates() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setIsDialogOpen(false)}
+                  onClick={() => dialog.close()}
                 >
                   Zrušit
                 </Button>
@@ -505,7 +491,7 @@ export default function DisabledDates() {
                 >
                   {createMutation.isPending || updateMutation.isPending
                     ? 'Ukládání...'
-                    : editingDate
+                    : dialog.isEditing
                     ? 'Uložit změny'
                     : 'Vytvořit'}
                 </Button>

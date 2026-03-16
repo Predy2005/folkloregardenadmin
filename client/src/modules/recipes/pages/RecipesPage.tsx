@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient } from "@/shared/lib/queryClient";
-import { api } from "@/shared/lib/api";
-import type { Recipe, StockItem, RecipeIngredient } from "@shared/types";
+import { useRef, useState } from "react";
+import { useLocation } from "wouter";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, apiClient } from "@/shared/lib/api";
+import type { Recipe, MenuRecipe } from "@shared/types";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import {
@@ -28,133 +29,82 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/shared/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/shared/components/ui/form";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/components/ui/tooltip";
-import { Plus, Pencil, Trash2, Search, ChefHat, Eye } from "lucide-react";
-import { useToast } from "@/shared/hooks/use-toast";
+import { Search, ChefHat, Eye, Upload, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
-import { Textarea } from "@/shared/components/ui/textarea";
-
-const recipeSchema = z.object({
-  name: z.string().min(1, "Zadejte název receptury"),
-  description: z.string().optional(),
-  portions: z.number().min(1, "Počet porcí musí být alespoň 1"),
-});
-
-type RecipeForm = z.infer<typeof recipeSchema>;
 
 export default function Recipes() {
+  const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
-  const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
   const [viewingRecipe, setViewingRecipe] = useState<Recipe | null>(null);
-  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
 
   const { data: recipes, isLoading } = useQuery<Recipe[]>({
     queryKey: ["/api/recipes"],
+    queryFn: () => api.get<Recipe[]>("/api/recipes"),
   });
 
-  const createForm = useForm<RecipeForm>({
-    resolver: zodResolver(recipeSchema),
-    defaultValues: {
-      name: "",
-      description: "",
-      portions: 1,
-    },
+  // Fetch all menu-recipe links to show which menus use each recipe
+  const { data: allMenuRecipes } = useQuery<MenuRecipe[]>({
+    queryKey: ["/api/menu-recipes", "all"],
+    queryFn: () => api.get<MenuRecipe[]>("/api/menu-recipes?all=1"),
   });
 
-  const editForm = useForm<RecipeForm>({
-    resolver: zodResolver(recipeSchema),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async (data: RecipeForm) => {
-      return await api.post("/api/recipes", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
-      setIsCreateOpen(false);
-      createForm.reset();
-      toast({
-        title: "Úspěch",
-        description: "Receptura byla vytvořena",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se vytvořit recepturu",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: RecipeForm }) => {
-      return await api.put(`/api/recipes/${id}`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
-      setIsEditOpen(false);
-      setEditingRecipe(null);
-      toast({
-        title: "Úspěch",
-        description: "Receptura byla aktualizována",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se aktualizovat recepturu",
-        variant: "destructive",
-      });
-    },
+  // Group menu recipes by recipeId
+  const menusByRecipe = new Map<number, string[]>();
+  allMenuRecipes?.forEach((mr) => {
+    const existing = menusByRecipe.get(mr.recipeId) ?? [];
+    const foodName = mr.reservationFood?.name;
+    if (foodName && !existing.includes(foodName)) {
+      existing.push(foodName);
+    }
+    menusByRecipe.set(mr.recipeId, existing);
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return await api.delete(`/api/recipes/${id}`);
-    },
+    mutationFn: (id: number) => api.delete(`/api/recipes/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
-      toast({
-        title: "Úspěch",
-        description: "Receptura byla smazána",
-      });
+      successToast("Receptura smazána");
     },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se smazat recepturu",
-        variant: "destructive",
+    onError: (err: any) => errorToast(err?.response?.data?.error || err.message),
+  });
+
+  const importMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await apiClient.post("/api/recipes/import", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
+      return res.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock-items"] });
+      successToast(
+        `Import dokončen: ${data.recipes} receptur, ${data.stockItems} nových surovin, ${data.ingredients} ingrediencí`
+      );
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error || err.message;
+      errorToast(msg);
     },
   });
 
-  const filteredRecipes = recipes?.filter((recipe) =>
-    recipe.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const handleImport = () => {
+    fileInputRef.current?.click();
+  };
 
-  const handleEdit = (recipe: Recipe) => {
-    setEditingRecipe(recipe);
-    editForm.reset({
-      name: recipe.name,
-      description: recipe.description || "",
-      portions: recipe.portions,
-    });
-    setIsEditOpen(true);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      importMutation.mutate(file);
+    }
+    e.target.value = "";
   };
 
   const handleDelete = (id: number) => {
@@ -163,6 +113,10 @@ export default function Recipes() {
     }
   };
 
+  const filteredRecipes = recipes?.filter((recipe) =>
+    recipe.name.toLowerCase().includes(search.toLowerCase())
+  );
+
   const handleView = (recipe: Recipe) => {
     setViewingRecipe(recipe);
     setIsViewOpen(true);
@@ -170,20 +124,36 @@ export default function Recipes() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-serif font-bold text-foreground">Receptury</h1>
-          <p className="text-muted-foreground">Správa receptů a ingrediencí</p>
-        </div>
+      <PageHeader title="Receptury" description="Správa receptů a ingrediencí">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          className="hidden"
+          onChange={handleFileChange}
+        />
         <Button
-          onClick={() => setIsCreateOpen(true)}
+          variant="outline"
+          onClick={handleImport}
+          disabled={importMutation.isPending}
+          data-testid="button-import-recipes"
+        >
+          {importMutation.isPending ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <Upload className="w-4 h-4 mr-2" />
+          )}
+          {importMutation.isPending ? "Importuji..." : "Import z Excelu"}
+        </Button>
+        <Button
+          onClick={() => navigate("/recipes/new")}
           className="bg-gradient-to-r from-primary to-purple-600"
           data-testid="button-create-recipe"
         >
           <Plus className="w-4 h-4 mr-2" />
           Nová receptura
         </Button>
-      </div>
+      </PageHeader>
 
       <Card>
         <CardHeader>
@@ -221,7 +191,9 @@ export default function Recipes() {
                   <TableHead>Název</TableHead>
                   <TableHead>Popis</TableHead>
                   <TableHead>Počet porcí</TableHead>
+                  <TableHead>Hmotnost porce</TableHead>
                   <TableHead>Ingredience</TableHead>
+                  <TableHead>Menu</TableHead>
                   <TableHead className="text-right">Akce</TableHead>
                 </TableRow>
               </TableHeader>
@@ -238,51 +210,67 @@ export default function Recipes() {
                       <Badge variant="secondary">{recipe.portions} ks</Badge>
                     </TableCell>
                     <TableCell>
+                      {recipe.portionWeight ? `${recipe.portionWeight} g` : "-"}
+                    </TableCell>
+                    <TableCell>
                       {recipe.ingredients?.length || 0} položek
+                    </TableCell>
+                    <TableCell>
+                      {(menusByRecipe.get(recipe.id) ?? []).length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {menusByRecipe.get(recipe.id)!.map((name) => (
+                            <Badge key={name} variant="outline" className="text-xs">
+                              {name}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <TooltipProvider>
-                      <div className="flex items-center justify-end gap-2">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleView(recipe)}
-                              data-testid={`button-view-${recipe.id}`}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Zobrazit detail</TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleEdit(recipe)}
-                              data-testid={`button-edit-${recipe.id}`}
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Upravit</TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDelete(recipe.id)}
-                              data-testid={`button-delete-${recipe.id}`}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Smazat</TooltipContent>
-                        </Tooltip>
-                      </div>
+                        <div className="flex items-center justify-end gap-2">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleView(recipe)}
+                                data-testid={`button-view-${recipe.id}`}
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Zobrazit detail</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => navigate(`/recipes/${recipe.id}/edit`)}
+                                data-testid={`button-edit-${recipe.id}`}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Upravit</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDelete(recipe.id)}
+                                data-testid={`button-delete-${recipe.id}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Smazat</TooltipContent>
+                          </Tooltip>
+                        </div>
                       </TooltipProvider>
                     </TableCell>
                   </TableRow>
@@ -296,156 +284,6 @@ export default function Recipes() {
           )}
         </CardContent>
       </Card>
-
-      {/* Create Dialog */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nová receptura</DialogTitle>
-            <DialogDescription>Vytvořte novou recepturu</DialogDescription>
-          </DialogHeader>
-          <Form {...createForm}>
-            <form
-              onSubmit={createForm.handleSubmit((data) => createMutation.mutate(data))}
-              className="space-y-4"
-            >
-              <FormField
-                control={createForm.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Název *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Název receptury" data-testid="input-name" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={createForm.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Popis</FormLabel>
-                    <FormControl>
-                      <Textarea placeholder="Popis receptury" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={createForm.control}
-                name="portions"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Počet porcí *</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min="1"
-                        placeholder="1"
-                        {...field}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
-                  Zrušit
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={createMutation.isPending}
-                  className="bg-gradient-to-r from-primary to-purple-600"
-                >
-                  {createMutation.isPending ? "Vytváření..." : "Vytvořit"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Dialog */}
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Upravit recepturu</DialogTitle>
-            <DialogDescription>Upravte detaily receptury</DialogDescription>
-          </DialogHeader>
-          <Form {...editForm}>
-            <form
-              onSubmit={editForm.handleSubmit((data) =>
-                editingRecipe && updateMutation.mutate({ id: editingRecipe.id, data })
-              )}
-              className="space-y-4"
-            >
-              <FormField
-                control={editForm.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Název *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Název receptury" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Popis</FormLabel>
-                    <FormControl>
-                      <Textarea placeholder="Popis receptury" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="portions"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Počet porcí *</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min="1"
-                        placeholder="1"
-                        {...field}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)}>
-                  Zrušit
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={updateMutation.isPending}
-                  className="bg-gradient-to-r from-primary to-purple-600"
-                >
-                  {updateMutation.isPending ? "Ukládání..." : "Uložit"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
 
       {/* View Dialog */}
       <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
@@ -462,13 +300,21 @@ export default function Recipes() {
               </div>
               {viewingRecipe.description && (
                 <div>
-                  <h3 className="font-semibold mb-1">Popis</h3>
-                  <p className="text-muted-foreground">{viewingRecipe.description}</p>
+                  <h3 className="font-semibold mb-1">Postup</h3>
+                  <p className="text-muted-foreground whitespace-pre-wrap">{viewingRecipe.description}</p>
                 </div>
               )}
-              <div>
-                <h3 className="font-semibold mb-1">Počet porcí</h3>
-                <Badge variant="secondary">{viewingRecipe.portions} ks</Badge>
+              <div className="flex gap-6">
+                <div>
+                  <h3 className="font-semibold mb-1">Počet porcí</h3>
+                  <Badge variant="secondary">{viewingRecipe.portions} ks</Badge>
+                </div>
+                {viewingRecipe.portionWeight && (
+                  <div>
+                    <h3 className="font-semibold mb-1">Hmotnost porce</h3>
+                    <Badge variant="secondary">{viewingRecipe.portionWeight} g</Badge>
+                  </div>
+                )}
               </div>
               <div>
                 <h3 className="font-semibold mb-2">Ingredience</h3>
@@ -477,15 +323,23 @@ export default function Recipes() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Surovina</TableHead>
+                        <TableHead>Dodavatel</TableHead>
                         <TableHead className="text-right">Množství</TableHead>
+                        <TableHead className="text-right">Cena za kg/l</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {viewingRecipe.ingredients.map((ing) => (
                         <TableRow key={ing.id}>
                           <TableCell>{ing.stockItem?.name || `ID: ${ing.stockItemId}`}</TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {ing.stockItem?.supplier || "-"}
+                          </TableCell>
                           <TableCell className="text-right">
                             {ing.quantityRequired} {ing.stockItem?.unit}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {ing.stockItem?.pricePerUnit ? `${ing.stockItem.pricePerUnit} Kč` : "-"}
                           </TableCell>
                         </TableRow>
                       ))}

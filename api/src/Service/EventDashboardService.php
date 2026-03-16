@@ -10,25 +10,71 @@ use App\Entity\EventMenu;
 use App\Entity\EventStaffAssignment;
 use App\Entity\EventVoucher;
 use App\Repository\CashboxRepository;
+use App\Repository\CashboxTransferRepository;
 use App\Repository\CashMovementRepository;
+use App\Repository\InvoiceRepository;
 use App\Repository\ReservationRepository;
 use App\Repository\StaffingFormulaRepository;
 use App\Repository\StaffMemberRepository;
 use App\Repository\StaffRoleRepository;
 use App\Repository\VoucherRepository;
+use App\Repository\EventStaffRequirementRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
 class EventDashboardService
 {
+    // Base category translations - supports both old and new category formats
     private const STAFFING_CATEGORY_LABELS = [
+        // Old format (Czech/English mixed)
         'cisniciWaiters' => 'Číšníci',
+        'cisniciwaiter' => 'Číšníci',
         'kuchariChefs' => 'Kuchaři',
+        'kucharichefs' => 'Kuchaři',
         'pomocneSilyHelpers' => 'Pomocné síly',
+        'pomocnesilyhelpers' => 'Pomocné síly',
         'moderatoriHosts' => 'Moderátoři',
-        'muzikantiMusicians' => 'Muzikanti',
+        'moderatorihosts' => 'Moderátoři',
+        'muzikantiMusicians' => 'Hudebníci',
+        'muzikantimusicians' => 'Hudebníci',
         'tanecniciDancers' => 'Tanečníci',
+        'tanecnicidancers' => 'Tanečníci',
         'fotografkyPhotographers' => 'Fotografové',
-        'sperkyJewelry' => 'Šperky',
+        'fotografkyphotographers' => 'Fotografové',
+        'sperkyJewelry' => 'Prodejci šperků',
+        'sperkyjewelry' => 'Prodejci šperků',
+        // New format (simple English)
+        'waiter' => 'Číšníci',
+        'chef' => 'Kuchaři',
+        'coordinator' => 'Koordinátoři',
+        'bartender' => 'Barmani',
+        'hostess' => 'Hostesky',
+        'security' => 'Ochranka',
+        'musician' => 'Hudebníci',
+        'dancer' => 'Tanečníci',
+        'photographer' => 'Fotografové',
+        'sound_tech' => 'Zvukaři',
+        'cleaner' => 'Úklid',
+        'driver' => 'Řidiči',
+        'manager' => 'Manažeři',
+        'head_chef' => 'Šéfkuchaři',
+        'sous_chef' => 'Pomocní kuchaři',
+        'prep_cook' => 'Přípraváři',
+        'head_waiter' => 'Vrchní číšníci',
+        'helper' => 'Pomocné síly',
+        'host' => 'Moderátoři',
+        'jewelry' => 'Prodejci šperků',
+    ];
+
+    // Mapování backend event types na frontend formát
+    private const EVENT_TYPE_TO_FRONTEND = [
+        'FOLKLORE_SHOW' => 'folklorni_show',
+        'WEDDING' => 'svatba',
+        'CORPORATE' => 'event',
+        'PRIVATE_EVENT' => 'privat',
+        'folklorni_show' => 'folklorni_show',
+        'svatba' => 'svatba',
+        'event' => 'event',
+        'privat' => 'privat',
     ];
 
     public function __construct(
@@ -40,7 +86,23 @@ class EventDashboardService
         private CashMovementRepository $cashMovementRepo,
         private ReservationRepository $reservationRepo,
         private VoucherRepository $voucherRepo,
+        private InvoiceRepository $invoiceRepo,
+        private EventStaffRequirementRepository $staffRequirementRepo,
+        private StaffRequirementService $staffRequirementService,
+        private CashboxService $cashboxService,
+        private CashboxTransferRepository $cashboxTransferRepo,
     ) {
+    }
+
+    /**
+     * Převede event type na frontend formát
+     */
+    private function normalizeEventTypeForFrontend(?string $eventType): ?string
+    {
+        if ($eventType === null) {
+            return null;
+        }
+        return self::EVENT_TYPE_TO_FRONTEND[$eventType] ?? $eventType;
     }
 
     /**
@@ -48,6 +110,8 @@ class EventDashboardService
      */
     public function getDashboardData(Event $event): array
     {
+        $pendingTransfers = $this->cashboxTransferRepo->findPendingByEvent($event);
+
         return [
             'event' => $this->eventToArray($event),
             'guestsBySpace' => $this->getGuestsBySpace($event),
@@ -56,6 +120,10 @@ class EventDashboardService
             'vouchers' => $this->getVoucherSummary($event),
             'financials' => $this->getFinancials($event),
             'stats' => $this->getQuickStats($event),
+            'pendingTransfers' => array_map(
+                fn($t) => $this->cashboxService->serializeTransfer($t),
+                $pendingTransfers
+            ),
         ];
     }
 
@@ -67,44 +135,48 @@ class EventDashboardService
         $guests = $event->getGuests();
         $spaces = $event->getSpaces();
 
-        // If no spaces defined, use venue or default
+        // If no spaces defined, use venue or default (normalized to lowercase)
         $spaceNames = [];
         foreach ($spaces as $space) {
-            $spaceNames[] = $space->getSpaceName();
+            $spaceNames[] = strtolower($space->getSpaceName());
         }
         if (empty($spaceNames)) {
-            $spaceNames[] = $event->getVenue() ?? 'ROUBENKA';
+            $spaceNames[] = strtolower($event->getVenue() ?? 'ROUBENKA');
         }
 
         $result = [];
-        foreach ($spaceNames as $spaceName) {
-            $spaceGuests = $this->filterGuestsBySpace($guests, $spaceName);
+        foreach ($spaceNames as $index => $spaceName) {
+            $isFirstSpace = ($index === 0);
+            $spaceGuests = $this->filterGuestsBySpace($guests, $spaceName, $isFirstSpace);
+
+            // Count paying vs non-paying based on guest type
+            // driver, guide = non-paying (zdarma)
+            // adult, child, infant = paying (platící)
+            $paidCount = 0;
+            $freeCount = 0;
+            foreach ($spaceGuests as $g) {
+                $type = $g->getType();
+                if ($type === 'driver' || $type === 'guide') {
+                    $freeCount++;
+                } else {
+                    $paidCount++;
+                }
+            }
 
             $result[] = [
                 'spaceName' => $spaceName,
                 'totalGuests' => count($spaceGuests),
-                'paidGuests' => count(array_filter($spaceGuests, fn($g) => $g->isPaid())),
-                'freeGuests' => count(array_filter($spaceGuests, fn($g) => !$g->isPaid())),
+                'paidGuests' => $paidCount,
+                'freeGuests' => $freeCount,
                 'presentGuests' => count(array_filter($spaceGuests, fn($g) => $g->isPresent())),
                 'nationalityBreakdown' => $this->getNationalityBreakdown($spaceGuests),
                 'menuBreakdown' => $this->getMenuBreakdown($spaceGuests),
+                'menuByNationality' => $this->getMenuByNationality($spaceGuests),
+                'menuByReservation' => $this->getMenuByReservation($spaceGuests),
             ];
         }
 
-        // If only one space or no space filtering possible, return single aggregated space
-        if (count($result) === 1 || $this->allGuestsInSingleSpace($guests)) {
-            $allGuests = iterator_to_array($guests);
-            return [[
-                'spaceName' => $spaceNames[0] ?? 'ROUBENKA',
-                'totalGuests' => count($allGuests),
-                'paidGuests' => count(array_filter($allGuests, fn($g) => $g->isPaid())),
-                'freeGuests' => count(array_filter($allGuests, fn($g) => !$g->isPaid())),
-                'presentGuests' => count(array_filter($allGuests, fn($g) => $g->isPresent())),
-                'nationalityBreakdown' => $this->getNationalityBreakdown($allGuests),
-                'menuBreakdown' => $this->getMenuBreakdown($allGuests),
-            ]];
-        }
-
+        // Always return all configured spaces (even if empty) so user can move guests between them
         return $result;
     }
 
@@ -113,38 +185,60 @@ class EventDashboardService
      */
     public function getStaffingOverview(Event $event): array
     {
-        $totalGuests = $event->getGuestsTotal();
-        $formulas = $this->staffingFormulaRepo->findEnabled();
         $assignments = $event->getStaffAssignments();
 
-        // Calculate required staff per category
-        $required = [];
-        foreach ($formulas as $formula) {
-            $category = $formula->getCategory();
-            $ratio = $formula->getRatio();
-            $requiredCount = $ratio > 0 ? (int) ceil($totalGuests / $ratio) : 0;
+        // First, try to get stored requirements
+        $storedRequirements = $this->staffRequirementRepo->findByEvent($event);
 
-            // Count assigned staff in this category
-            $assigned = 0;
-            $confirmed = 0;
-            foreach ($assignments as $assignment) {
-                $roleId = $assignment->getStaffRoleId();
-                if ($roleId && $this->isRoleInCategory($roleId, $category)) {
-                    $assigned++;
-                    if ($assignment->getAttendanceStatus() === 'PRESENT' || $assignment->getAttendanceStatus() === 'CONFIRMED') {
-                        $confirmed++;
+        // If no stored requirements, use the StaffRequirementService to calculate and store them
+        if (empty($storedRequirements)) {
+            $storedRequirements = $this->staffRequirementService->recalculateRequirements($event);
+        }
+
+        // Build required staff per category from stored requirements
+        $required = [];
+
+        if (!empty($storedRequirements)) {
+            foreach ($storedRequirements as $req) {
+                $category = $req->getCategory();
+                $requiredCount = $req->getRequiredCount();
+                $categoryRoleId = $req->getStaffRoleId();
+
+                // Count assigned staff in this category
+                $assigned = 0;
+                $confirmed = 0;
+                $present = 0;
+                foreach ($assignments as $assignment) {
+                    $roleId = $assignment->getStaffRoleId();
+                    if ($roleId && $this->isRoleInCategory($roleId, $category)) {
+                        $assigned++;
+                        $status = $assignment->getAttendanceStatus();
+                        if ($status === 'CONFIRMED') {
+                            $confirmed++;
+                        }
+                        if ($status === 'PRESENT') {
+                            $present++;
+                            $confirmed++;
+                        }
                     }
                 }
-            }
 
-            $required[] = [
-                'category' => $category,
-                'label' => self::STAFFING_CATEGORY_LABELS[$category] ?? $category,
-                'required' => $requiredCount,
-                'assigned' => $assigned,
-                'confirmed' => $confirmed,
-                'shortfall' => max(0, $requiredCount - $assigned),
-            ];
+                $required[] = [
+                    'category' => $category,
+                    'label' => $this->translateCategoryLabel($category),
+                    'roleId' => $categoryRoleId,
+                    'required' => $requiredCount,
+                    'assigned' => $assigned,
+                    'confirmed' => $confirmed,
+                    'present' => $present,
+                    'shortfall' => max(0, $requiredCount - $assigned),
+                    'operationalShortfall' => max(0, $requiredCount - $present),
+                    'isManualOverride' => $req->isManualOverride(),
+                ];
+            }
+        } else {
+            // Fallback: Calculate from formulas (legacy behavior)
+            $required = $this->calculateRequirementsFromFormulas($event, $assignments);
         }
 
         // Get detailed assignments with staff member info
@@ -154,6 +248,9 @@ class EventDashboardService
             $staffRole = $assignment->getStaffRoleId()
                 ? $this->staffRoleRepo->find($assignment->getStaffRoleId())
                 : null;
+
+            // Use staffRole name if available, otherwise fallback to staffMember position
+            $roleName = $staffRole?->getName() ?? $staffMember?->getPosition();
 
             $assignmentDetails[] = [
                 'id' => $assignment->getId(),
@@ -165,7 +262,7 @@ class EventDashboardService
                     'position' => $staffMember->getPosition(),
                     'hourlyRate' => $staffMember->getHourlyRate(),
                 ] : null,
-                'role' => $staffRole?->getName(),
+                'role' => $roleName,
                 'roleId' => $assignment->getStaffRoleId(),
                 'assignmentStatus' => $assignment->getAssignmentStatus(),
                 'attendanceStatus' => $assignment->getAttendanceStatus(),
@@ -183,38 +280,56 @@ class EventDashboardService
     }
 
     /**
-     * Get transport/taxi summary from reservations
+     * Get transport/taxi summary from reservations linked to this event
      */
     public function getTransportSummary(Event $event): array
     {
-        // Get reservations for this event's date
-        $eventDate = $event->getEventDate();
-        $reservations = $this->reservationRepo->findBy(['date' => $eventDate]);
+        // Get unique reservations linked to this event through EventGuests
+        $guests = $event->getGuests();
+        $reservationIds = [];
+        foreach ($guests as $guest) {
+            $reservation = $guest->getReservation();
+            if ($reservation && !in_array($reservation->getId(), $reservationIds)) {
+                $reservationIds[] = $reservation->getId();
+            }
+        }
 
-        // Note: Taxi field doesn't exist yet in Reservation entity
-        // This is a placeholder that returns basic reservation contact info
+        // Get actual reservation entities
+        $reservations = [];
+        foreach ($reservationIds as $resId) {
+            $res = $this->reservationRepo->find($resId);
+            if ($res) {
+                $reservations[] = $res;
+            }
+        }
+
         $taxiReservations = [];
         $totalPassengers = 0;
+        $reservationsWithTransfer = 0;
 
         foreach ($reservations as $reservation) {
-            // For now, include all reservations as potential transport needs
-            // TODO: Add taxi/pickup field to Reservation entity
-            $taxiReservations[] = [
-                'reservationId' => $reservation->getId(),
-                'contactName' => $reservation->getName(),
-                'contactPhone' => $reservation->getPhone(),
-                'contactEmail' => $reservation->getEmail(),
-                'pickupAddress' => null, // To be added
-                'passengerCount' => $this->getReservationGuestCount($reservation),
-                'hasTaxi' => false, // To be added
-            ];
-            $totalPassengers += $this->getReservationGuestCount($reservation);
+            $transferCount = $reservation->getTransferCount() ?? 0;
+            $hasTransfer = $transferCount > 0;
+
+            if ($hasTransfer) {
+                $reservationsWithTransfer++;
+                $taxiReservations[] = [
+                    'reservationId' => $reservation->getId(),
+                    'contactName' => $reservation->getContactName(),
+                    'contactPhone' => $reservation->getContactPhone(),
+                    'contactEmail' => $reservation->getContactEmail(),
+                    'pickupAddress' => $reservation->getTransferAddress(),
+                    'passengerCount' => $transferCount,
+                    'hasTaxi' => true,
+                ];
+                $totalPassengers += $transferCount;
+            }
         }
 
         return [
             'reservationsWithTaxi' => $taxiReservations,
             'totalPassengers' => $totalPassengers,
-            'totalReservations' => count($reservations),
+            'totalReservations' => $reservationsWithTransfer,
         ];
     }
 
@@ -263,18 +378,8 @@ class EventDashboardService
      */
     public function getFinancials(Event $event): array
     {
-        // Find cashbox linked to this event (by date or reservation)
-        $eventDate = $event->getEventDate();
-        $cashboxes = $this->cashboxRepo->findBy(['isActive' => true]);
-
-        // Find cashbox for this event date
-        $eventCashbox = null;
-        foreach ($cashboxes as $cb) {
-            if ($cb->getOpenedAt()->format('Y-m-d') === $eventDate->format('Y-m-d')) {
-                $eventCashbox = $cb;
-                break;
-            }
-        }
+        // Find cashbox linked to this event by event_id
+        $eventCashbox = $this->cashboxService->getEventCashbox($event);
 
         // Get all cash movements for this cashbox
         $movements = $eventCashbox
@@ -336,11 +441,14 @@ class EventDashboardService
             'cashbox' => $eventCashbox ? [
                 'id' => $eventCashbox->getId(),
                 'name' => $eventCashbox->getName(),
+                'cashboxType' => $eventCashbox->getCashboxType(),
                 'initialBalance' => $initialBalance,
                 'currentBalance' => $currentBalance,
                 'totalIncome' => $totalIncome,
                 'totalExpense' => $totalExpenses,
-                'isActive' => $eventCashbox->getIsActive(),
+                'isActive' => $eventCashbox->isActive(),
+                'lockedBy' => $eventCashbox->getLockedBy()?->getId(),
+                'lockedAt' => $eventCashbox->getLockedAt()?->format(DATE_ATOM),
             ] : null,
             'expensesByCategory' => array_values($expensesByCategory),
             'incomeByCategory' => array_values($incomeByCategory),
@@ -351,6 +459,119 @@ class EventDashboardService
                 'netResult' => $initialBalance + $totalIncome - $totalExpenses,
                 'cashOnHand' => $currentBalance,
             ],
+            'payments' => $this->getReservationPayments($event),
+        ];
+    }
+
+    /**
+     * Get payment overview from reservations linked to this event
+     */
+    public function getReservationPayments(Event $event): array
+    {
+        // Get unique reservations linked to this event through EventGuests
+        $guests = $event->getGuests();
+        $reservationIds = [];
+        foreach ($guests as $guest) {
+            $reservation = $guest->getReservation();
+            if ($reservation && !in_array($reservation->getId(), $reservationIds)) {
+                $reservationIds[] = $reservation->getId();
+            }
+        }
+
+        // Build reservation payment summaries
+        $reservationSummaries = [];
+        $totals = [
+            'totalExpected' => 0,
+            'totalPaid' => 0,
+            'totalRemaining' => 0,
+            'reservationCount' => 0,
+            'paidCount' => 0,
+            'partialCount' => 0,
+            'unpaidCount' => 0,
+        ];
+
+        foreach ($reservationIds as $resId) {
+            $reservation = $this->reservationRepo->find($resId);
+            if (!$reservation) {
+                continue;
+            }
+
+            $totalPrice = (float) ($reservation->getTotalPrice() ?? 0);
+            $paidAmount = (float) ($reservation->getPaidAmount() ?? 0);
+            $remainingAmount = max(0, $totalPrice - $paidAmount);
+            $paymentStatus = $reservation->getPaymentStatus() ?? 'UNPAID';
+
+            // Get invoices for this reservation
+            $invoices = $this->invoiceRepo->findBy(['reservation' => $reservation]);
+            $invoiceSummaries = [];
+            foreach ($invoices as $invoice) {
+                $invoiceSummaries[] = [
+                    'id' => $invoice->getId(),
+                    'invoiceNumber' => $invoice->getInvoiceNumber(),
+                    'invoiceType' => $invoice->getInvoiceType(),
+                    'status' => $invoice->getStatus(),
+                    'total' => (float) $invoice->getTotal(),
+                    'dueDate' => $invoice->getDueDate()?->format('Y-m-d'),
+                ];
+            }
+
+            // Count guests from this reservation
+            $guestCount = $this->getReservationGuestCount($reservation);
+
+            $reservationSummaries[] = [
+                'reservationId' => $reservation->getId(),
+                'contactName' => $reservation->getContactName() ?? 'Neznámý',
+                'contactEmail' => $reservation->getContactEmail(),
+                'contactPhone' => $reservation->getContactPhone(),
+                'guestCount' => $guestCount,
+                'totalPrice' => $totalPrice,
+                'paidAmount' => $paidAmount,
+                'remainingAmount' => $remainingAmount,
+                'paymentStatus' => $paymentStatus,
+                'paymentMethod' => $reservation->getPaymentMethod(),
+                'paymentNote' => $reservation->getPaymentNote(),
+                'invoices' => $invoiceSummaries,
+            ];
+
+            // Update totals
+            $totals['totalExpected'] += $totalPrice;
+            $totals['totalPaid'] += $paidAmount;
+            $totals['totalRemaining'] += $remainingAmount;
+            $totals['reservationCount']++;
+
+            if ($paymentStatus === 'PAID') {
+                $totals['paidCount']++;
+            } elseif ($paymentStatus === 'PARTIAL') {
+                $totals['partialCount']++;
+            } else {
+                $totals['unpaidCount']++;
+            }
+        }
+
+        // Get all invoices linked to the event via EventInvoice
+        $eventInvoices = $event->getEventInvoices();
+        $allInvoices = [];
+        foreach ($eventInvoices as $ei) {
+            $invoice = $ei->getInvoice();
+            if ($invoice) {
+                $allInvoices[] = [
+                    'id' => $invoice->getId(),
+                    'invoiceNumber' => $invoice->getInvoiceNumber(),
+                    'invoiceType' => $invoice->getInvoiceType(),
+                    'status' => $invoice->getStatus(),
+                    'total' => (float) $invoice->getTotal(),
+                    'customerName' => $invoice->getCustomerName(),
+                    'reservationId' => $invoice->getReservation()?->getId(),
+                    'dueDate' => $invoice->getDueDate()?->format('Y-m-d'),
+                    'paidAt' => $invoice->getPaidAt()?->format('Y-m-d'),
+                ];
+            }
+        }
+
+        return [
+            'reservations' => $reservationSummaries,
+            'totals' => $totals,
+            'invoices' => $allInvoices,
         ];
     }
 
@@ -399,18 +620,32 @@ class EventDashboardService
 
     // Helper methods
 
-    private function filterGuestsBySpace(iterable $guests, string $spaceName): array
+    private function filterGuestsBySpace(iterable $guests, string $spaceName, bool $isFirstSpace = false): array
     {
         $result = [];
+
         foreach ($guests as $guest) {
+            // First check if guest has direct space assignment
+            $guestSpace = $guest->getSpace();
+
+            if ($guestSpace !== null) {
+                // Case-insensitive comparison
+                if (strcasecmp($guestSpace, $spaceName) === 0) {
+                    $result[] = $guest;
+                }
+                continue;
+            }
+
+            // Fall back to table's room
             $table = $guest->getEventTable();
-            if ($table && $table->getRoom() === $spaceName) {
+            if ($table && strcasecmp($table->getRoom() ?? '', $spaceName) === 0) {
                 $result[] = $guest;
-            } elseif (!$table) {
-                // Guests without table assignment go to first/default space
+            } elseif (!$table && $isFirstSpace) {
+                // Guests without any assignment go to first/default space
                 $result[] = $guest;
             }
         }
+
         return $result;
     }
 
@@ -418,9 +653,15 @@ class EventDashboardService
     {
         $spaces = [];
         foreach ($guests as $guest) {
-            $table = $guest->getEventTable();
-            $space = $table ? $table->getRoom() : 'default';
-            $spaces[$space] = true;
+            // Check direct space first
+            $space = $guest->getSpace();
+            if ($space === null) {
+                // Fall back to table's room
+                $table = $guest->getEventTable();
+                $space = $table ? $table->getRoom() : 'default';
+            }
+            // Normalize to lowercase for comparison
+            $spaces[strtolower($space ?? 'default')] = true;
         }
         return count($spaces) <= 1;
     }
@@ -457,6 +698,144 @@ class EventDashboardService
         return array_values($breakdown);
     }
 
+    /**
+     * Get menu breakdown grouped by nationality
+     */
+    private function getMenuByNationality(array $guests): array
+    {
+        $byNationality = [];
+
+        foreach ($guests as $guest) {
+            $nat = $guest->getNationality() ?? 'unknown';
+            $menuItem = $guest->getMenuItem();
+            $menuName = $menuItem ? $menuItem->getMenuName() : 'Bez menu';
+            $surcharge = $menuItem ? (float) ($menuItem->getPricePerUnit() ?? 0) : 0;
+
+            if (!isset($byNationality[$nat])) {
+                $byNationality[$nat] = [
+                    'nationality' => $nat,
+                    'menus' => [],
+                    'totalCount' => 0,
+                ];
+            }
+
+            $byNationality[$nat]['totalCount']++;
+
+            if (!isset($byNationality[$nat]['menus'][$menuName])) {
+                $byNationality[$nat]['menus'][$menuName] = [
+                    'menuName' => $menuName,
+                    'count' => 0,
+                    'surcharge' => $surcharge,
+                ];
+            }
+            $byNationality[$nat]['menus'][$menuName]['count']++;
+        }
+
+        // Convert menus from associative to indexed arrays and sort by totalCount
+        $result = [];
+        foreach ($byNationality as $nat => $data) {
+            $data['menus'] = array_values($data['menus']);
+            $result[] = $data;
+        }
+
+        // Sort by totalCount descending
+        usort($result, fn($a, $b) => $b['totalCount'] - $a['totalCount']);
+
+        return $result;
+    }
+
+    /**
+     * Get menu breakdown grouped by reservation
+     */
+    private function getMenuByReservation(array $guests): array
+    {
+        $byReservation = [];
+
+        foreach ($guests as $guest) {
+            $reservation = $guest->getReservation();
+            if (!$reservation) {
+                continue; // Skip guests without reservation
+            }
+
+            $resId = $reservation->getId();
+            $menuItem = $guest->getMenuItem();
+            $menuName = $menuItem ? $menuItem->getMenuName() : 'Bez menu';
+            $surcharge = $menuItem ? (float) ($menuItem->getPricePerUnit() ?? 0) : 0;
+
+            if (!isset($byReservation[$resId])) {
+                $byReservation[$resId] = [
+                    'reservationId' => $resId,
+                    'contactName' => $reservation->getContactName() ?? 'Neznama rezervace',
+                    'nationality' => $reservation->getContactNationality(),
+                    'menus' => [],
+                    'totalCount' => 0,
+                ];
+            }
+
+            $byReservation[$resId]['totalCount']++;
+
+            if (!isset($byReservation[$resId]['menus'][$menuName])) {
+                $byReservation[$resId]['menus'][$menuName] = [
+                    'menuName' => $menuName,
+                    'count' => 0,
+                    'surcharge' => $surcharge,
+                ];
+            }
+            $byReservation[$resId]['menus'][$menuName]['count']++;
+        }
+
+        // Convert menus from associative to indexed arrays
+        $result = [];
+        foreach ($byReservation as $resId => $data) {
+            $data['menus'] = array_values($data['menus']);
+            $result[] = $data;
+        }
+
+        // Sort by totalCount descending
+        usort($result, fn($a, $b) => $b['totalCount'] - $a['totalCount']);
+
+        return $result;
+    }
+
+    /**
+     * Translate category label - handles formats like "security_FOLKLORE_SHOW" and "cisniciWaiters"
+     */
+    private function translateCategoryLabel(string $category): string
+    {
+        // First check exact match in labels (case-insensitive)
+        $categoryLower = strtolower($category);
+        foreach (self::STAFFING_CATEGORY_LABELS as $key => $label) {
+            if (strtolower($key) === $categoryLower) {
+                return $label;
+            }
+        }
+
+        // Check for partial match with the original category
+        foreach (self::STAFFING_CATEGORY_LABELS as $key => $label) {
+            if (str_contains($categoryLower, strtolower($key)) || str_contains(strtolower($key), $categoryLower)) {
+                return $label;
+            }
+        }
+
+        // Normalize and try again
+        $normalized = $this->normalizeCategory($category);
+        if (isset(self::STAFFING_CATEGORY_LABELS[$normalized])) {
+            return self::STAFFING_CATEGORY_LABELS[$normalized];
+        }
+
+        // Extract base category (before underscore with event type)
+        $baseCategory = strtolower(preg_replace('/_[A-Z_]+$/', '', $category));
+        return self::STAFFING_CATEGORY_LABELS[$baseCategory] ?? ucfirst(str_replace('_', ' ', $baseCategory));
+    }
+
+    /**
+     * Extract base category from full category string (e.g., "security_FOLKLORE_SHOW" -> "security")
+     */
+    private function getBaseCategory(string $category): string
+    {
+        return strtolower(preg_replace('/_[A-Z_]+$/', '', $category));
+    }
+
     private function isRoleInCategory(int $roleId, string $category): bool
     {
         $role = $this->staffRoleRepo->find($roleId);
@@ -464,26 +843,108 @@ class EventDashboardService
             return false;
         }
 
-        // Map role names to categories
+        // Normalize the category to find matching role keywords
+        $normalizedCategory = $this->normalizeCategory($category);
+
+        // Map role names to normalized categories
         $roleName = strtolower($role->getName());
         $categoryMap = [
-            'cisniciWaiters' => ['waiter', 'číšník', 'cisnik', 'servírka'],
-            'kuchariChefs' => ['chef', 'cook', 'kuchař', 'kuchar'],
-            'pomocneSilyHelpers' => ['helper', 'pomocná síla', 'pomocne sily'],
-            'moderatoriHosts' => ['moderator', 'moderátor', 'host'],
-            'muzikantiMusicians' => ['musician', 'muzikant', 'hudebník'],
-            'tanecniciDancers' => ['dancer', 'tanečník', 'tanecnik'],
-            'fotografkyPhotographers' => ['photographer', 'fotograf'],
-            'sperkyJewelry' => ['jewelry', 'šperky', 'sperky'],
+            'waiter' => ['waiter', 'head_waiter', 'číšník', 'cisnik', 'servírka', 'cisnici'],
+            'chef' => ['chef', 'head_chef', 'sous_chef', 'prep_cook', 'cook', 'kuchař', 'kuchar', 'kuchari'],
+            'helper' => ['helper', 'pomocnik', 'pomocná', 'pomocne', 'pomocnesily'],
+            'host' => ['host', 'moderator', 'moderátor', 'moderatori'],
+            'musician' => ['musician', 'muzikant', 'hudebník', 'hudebnik', 'muzikanti'],
+            'dancer' => ['dancer', 'tanečník', 'tanecnik', 'tanecnici'],
+            'photographer' => ['photographer', 'fotograf', 'fotografka', 'fotografky'],
+            'jewelry' => ['jewelry', 'šperky', 'sperky', 'prodejce'],
+            'coordinator' => ['coordinator', 'koordinátor', 'koordinator'],
+            'bartender' => ['bartender', 'barman', 'barmanka'],
+            'hostess' => ['hostess', 'hosteska'],
+            'security' => ['security', 'ochranka', 'bodyguard'],
+            'sound_tech' => ['sound_tech', 'zvukař', 'zvukar', 'technik'],
+            'cleaner' => ['cleaner', 'uklízeč', 'uklizec', 'úklid'],
+            'driver' => ['driver', 'řidič', 'ridic'],
+            'manager' => ['manager', 'manažer', 'manazer'],
         ];
 
-        $keywords = $categoryMap[$category] ?? [];
+        $keywords = $categoryMap[$normalizedCategory] ?? [$normalizedCategory];
         foreach ($keywords as $keyword) {
             if (str_contains($roleName, $keyword)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Normalize category name to a standard format
+     * Handles: "cisniciWaiters", "waiter_FOLKLORE_SHOW", "waiter"
+     */
+    private function normalizeCategory(string $category): string
+    {
+        $categoryLower = strtolower($category);
+
+        // Map old Czech/English mixed names to normalized categories
+        $normalizationMap = [
+            'cisniciwaiter' => 'waiter',
+            'kucharichef' => 'chef',
+            'pomocnesilyhelper' => 'helper',
+            'moderatorihost' => 'host',
+            'muzikantimusician' => 'musician',
+            'tanecnicidancer' => 'dancer',
+            'fotografkyphotographer' => 'photographer',
+            'sperkyjewelry' => 'jewelry',
+        ];
+
+        // Check for old format (e.g., "cisniciWaiters" -> "cisniciwaiter")
+        foreach ($normalizationMap as $pattern => $normalized) {
+            if (str_starts_with($categoryLower, substr($pattern, 0, 6))) {
+                return $normalized;
+            }
+        }
+
+        // Extract base category from event-type-specific format (e.g., "waiter_FOLKLORE_SHOW" -> "waiter")
+        return $this->getBaseCategory($category);
+    }
+
+    /**
+     * Get the primary staff role ID for a formula category
+     */
+    private function getRoleIdForCategory(string $category): ?int
+    {
+        // Normalize to standard category first
+        $normalizedCategory = $this->normalizeCategory($category);
+
+        // Map normalized categories to Czech role names (matching database)
+        $categoryToRoleNames = [
+            'waiter' => ['Číšník', 'WAITER', 'Cisnik'],
+            'chef' => ['Kuchař', 'CHEF', 'Kuchar'],
+            'helper' => ['Pomocná síla', 'HELPER', 'Pomocnik'],
+            'host' => ['Moderátor', 'HOST', 'Moderator'],
+            'musician' => ['Kapela', 'MUSICIAN', 'Hudebník'],
+            'dancer' => ['Tanečník', 'DANCER', 'Tanecnik'],
+            'photographer' => ['Fotograf', 'PHOTOGRAPHER'],
+            'jewelry' => ['Prodejce šperků', 'JEWELRY', 'Sperky'],
+            'coordinator' => ['Koordinátor', 'COORDINATOR', 'Koordinator'],
+            'bartender' => ['Barman', 'BARTENDER'],
+            'hostess' => ['Hosteska', 'HOSTESS'],
+            'security' => ['Ochranka', 'SECURITY'],
+            'sound_tech' => ['Zvukař', 'SOUND_TECH'],
+            'cleaner' => ['Úklid', 'CLEANER'],
+            'driver' => ['Řidič', 'DRIVER'],
+            'manager' => ['Manažer', 'MANAGER'],
+        ];
+
+        $possibleNames = $categoryToRoleNames[$normalizedCategory] ?? [strtoupper($normalizedCategory)];
+
+        foreach ($possibleNames as $roleName) {
+            $role = $this->staffRoleRepo->findOneBy(['name' => $roleName]);
+            if ($role) {
+                return $role->getId();
+            }
+        }
+
+        return null;
     }
 
     private function getReservationGuestCount($reservation): int
@@ -525,18 +986,192 @@ class EventDashboardService
         return $labels[$category] ?? $category;
     }
 
+    /**
+     * Normalize event type to match formula naming convention.
+     * Maps Czech/legacy names to standard English format.
+     */
+    private function normalizeEventType(string $eventType): string
+    {
+        $eventTypeUpper = strtoupper($eventType);
+
+        // Map Czech/legacy event types to standard English format
+        $typeMap = [
+            'FOLKLORNI_SHOW' => 'FOLKLORE_SHOW',
+            'FOLKLORNÍ_SHOW' => 'FOLKLORE_SHOW',
+            'SVATBA' => 'WEDDING',
+            'FIREMNI_AKCE' => 'CORPORATE',
+            'FIREMNÍ_AKCE' => 'CORPORATE',
+            'SOUKROMA_AKCE' => 'PRIVATE_EVENT',
+            'SOUKROMÁ_AKCE' => 'PRIVATE_EVENT',
+        ];
+
+        return $typeMap[$eventTypeUpper] ?? $eventTypeUpper;
+    }
+
+    /**
+     * Calculate staff requirements from formulas (legacy fallback method)
+     * Used when no stored requirements exist and StaffRequirementService is not available
+     */
+    private function calculateRequirementsFromFormulas(Event $event, iterable $assignments): array
+    {
+        $totalGuests = $event->getGuestsTotal();
+        $eventType = $event->getEventType();
+
+        // Get applicable formulas
+        $allFormulas = $this->staffingFormulaRepo->findEnabled();
+
+        // Normalize event type to match formula naming convention
+        $normalizedEventType = $eventType ? $this->normalizeEventType($eventType) : null;
+
+        // Filter formulas by event type if applicable
+        $formulas = [];
+        if ($normalizedEventType) {
+            // Try event-type-specific formulas first
+            foreach ($allFormulas as $f) {
+                if (str_ends_with(strtoupper($f->getCategory()), '_' . $normalizedEventType)) {
+                    $formulas[] = $f;
+                }
+            }
+        }
+
+        // Fallback to generic formulas if no event-type-specific ones found
+        if (empty($formulas)) {
+            foreach ($allFormulas as $f) {
+                if (!preg_match('/_[A-Z]+/', $f->getCategory())) {
+                    $formulas[] = $f;
+                }
+            }
+        }
+
+        $required = [];
+
+        foreach ($formulas as $formula) {
+            $category = $this->normalizeCategory($formula->getCategory());
+            $ratio = $formula->getRatio();
+            $requiredCount = $ratio > 0 ? (int) ceil($totalGuests / $ratio) : 0;
+            $categoryRoleId = $this->getRoleIdForCategory($category);
+
+            // Count assigned staff in this category
+            $assigned = 0;
+            $confirmed = 0;
+            $present = 0;
+            foreach ($assignments as $assignment) {
+                $roleId = $assignment->getStaffRoleId();
+                if ($roleId && $this->isRoleInCategory($roleId, $category)) {
+                    $assigned++;
+                    $status = $assignment->getAttendanceStatus();
+                    if ($status === 'CONFIRMED') {
+                        $confirmed++;
+                    }
+                    if ($status === 'PRESENT') {
+                        $present++;
+                        $confirmed++;
+                    }
+                }
+            }
+
+            $required[] = [
+                'category' => $category,
+                'label' => $this->translateCategoryLabel($category),
+                'roleId' => $categoryRoleId,
+                'required' => $requiredCount,
+                'assigned' => $assigned,
+                'confirmed' => $confirmed,
+                'present' => $present,
+                'shortfall' => max(0, $requiredCount - $assigned),
+                'operationalShortfall' => max(0, $requiredCount - $present),
+                'isManualOverride' => false,
+            ];
+        }
+
+        return $required;
+    }
+
     private function eventToArray(Event $event): array
     {
+        $guests = $event->getGuests();
+
+        // Collect unique reservations with guest counts
+        $reservationData = []; // [id => ['reservation' => Reservation, 'guestCount' => int]]
+        foreach ($guests as $guest) {
+            $reservation = $guest->getReservation();
+            if ($reservation) {
+                $resId = $reservation->getId();
+                if (!isset($reservationData[$resId])) {
+                    $reservationData[$resId] = [
+                        'reservation' => $reservation,
+                        'guestCount' => 0,
+                    ];
+                }
+                $reservationData[$resId]['guestCount']++;
+            }
+        }
+
+        // Build source reservations array
+        $sourceReservations = [];
+        foreach ($reservationData as $data) {
+            $res = $data['reservation'];
+            $sourceReservations[] = [
+                'id' => $res->getId(),
+                'contactName' => $res->getContactName() ?? 'Neznámý',
+                'guestCount' => $data['guestCount'],
+            ];
+        }
+
+        // Get space names
+        $spaceNames = [];
+        foreach ($event->getSpaces() as $space) {
+            $spaceNames[] = $space->getSpaceName();
+        }
+        // If no spaces defined, use venue as default
+        if (empty($spaceNames) && $event->getVenue()) {
+            $spaceNames[] = $event->getVenue();
+        }
+
+        // Aggregate nationality breakdown from all guests
+        $nationalityBreakdown = [];
+        foreach ($guests as $guest) {
+            $nat = $guest->getNationality() ?? 'unknown';
+            $nationalityBreakdown[$nat] = ($nationalityBreakdown[$nat] ?? 0) + 1;
+        }
+        arsort($nationalityBreakdown);
+
+        // Count paying vs non-paying guests based on type
+        // driver, guide = non-paying (neplatící)
+        // adult, child, infant = paying (platící)
+        $guestsPaid = 0;
+        $guestsFree = 0;
+        foreach ($guests as $guest) {
+            $type = $guest->getType();
+            if ($type === 'driver' || $type === 'guide') {
+                $guestsFree++;
+            } else {
+                $guestsPaid++;
+            }
+        }
+        $guestsTotal = $guestsPaid + $guestsFree;
+
+        // Calculate staff summary from staffing overview
+        $staffingData = $this->getStaffingOverview($event);
+        $staffRequired = 0;
+        $staffAssigned = 0;
+        $staffPresent = 0;
+        foreach ($staffingData['required'] as $req) {
+            $staffRequired += $req['required'];
+            $staffAssigned += $req['assigned'];
+            $staffPresent += $req['present'];
+        }
+
         return [
             'id' => $event->getId(),
             'name' => $event->getName(),
-            'eventType' => $event->getEventType(),
+            'eventType' => $this->normalizeEventTypeForFrontend($event->getEventType()),
             'eventDate' => $event->getEventDate()->format('Y-m-d'),
             'eventTime' => $event->getEventTime()->format('H:i:s'),
             'durationMinutes' => $event->getDurationMinutes(),
-            'guestsPaid' => $event->getGuestsPaid(),
-            'guestsFree' => $event->getGuestsFree(),
-            'guestsTotal' => $event->getGuestsTotal(),
+            'guestsPaid' => $guestsPaid,
+            'guestsFree' => $guestsFree,
+            'guestsTotal' => $guestsTotal,
             'venue' => $event->getVenue(),
             'status' => $event->getStatus(),
             'language' => $event->getLanguage(),
@@ -544,6 +1179,13 @@ class EventDashboardService
             'organizerPerson' => $event->getOrganizerPerson(),
             'organizerPhone' => $event->getOrganizerPhone(),
             'organizerEmail' => $event->getOrganizerEmail(),
+            'reservationCount' => count($sourceReservations),
+            'spaces' => $spaceNames,
+            'nationalityBreakdown' => $nationalityBreakdown,
+            'sourceReservations' => $sourceReservations,
+            'staffRequired' => $staffRequired,
+            'staffAssigned' => $staffAssigned,
+            'staffPresent' => $staffPresent,
         ];
     }
 }

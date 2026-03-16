@@ -6,6 +6,7 @@ namespace App\Controller;
 use App\Repository\InvoiceRepository;
 use App\Repository\ReservationRepository;
 use App\Service\InvoiceService;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -19,6 +20,7 @@ class InvoiceController extends AbstractController
         private InvoiceRepository $invoiceRepository,
         private ReservationRepository $reservationRepository,
         private InvoiceService $invoiceService,
+        private EntityManagerInterface $entityManager,
     ) {
     }
 
@@ -286,6 +288,21 @@ class InvoiceController extends AbstractController
         $invoice = $this->invoiceService->cancel($invoice);
 
         return new JsonResponse($this->invoiceService->toArray($invoice));
+    }
+
+    #[Route('/{id}', methods: ['DELETE'], requirements: ['id' => '\d+'])]
+    public function delete(int $id): JsonResponse
+    {
+        $invoice = $this->invoiceRepository->find($id);
+
+        if (!$invoice) {
+            return new JsonResponse(['error' => 'Faktura nenalezena'], Response::HTTP_NOT_FOUND);
+        }
+
+        $this->entityManager->remove($invoice);
+        $this->entityManager->flush();
+
+        return new JsonResponse(null, Response::HTTP_NO_CONTENT);
     }
 
     #[Route('/overdue', methods: ['GET'])]

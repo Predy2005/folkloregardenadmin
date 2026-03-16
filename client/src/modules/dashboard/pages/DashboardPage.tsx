@@ -8,6 +8,8 @@ import type { Reservation } from '@shared/types';
 import dayjs from 'dayjs';
 import { StatusBadge } from '@/shared/components/StatusBadge';
 import { Link } from 'wouter';
+import { PageHeader } from "@/shared/components/PageHeader";
+import { formatCurrency } from '@/shared/lib/formatting';
 import {
   BarChart,
   Bar,
@@ -165,8 +167,8 @@ export default function Dashboard() {
     },
     {
       title: 'Celkové příjmy',
-      value: `${totalRevenue.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč`,
-      subtitle: `Průměrně ${avgRevenuePerReservation.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč na rezervaci`,
+      value: `${formatCurrency(totalRevenue)}`,
+      subtitle: `Průměrně ${formatCurrency(avgRevenuePerReservation)} na rezervaci`,
       icon: CreditCard,
       color: 'text-purple-500',
       bgColor: 'bg-purple-500/10',
@@ -210,14 +212,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-          Statistiky
-        </h1>
-        <p className="text-muted-foreground">
-          Přehled rezervací, příjmů a obsazenosti
-        </p>
-      </div>
+      <PageHeader title="Statistiky" description="Přehled rezervací, příjmů a obsazenosti" />
 
       {/* Stats Grid */}
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-5">
@@ -331,7 +326,7 @@ export default function Dashboard() {
                         borderRadius: "6px",
                       }}
                       formatter={(value: any) =>
-                        `${value.toLocaleString("cs-CZ")} Kč`
+                        `${formatCurrency(value)}`
                       }
                     />
                     <Line

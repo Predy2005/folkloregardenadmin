@@ -32,6 +32,9 @@ class Recipe
     #[ORM\Column(type: Types::INTEGER, options: ['default' => 1])]
     private int $portions = 1;
 
+    #[ORM\Column(type: Types::DECIMAL, precision: 10, scale: 2, nullable: true)]
+    private ?string $portionWeight = null;
+
     #[ORM\Column(type: Types::DATETIME_MUTABLE)]
     private \DateTimeInterface $createdAt;
 
@@ -68,6 +71,9 @@ class Recipe
 
     public function getPortions(): int { return $this->portions; }
     public function setPortions(int $v): self { $this->portions = $v; return $this; }
+
+    public function getPortionWeight(): ?string { return $this->portionWeight; }
+    public function setPortionWeight(?string $v): self { $this->portionWeight = $v; return $this; }
 
     public function getCreatedAt(): \DateTimeInterface { return $this->createdAt; }
     public function setCreatedAt(\DateTimeInterface $d): self { $this->createdAt = $d; return $this; }

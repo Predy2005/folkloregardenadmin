@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { Skeleton } from "@/shared/components/ui/skeleton";
-import { useToast } from "@/shared/hooks/use-toast";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 
 const tableSchema = z.object({
@@ -36,7 +36,6 @@ export interface TablesTabProps {
 }
 
 export default function TablesTab({ eventId, tables, isLoading }: TablesTabProps) {
-  const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<EventTable | null>(null);
 
@@ -58,12 +57,12 @@ export default function TablesTab({ eventId, tables, isLoading }: TablesTabProps
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "tables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
-      toast({ title: "Úspěch", description: "Stůl byl přidán" });
+      successToast("Stůl byl přidán");
       setDialogOpen(false);
       form.reset();
     },
     onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
+      errorToast(error);
     },
   });
 
@@ -74,13 +73,13 @@ export default function TablesTab({ eventId, tables, isLoading }: TablesTabProps
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "tables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
-      toast({ title: "Úspěch", description: "Stůl byl aktualizován" });
+      successToast("Stůl byl aktualizován");
       setDialogOpen(false);
       setEditingItem(null);
       form.reset();
     },
     onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
+      errorToast(error);
     },
   });
 
@@ -91,10 +90,10 @@ export default function TablesTab({ eventId, tables, isLoading }: TablesTabProps
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "tables"] });
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
-      toast({ title: "Úspěch", description: "Stůl byl smazán" });
+      successToast("Stůl byl smazán");
     },
     onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
+      errorToast(error);
     },
   });
 

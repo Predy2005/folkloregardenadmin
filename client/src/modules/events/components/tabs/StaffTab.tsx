@@ -1,35 +1,35 @@
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { useMutation } from "@tanstack/react-query";
+import { useState, useMemo } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/shared/lib/queryClient";
 import { api } from "@/shared/lib/api";
+import { useToggleSet } from "@/shared/hooks/useToggleSet";
 import type { EventStaffAssignment, StaffMember } from "@shared/types";
+import type { DashboardData } from "../../types";
 import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/shared/components/ui/form";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
-import { Textarea } from "@/shared/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Skeleton } from "@/shared/components/ui/skeleton";
-import { useToast } from "@/shared/hooks/use-toast";
-import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
-
-const staffAssignmentSchema = z.object({
-  staffMemberId: z.number({
-    required_error: "Vyberte člena personálu",
-  }),
-  assignmentStatus: z.string().min(1, "Zadejte status přiřazení"),
-  attendanceStatus: z.string().min(1, "Zadejte status docházky"),
-  hoursWorked: z.number().min(0, "Počet hodin musí být alespoň 0").default(0),
-  paymentAmount: z.number().optional(),
-  paymentStatus: z.string().min(1, "Zadejte status platby"),
-  notes: z.string().optional(),
-});
-
-type StaffAssignmentForm = z.infer<typeof staffAssignmentSchema>;
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
+import { formatCurrency } from "@/shared/lib/formatting";
+import {
+  useRecalculateStaffRequirements,
+  useUpdateStaffRequirement,
+  useResetStaffRequirement,
+} from "../../hooks";
+import { usePayAllStaff } from "../../hooks/useDashboardMutations";
+import {
+  Loader2,
+  Plus,
+  UserCheck,
+  Check,
+  X,
+  DollarSign,
+  Clock,
+  Users,
+  RefreshCw,
+  AlertTriangle,
+  Banknote,
+} from "lucide-react";
+import { AddStaffDialog, PaymentDialog, StaffCategorySection, StaffAssignmentRow } from "./staff";
 
 export interface StaffTabProps {
   eventId: number;
@@ -39,55 +39,45 @@ export interface StaffTabProps {
 }
 
 export default function StaffTab({ eventId, staffAssignments, staffMembers, isLoading }: StaffTabProps) {
-  const { toast } = useToast();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<EventStaffAssignment | null>(null);
+  const [addStaffCategory, setAddStaffCategory] = useState<string | null>(null);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [selectedAssignment, setSelectedAssignment] = useState<EventStaffAssignment | null>(null);
+  const expandedCategories = useToggleSet<string>();
 
-  const form = useForm<StaffAssignmentForm>({
-    resolver: zodResolver(staffAssignmentSchema),
-    defaultValues: {
-      staffMemberId: 0,
-      assignmentStatus: "ASSIGNED",
-      attendanceStatus: "PENDING",
-      hoursWorked: 0,
-      paymentAmount: undefined,
-      paymentStatus: "PENDING",
-      notes: "",
-    },
+  // Mutations for staff requirements
+  const recalculateMutation = useRecalculateStaffRequirements(eventId);
+  const updateRequirementMutation = useUpdateStaffRequirement(eventId);
+  const resetRequirementMutation = useResetStaffRequirement(eventId);
+  const payAllStaffMutation = usePayAllStaff(eventId);
+
+  // Fetch dashboard data for staffing requirements
+  const { data: dashboardData, isLoading: dashboardLoading } = useQuery<DashboardData>({
+    queryKey: ["/api/events", eventId, "manager-dashboard"],
+    queryFn: () => api.get(`/api/events/${eventId}/manager-dashboard`),
+    enabled: !!eventId,
   });
 
-  const createMutation = useMutation({
-    mutationFn: async (data: StaffAssignmentForm) => {
-      return await api.post(`/api/events/${eventId}/staff-assignments`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "staff-assignments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
-      toast({ title: "Úspěch", description: "Personál byl přidán" });
-      setDialogOpen(false);
-      form.reset();
-    },
-    onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
-    },
-  });
+  const staffing = dashboardData?.staffing;
 
-  const updateMutation = useMutation({
-    mutationFn: async (data: StaffAssignmentForm & { id: number }) => {
-      return await api.put(`/api/events/${eventId}/staff-assignments/${data.id}`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "staff-assignments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
-      toast({ title: "Úspěch", description: "Personál byl aktualizován" });
-      setDialogOpen(false);
-      setEditingItem(null);
-      form.reset();
-    },
-    onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
-    },
-  });
+  // Get assigned staff IDs
+  const assignedStaffIds = useMemo(() =>
+    new Set(staffAssignments.map(a => a.staffMemberId)),
+    [staffAssignments]
+  );
+
+  // Calculate totals
+  const totals = useMemo(() => {
+    const presentCount = staffAssignments.filter(a => a.attendanceStatus === "PRESENT").length;
+    const paidCount = staffAssignments.filter(a => a.paymentStatus === "PAID").length;
+    const totalHours = staffAssignments.reduce((sum, a) => sum + (a.hoursWorked || 0), 0);
+    const totalPayment = staffAssignments.reduce((sum, a) => sum + (a.paymentAmount || 0), 0);
+    const totalRequired = staffing?.required.reduce((sum, r) => sum + r.required, 0) || 0;
+    const totalAssigned = staffAssignments.length;
+    return { presentCount, paidCount, totalHours, totalPayment, totalRequired, totalAssigned };
+  }, [staffAssignments, staffing]);
+
+  // Toggle category expansion
+  const toggleCategory = expandedCategories.toggle;
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -95,51 +85,45 @@ export default function StaffTab({ eventId, staffAssignments, staffMembers, isLo
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "staff-assignments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
-      toast({ title: "Úspěch", description: "Personál byl odebrán" });
+      queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "manager-dashboard"] });
+      successToast("Personál byl odebrán");
     },
     onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
+      errorToast(error);
     },
   });
 
-  const handleEdit = (item: EventStaffAssignment) => {
-    setEditingItem(item);
-    form.reset({
-      staffMemberId: item.staffMemberId,
-      assignmentStatus: item.assignmentStatus,
-      attendanceStatus: item.attendanceStatus,
-      hoursWorked: item.hoursWorked,
-      paymentAmount: item.paymentAmount,
-      paymentStatus: item.paymentStatus,
-      notes: item.notes || "",
-    });
-    setDialogOpen(true);
+  const updateAllAttendanceMutation = useMutation({
+    mutationFn: async (status: string) => {
+      const promises = staffAssignments.map((a) =>
+        api.put(`/api/events/${eventId}/staff-assignments/${a.id}/attendance`, { status })
+      );
+      return Promise.all(promises);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "staff-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "manager-dashboard"] });
+      successToast("Přítomnost aktualizována");
+    },
+    onError: () => {
+      errorToast("Nepodařilo se aktualizovat přítomnost");
+    },
+  });
+
+  const openPaymentDialog = (assignment: EventStaffAssignment) => {
+    setSelectedAssignment(assignment);
+    setPaymentDialogOpen(true);
   };
 
-  const handleAdd = () => {
-    setEditingItem(null);
-    form.reset({
-      staffMemberId: 0,
-      assignmentStatus: "ASSIGNED",
-      attendanceStatus: "PENDING",
-      hoursWorked: 0,
-      paymentAmount: undefined,
-      paymentStatus: "PENDING",
-      notes: "",
-    });
-    setDialogOpen(true);
+  const handleUpdateRequired = (category: string, count: number) => {
+    updateRequirementMutation.mutate({ category, count });
   };
 
-  const onSubmit = (data: StaffAssignmentForm) => {
-    if (editingItem) {
-      updateMutation.mutate({ ...data, id: editingItem.id });
-    } else {
-      createMutation.mutate(data);
-    }
+  const handleResetToAuto = (category: string) => {
+    resetRequirementMutation.mutate(category);
   };
 
-  if (isLoading) {
+  if (isLoading || dashboardLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-10 w-full" />
@@ -148,254 +132,194 @@ export default function StaffTab({ eventId, staffAssignments, staffMembers, isLo
     );
   }
 
+  const hasShortfall = totals.totalAssigned < totals.totalRequired;
+
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={handleAdd} data-testid="button-add-staff">
-          <Plus className="mr-2 h-4 w-4" />
-          Přidat personál
-        </Button>
-      </div>
-
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Jméno</TableHead>
-              <TableHead>Pozice</TableHead>
-              <TableHead>Status přiřazení</TableHead>
-              <TableHead>Status docházky</TableHead>
-              <TableHead>Hodiny</TableHead>
-              <TableHead>Částka</TableHead>
-              <TableHead>Status platby</TableHead>
-              <TableHead className="w-24">Akce</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {staffAssignments.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
-                  Zatím není přiřazen žádný personál
-                </TableCell>
-              </TableRow>
-            ) : (
-              staffAssignments.map((item) => (
-                <TableRow key={item.id} data-testid={`row-staff-${item.id}`}>
-                  <TableCell data-testid={`cell-staff-${item.id}-name`}>
-                    {item.staffMember ? `${item.staffMember.firstName} ${item.staffMember.lastName}` : "-"}
-                  </TableCell>
-                  <TableCell data-testid={`cell-staff-${item.id}-position`}>
-                    {item.staffMember?.position || "-"}
-                  </TableCell>
-                  <TableCell data-testid={`cell-staff-${item.id}-assignment`}>
-                    {item.assignmentStatus}
-                  </TableCell>
-                  <TableCell data-testid={`cell-staff-${item.id}-attendance`}>
-                    {item.attendanceStatus}
-                  </TableCell>
-                  <TableCell data-testid={`cell-staff-${item.id}-hours`}>{item.hoursWorked}</TableCell>
-                  <TableCell data-testid={`cell-staff-${item.id}-amount`}>{item.paymentAmount}</TableCell>
-                  <TableCell data-testid={`cell-staff-${item.id}-payment`}>{item.paymentStatus}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => handleEdit(item)}
-                        data-testid={`button-edit-staff-${item.id}`}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => deleteMutation.mutate(item.id)}
-                        data-testid={`button-delete-staff-${item.id}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+    <div className="space-y-6">
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Personál</span>
+            </div>
+            <div className={`text-2xl font-bold ${hasShortfall ? "text-red-600" : "text-green-600"}`}>
+              {totals.totalAssigned}/{totals.totalRequired}
+            </div>
+            {hasShortfall && (
+              <div className="text-xs text-red-600 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                Chybí {totals.totalRequired - totals.totalAssigned}
+              </div>
             )}
-          </TableBody>
-        </Table>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2">
+              <UserCheck className="h-4 w-4 text-green-600" />
+              <span className="text-sm text-muted-foreground">Přítomno</span>
+            </div>
+            <div className="text-2xl font-bold text-green-600">
+              {totals.presentCount}/{staffAssignments.length}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Odpracováno</span>
+            </div>
+            <div className="text-2xl font-bold">{totals.totalHours.toFixed(1)}h</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2">
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">K výplatě</span>
+            </div>
+            <div className="text-2xl font-bold">
+              {formatCurrency(totals.totalPayment)}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {totals.paidCount}/{staffAssignments.length} vyplaceno
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingItem ? "Upravit personál" : "Přidat personál"}</DialogTitle>
-            <DialogDescription>
-              Vyplňte údaje o přiřazení personálu
-            </DialogDescription>
-          </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="staffMemberId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Člen personálu *</FormLabel>
-                    <Select
-                      onValueChange={(value) => field.onChange(parseInt(value))}
-                      value={field.value?.toString()}
-                    >
-                      <FormControl>
-                        <SelectTrigger data-testid="select-staff-member">
-                          <SelectValue placeholder="Vyberte" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {staffMembers
-                          .filter((m) => m.isActive)
-                          .map((member) => (
-                            <SelectItem key={member.id} value={member.id.toString()}>
-                              {member.firstName} {member.lastName}
-                              {member.position && ` (${member.position})`}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
+      {/* Main staff card */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Přehled personálu
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => recalculateMutation.mutate(false)}
+                disabled={recalculateMutation.isPending}
+                title="Přepočítat požadavky podle počtu hostů"
+              >
+                <RefreshCw className={`h-4 w-4 mr-1 ${recalculateMutation.isPending ? "animate-spin" : ""}`} />
+                Přepočítat
+              </Button>
+              <Button size="sm" onClick={() => setAddStaffCategory("all")} data-testid="button-add-staff">
+                <Plus className="h-4 w-4 mr-1" />
+                Přidat
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Quick actions */}
+          {staffAssignments.length > 0 && (
+            <div className="flex gap-2 items-center pb-2 border-b">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => updateAllAttendanceMutation.mutate("PRESENT")}
+                disabled={updateAllAttendanceMutation.isPending}
+              >
+                {updateAllAttendanceMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4 mr-1" />
                 )}
-              />
-
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="assignmentStatus"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Status přiřazení *</FormLabel>
-                      <FormControl>
-                        <Input {...field} data-testid="input-assignment-status" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="attendanceStatus"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Status docházky *</FormLabel>
-                      <FormControl>
-                        <Input {...field} data-testid="input-attendance-status" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="hoursWorked"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Odpracované hodiny</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.5"
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                          data-testid="input-hours-worked"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="paymentAmount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Částka</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
-                          data-testid="input-payment-amount"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <FormField
-                control={form.control}
-                name="paymentStatus"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Status platby *</FormLabel>
-                    <FormControl>
-                      <Input {...field} data-testid="input-payment-status" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="notes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Poznámky</FormLabel>
-                    <FormControl>
-                      <Textarea {...field} data-testid="textarea-staff-notes" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <DialogFooter>
+                Všichni přítomni
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => updateAllAttendanceMutation.mutate("UNKNOWN")}
+                disabled={updateAllAttendanceMutation.isPending}
+              >
+                <X className="h-4 w-4 mr-1" />
+                Reset
+              </Button>
+              {totals.paidCount < staffAssignments.length && (
                 <Button
-                  type="button"
                   variant="outline"
-                  onClick={() => setDialogOpen(false)}
-                  data-testid="button-cancel-staff"
+                  size="sm"
+                  onClick={() => payAllStaffMutation.mutate()}
+                  disabled={payAllStaffMutation.isPending}
+                  className="ml-auto text-green-600 hover:text-green-700"
                 >
-                  Zrušit
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={createMutation.isPending || updateMutation.isPending}
-                  data-testid="button-submit-staff"
-                >
-                  {(createMutation.isPending || updateMutation.isPending) ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Ukládám...
-                    </>
-                  ) : editingItem ? (
-                    "Uložit"
+                  {payAllStaffMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                   ) : (
-                    "Přidat"
+                    <Banknote className="h-4 w-4 mr-1" />
                   )}
+                  Vyplatit vše
                 </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+              )}
+            </div>
+          )}
+
+          {/* Staff by category */}
+          {staffing && staffing.required.length > 0 ? (
+            <div className="space-y-2">
+              {staffing.required.map((req) => (
+                <StaffCategorySection
+                  key={req.category}
+                  requirement={req}
+                  assignments={staffAssignments}
+                  isExpanded={expandedCategories.isOpen(req.category)}
+                  onToggle={() => toggleCategory(req.category)}
+                  onAddStaff={() => setAddStaffCategory(req.category)}
+                  onDelete={(id) => deleteMutation.mutate(id)}
+                  onPayment={openPaymentDialog}
+                  onUpdateRequired={handleUpdateRequired}
+                  onResetToAuto={handleResetToAuto}
+                  isUpdatingRequirement={updateRequirementMutation.isPending || resetRequirementMutation.isPending}
+                  eventId={eventId}
+                />
+              ))}
+            </div>
+          ) : staffAssignments.length === 0 ? (
+            <div className="text-center text-muted-foreground py-8">
+              Zatím není přiřazen žádný personál
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {staffAssignments.map((assignment) => (
+                <StaffAssignmentRow
+                  key={assignment.id}
+                  assignment={assignment}
+                  eventId={eventId}
+                  onDelete={() => deleteMutation.mutate(assignment.id)}
+                  onPayment={() => openPaymentDialog(assignment)}
+                />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Add Staff Dialog */}
+      <AddStaffDialog
+        open={addStaffCategory !== null}
+        onOpenChange={(open) => !open && setAddStaffCategory(null)}
+        category={addStaffCategory}
+        eventId={eventId}
+        assignedStaffIds={assignedStaffIds}
+        staffMembers={staffMembers}
+      />
+
+      {/* Payment Dialog */}
+      <PaymentDialog
+        open={paymentDialogOpen}
+        onOpenChange={setPaymentDialogOpen}
+        assignment={selectedAssignment}
+        eventId={eventId}
+        staffMember={staffMembers.find(m => m.id === selectedAssignment?.staffMemberId)}
+      />
     </div>
   );
 }

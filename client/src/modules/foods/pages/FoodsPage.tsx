@@ -9,14 +9,13 @@ import { Input } from "@/shared/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/components/ui/tooltip";
 import { Edit, Plus, Trash2 } from "lucide-react";
+import { PageHeader } from "@/shared/components/PageHeader";
 import type { ReservationFood } from "@shared/types";
-import { useToast } from "@/shared/hooks/use-toast";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 
 export default function Foods() {
   const [, navigate] = useLocation();
   const [searchTerm, setSearchTerm] = useState("");
-  const { toast } = useToast();
-
   // Fetch foods
   const { data: foods, isLoading } = useQuery({
     queryKey: ["/api/reservation-foods"],
@@ -28,10 +27,10 @@ export default function Foods() {
     mutationFn: (id: number) => api.delete(`/api/reservation-foods/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/reservation-foods"] });
-      toast({ title: "Jídlo bylo úspěšně smazáno" });
+      successToast("Jídlo bylo úspěšně smazáno");
     },
     onError: () => {
-      toast({ title: "Chyba při mazání jídla", variant: "destructive" });
+      errorToast("Chyba při mazání jídla");
     },
   });
 
@@ -51,15 +50,7 @@ export default function Foods() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-            Jídla
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Správa nabídky jídel, cen a dostupnosti
-          </p>
-        </div>
+      <PageHeader title="Jídla" description="Správa nabídky jídel, cen a dostupnosti">
         <Button
           onClick={() => navigate("/foods/new")}
           className="bg-gradient-to-r from-primary to-purple-600"
@@ -67,7 +58,7 @@ export default function Foods() {
           <Plus className="w-4 h-4 mr-2" />
           Nové jídlo
         </Button>
-      </div>
+      </PageHeader>
 
       <Card>
         <CardHeader>

@@ -26,6 +26,13 @@ export interface ReservationPerson {
   type: "adult" | "child" | "infant" | "driver" | "guide";
   menu: string;
   price: number;
+  nationality?: string;
+}
+
+export interface ReservationTransfer {
+  id?: number;
+  personCount: number;
+  address: string;
 }
 
 export interface Payment {
@@ -85,6 +92,11 @@ export interface Reservation {
   persons?: ReservationPerson[];
   payments?: Payment[];
   invoices?: Invoice[];
+  transfers?: ReservationTransfer[];
+
+  // Reservation type
+  reservationTypeId?: number;
+  reservationType?: { id: number; name: string; code: string; color: string } | null;
 
   // Payment fields
   source?: ReservationSource;
@@ -105,6 +117,17 @@ export interface ReservationFood {
   isChildrenMenu: boolean;
   externalId?: string;
   surcharge: number;  // příplatek k základní ceně (0 = v ceně, 75 = +75 Kč)
+}
+
+export interface ReservationType {
+  id: number;
+  name: string;
+  code: string;
+  color: string;
+  isSystem: boolean;
+  note?: string;
+  sortOrder: number;
+  createdAt: string;
 }
 
 export interface DisabledDate {
@@ -238,6 +261,7 @@ export interface Recipe {
   name: string;
   description?: string;
   portions: number;
+  portionWeight?: number;
   createdAt: string;
   updatedAt: string;
   ingredients?: RecipeIngredient[];
@@ -249,6 +273,105 @@ export interface RecipeIngredient {
   stockItemId: number;
   quantityRequired: number;
   stockItem?: StockItem;
+}
+
+// Menu-Recipe linking (which recipes compose a menu)
+export interface MenuRecipe {
+  id: number;
+  reservationFoodId: number;
+  recipeId: number;
+  portionsPerServing: number;
+  courseType?: 'starter' | 'soup' | 'main' | 'side' | 'dessert';
+  createdAt: string;
+  recipe?: {
+    id: number;
+    name: string;
+    description?: string;
+    portions: number;
+  };
+  reservationFood?: {
+    id: number;
+    name: string;
+  };
+}
+
+export const COURSE_TYPE_LABELS: Record<string, string> = {
+  starter: 'Předkrm',
+  soup: 'Polévka',
+  main: 'Hlavní chod',
+  side: 'Příloha',
+  dessert: 'Dezert',
+};
+
+// Stock requirement calculation types
+export interface StockRequirementDetail {
+  menuName: string;
+  recipeName: string;
+  courseType?: string;
+  guestCount: number;
+  subtotal: number;
+  eventName?: string;
+  eventId?: number;
+}
+
+export interface StockRequirementItem {
+  stockItemId: number;
+  stockItemName: string;
+  unit: string;
+  available: number;
+  required: number;
+  deficit: number;
+  surplus: number;
+  status: 'DEFICIT' | 'OK';
+  estimatedCost: number;
+  deficitCost: number;
+  details: StockRequirementDetail[];
+}
+
+export interface EventStockRequirements {
+  items: StockRequirementItem[];
+  summary: {
+    totalItems: number;
+    totalDeficits: number;
+    totalEstimatedCost: number;
+  };
+}
+
+export interface TimelineEventRequirement {
+  stockItemId: number;
+  stockItemName: string;
+  unit: string;
+  required: number;
+  runningAvailable: number;
+  deficit: number;
+  status: 'DEFICIT' | 'OK';
+  estimatedCost: number;
+}
+
+export interface TimelineEvent {
+  eventId: number;
+  eventName: string;
+  eventDate: string;
+  guestsTotal: number;
+  items: TimelineEventRequirement[];
+  summary: { totalItems: number; totalDeficits: number; totalEstimatedCost: number };
+}
+
+export interface AggregatedStockRequirements {
+  items: StockRequirementItem[];
+  events: {
+    eventId: number;
+    eventName: string;
+    eventDate: string;
+    deficits: number;
+    totalItems: number;
+  }[];
+  perEvent?: TimelineEvent[];
+  summary: {
+    totalEvents: number;
+    totalDeficits: number;
+    totalEstimatedCost: number;
+  };
 }
 
 export interface StockMovement {
@@ -528,6 +651,7 @@ export interface EventGuest {
 export interface EventMenu {
   id: number;
   eventId: number;
+  reservationId?: number;
   reservationFoodId?: number;
   menuName: string;
   quantity: number;
@@ -824,6 +948,7 @@ export const PERMISSION_MODULE_LABELS: Record<string, string> = {
   commissions: "Provize",
   cashbox: "Pokladna",
   disabled_dates: "Zakázané termíny",
+  reservation_types: "Druhy rezervací",
 };
 
 export const PERMISSION_ACTION_LABELS: Record<string, string> = {
@@ -1081,6 +1206,7 @@ export interface ManagerDashboardData {
   vouchers: DashboardVoucherSummary;
   financials: EventFinancials;
   stats: QuickStats;
+  pendingTransfers?: CashboxTransfer[];
 }
 
 export interface DashboardEvent {
@@ -1100,6 +1226,21 @@ export interface DashboardEvent {
   organizerPerson: string | null;
   organizerPhone: string | null;
   organizerEmail: string | null;
+  // Nové fieldy pro dashboard header
+  reservationCount: number;
+  spaces: string[];
+  nationalityBreakdown: Record<string, number>;
+  sourceReservations: DashboardSourceReservation[];
+  // Staff summary
+  staffRequired: number;
+  staffAssigned: number;
+  staffPresent: number;
+}
+
+export interface DashboardSourceReservation {
+  id: number;
+  contactName: string;
+  guestCount: number;
 }
 
 export interface SpaceGuestStats {
@@ -1110,12 +1251,28 @@ export interface SpaceGuestStats {
   presentGuests: number;
   nationalityBreakdown: Record<string, number>;
   menuBreakdown: MenuCount[];
+  menuByNationality: MenuByNationality[];
+  menuByReservation: MenuByReservation[];
 }
 
 export interface MenuCount {
   menuName: string;
   count: number;
   surcharge: number;
+}
+
+export interface MenuByNationality {
+  nationality: string;
+  menus: MenuCount[];
+  totalCount: number;
+}
+
+export interface MenuByReservation {
+  reservationId: number;
+  contactName: string;
+  nationality: string | null;
+  menus: MenuCount[];
+  totalCount: number;
 }
 
 export interface StaffingOverview {
@@ -1126,10 +1283,14 @@ export interface StaffingOverview {
 export interface StaffRequirement {
   category: string;
   label: string;
+  roleId: number | null;
   required: number;
   assigned: number;
   confirmed: number;
+  present: number;
   shortfall: number;
+  operationalShortfall: number;
+  isManualOverride: boolean;
 }
 
 export interface StaffAssignmentWithContact {
@@ -1190,16 +1351,136 @@ export interface EventFinancials {
   expensesByCategory: ExpenseCategory[];
   incomeByCategory: IncomeCategory[];
   settlement: SettlementSummary;
+  // New: Payment overview from reservations
+  payments: EventPaymentOverview;
+}
+
+// ==========================================
+// Event Payment Overview Types (from Reservations)
+// ==========================================
+
+export interface EventPaymentOverview {
+  reservations: ReservationPaymentSummary[];
+  totals: PaymentTotals;
+  invoices: EventInvoiceSummary[];
+}
+
+export interface ReservationPaymentSummary {
+  reservationId: number;
+  contactName: string;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  guestCount: number;
+  totalPrice: number;
+  paidAmount: number;
+  remainingAmount: number;
+  paymentStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
+  paymentMethod: string | null;
+  paymentNote: string | null;
+  invoices: ReservationInvoiceSummary[];
+}
+
+export interface ReservationInvoiceSummary {
+  id: number;
+  invoiceNumber: string;
+  invoiceType: string; // 'DEPOSIT' | 'FINAL' | 'PARTIAL'
+  status: string; // 'DRAFT' | 'SENT' | 'PAID' | 'CANCELLED'
+  total: number;
+  dueDate: string | null;
+}
+
+export interface PaymentTotals {
+  totalExpected: number;
+  totalPaid: number;
+  totalRemaining: number;
+  reservationCount: number;
+  paidCount: number;
+  partialCount: number;
+  unpaidCount: number;
+}
+
+export interface EventInvoiceSummary {
+  id: number;
+  invoiceNumber: string;
+  invoiceType: string;
+  status: string;
+  total: number;
+  customerName: string;
+  reservationId: number | null;
+  dueDate: string | null;
+  paidAt: string | null;
 }
 
 export interface CashboxSummary {
   id: number;
   name: string;
+  cashboxType?: 'MAIN' | 'EVENT';
   initialBalance: number;
   currentBalance: number;
   totalIncome: number;
   totalExpense: number;
   isActive: boolean;
+  lockedBy?: number | null;
+  lockedAt?: string | null;
+}
+
+export interface Cashbox {
+  id: number;
+  name: string;
+  description?: string;
+  cashboxType: 'MAIN' | 'EVENT';
+  currency: string;
+  initialBalance: string;
+  currentBalance: string;
+  eventId?: number | null;
+  eventName?: string | null;
+  openedAt: string;
+  closedAt?: string | null;
+  isActive: boolean;
+  lockedBy?: number | null;
+  lockedAt?: string | null;
+  notes?: string | null;
+  movements?: CashMovementItem[];
+}
+
+export interface CashMovementItem {
+  id: number;
+  movementType: 'INCOME' | 'EXPENSE';
+  category?: string | null;
+  amount: string;
+  currency: string;
+  description?: string | null;
+  paymentMethod?: string | null;
+  referenceId?: string | null;
+  staffMemberId?: number | null;
+  eventStaffAssignmentId?: number | null;
+  reservationId?: number | null;
+  userId?: number | null;
+  createdAt: string;
+}
+
+export interface CashboxClosureItem {
+  id: number;
+  expectedCash: string;
+  actualCash: string;
+  difference: string;
+  totalIncome: string;
+  totalExpense: string;
+  netResult: string;
+  notes?: string | null;
+  closedBy?: number | null;
+  closedAt: string;
+}
+
+export interface PayAllStaffResult {
+  success: boolean;
+  totalPaid: string;
+  paidCount: number;
+  results: Array<{
+    assignmentId: number;
+    staffName: string;
+    amount: string;
+  }>;
 }
 
 export interface ExpenseCategory {
@@ -1276,4 +1557,197 @@ export const INCOME_CATEGORIES = {
 } as const;
 
 export type IncomeCategoryType = keyof typeof INCOME_CATEGORIES;
+
+// Dynamic cash movement categories (stored in DB)
+export interface CashMovementCategory {
+  id: number;
+  name: string;
+  type: 'INCOME' | 'EXPENSE' | 'BOTH';
+  usageCount: number;
+  createdAt: string;
+  lastUsedAt: string;
+}
+
+export interface FilteredMovementsResponse {
+  movements: CashMovementItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+// Group Check-in Types
+export interface ReservationGuestGroup {
+  reservationId: number;
+  contactName: string | null;
+  contactPhone: string | null;
+  nationality: string | null;
+  totalCount: number;
+  presentCount: number;
+  paidCount: number;
+  adultCount: number;
+  childCount: number;
+  driverCount: number;
+  guideCount: number;
+  guestIds: number[];
+}
+
+export interface UngroupedGuest {
+  id: number;
+  name: string;
+  isPresent: boolean;
+  type: string;
+}
+
+export interface GuestsByReservationResponse {
+  groups: ReservationGuestGroup[];
+  ungroupedGuests: UngroupedGuest[];
+  summary: {
+    totalGroups: number;
+    totalGuests: number;
+    totalPresent: number;
+  };
+}
+
+// ============================================================================
+// UNIFIED GUEST SUMMARY (Single Source of Truth)
+// ============================================================================
+
+/**
+ * Guest type breakdown
+ * - "paying" = adult/child (has payment obligation)
+ * - "free" = driver/guide (no payment required)
+ */
+export interface GuestTypeBreakdown {
+  total: number;
+  paying: number;
+  free: number;
+  adults: number;
+  children: number;
+  drivers: number;
+  guides: number;
+}
+
+/**
+ * Check-in/presence status
+ */
+export interface GuestPresenceStatus {
+  total: number;
+  present: number;
+  absent: number;
+  percentage: number;
+}
+
+/**
+ * Payment status calculated from reservations
+ */
+export interface GuestPaymentStatus {
+  // Money
+  totalExpected: number;
+  totalPaid: number;
+  totalRemaining: number;
+  // Guest counts by payment status
+  guestsPaid: number;
+  guestsPartial: number;
+  guestsUnpaid: number;
+  // Reservation counts
+  reservationsPaid: number;
+  reservationsPartial: number;
+  reservationsUnpaid: number;
+}
+
+/**
+ * Space guest data
+ */
+export interface SpaceGuestData {
+  spaceName: string;
+  types: GuestTypeBreakdown;
+  presence: GuestPresenceStatus;
+  nationalityBreakdown: Record<string, number>;
+  menuBreakdown: { menuName: string; count: number; surcharge: number }[];
+}
+
+/**
+ * Menu breakdown item
+ */
+export interface MenuBreakdownItem {
+  menuName: string;
+  menuId: number | null;
+  count: number;
+  surcharge: number;
+}
+
+/**
+ * Reservation guest data (for check-in)
+ */
+export interface ReservationGuestData {
+  reservationId: number;
+  contactName: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  nationality: string | null;
+  types: GuestTypeBreakdown;
+  presence: GuestPresenceStatus;
+  paymentStatus: "PAID" | "PARTIAL" | "UNPAID";
+  paymentMethod: string | null;
+  totalPrice: number;
+  paidAmount: number;
+  paidPercentage: number;
+  // Menu breakdown for this reservation
+  menuBreakdown: MenuBreakdownItem[];
+  // Current space assignment
+  spaceName: string | null;
+  // Reservation type
+  reservationType?: { id: number; name: string; code: string; color: string; note?: string } | null;
+}
+
+/**
+ * Move guests request
+ */
+export interface MoveGuestsRequest {
+  eventId: number;
+  targetSpace: string;
+  // Filter criteria (at least one must be provided)
+  filter: {
+    // Move by reservation
+    reservationId?: number;
+    // Move by nationality
+    nationality?: string;
+    // Move by menu
+    menuId?: number;
+    // Move by source space
+    fromSpace?: string;
+    // Limit count (optional - move only X guests)
+    count?: number;
+  };
+}
+
+/**
+ * Complete event guest summary - SINGLE SOURCE OF TRUTH
+ */
+export interface EventGuestSummary {
+  types: GuestTypeBreakdown;
+  presence: GuestPresenceStatus;
+  payments: GuestPaymentStatus;
+  bySpace: SpaceGuestData[];
+  byReservation: ReservationGuestData[];
+}
+
+// ==========================================
+// Cashbox Transfers
+// ==========================================
+
+export interface CashboxTransfer {
+  id: number;
+  amount: string;
+  currency: string;
+  description?: string | null;
+  status: 'PENDING' | 'CONFIRMED' | 'REJECTED';
+  eventId: number;
+  eventName: string;
+  initiatedByName: string;
+  confirmedByName?: string | null;
+  initiatedAt: string;
+  confirmedAt?: string | null;
+}
 

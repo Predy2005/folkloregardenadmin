@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '@/shared/lib/api';
 import { queryClient } from '@/shared/lib/queryClient';
@@ -15,8 +14,10 @@ import type { User, Role } from '@shared/types';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useToast } from '@/shared/hooks/use-toast';
+import { successToast, errorToast } from '@/shared/lib/toast-helpers';
+import { useFormDialog } from '@/shared/hooks/useFormDialog';
 import dayjs from 'dayjs';
+import { PageHeader } from "@/shared/components/PageHeader";
 
 const userSchema = z.object({
   username: z.string().min(3, 'Uživatelské jméno musí mít alespoň 3 znaky'),
@@ -30,9 +31,7 @@ const userSchema = z.object({
 type UserForm = z.infer<typeof userSchema>;
 
 export default function Users() {
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const { toast } = useToast();
+  const dialog = useFormDialog<User>();
 
   const { data: users, isLoading } = useQuery({
     queryKey: ['/api/users'],
@@ -47,9 +46,9 @@ export default function Users() {
 
   // Get user's assigned role IDs when editing
   const { data: userRolesData } = useQuery({
-    queryKey: ['/api/permissions/users', editingUser?.id, 'roles'],
-    queryFn: () => api.get<{ userId: number; username: string; roles: { id: number; name: string; displayName?: string }[] }>(`/api/permissions/users/${editingUser?.id}/roles`),
-    enabled: !!editingUser,
+    queryKey: ['/api/permissions/users', dialog.editingItem?.id, 'roles'],
+    queryFn: () => api.get<{ userId: number; username: string; roles: { id: number; name: string; displayName?: string }[] }>(`/api/permissions/users/${dialog.editingItem?.id}/roles`),
+    enabled: !!dialog.editingItem,
   });
   const userRoles = userRolesData?.roles;
 
@@ -80,16 +79,12 @@ export default function Users() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/users'] });
-      setIsDialogOpen(false);
+      dialog.close();
       form.reset();
-      toast({ title: 'Uživatel byl úspěšně vytvořen' });
+      successToast('Uživatel byl úspěšně vytvořen');
     },
-    onError: (error: any) => {
-      toast({
-        title: 'Chyba při vytváření uživatele',
-        description: error.response?.data?.error || 'Neznámá chyba',
-        variant: 'destructive'
-      });
+    onError: (error: Error) => {
+      errorToast(error);
     },
   });
 
@@ -115,17 +110,12 @@ export default function Users() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/users'] });
       queryClient.invalidateQueries({ queryKey: ['/api/permissions/users'] });
-      setIsDialogOpen(false);
-      setEditingUser(null);
+      dialog.close();
       form.reset();
-      toast({ title: 'Uživatel byl úspěšně upraven' });
+      successToast('Uživatel byl úspěšně upraven');
     },
-    onError: (error: any) => {
-      toast({
-        title: 'Chyba při úpravě uživatele',
-        description: error.response?.data?.error || 'Neznámá chyba',
-        variant: 'destructive'
-      });
+    onError: (error: Error) => {
+      errorToast(error);
     },
   });
 
@@ -133,19 +123,14 @@ export default function Users() {
     mutationFn: (id: number) => api.delete(`/api/users/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/users'] });
-      toast({ title: 'Uživatel byl úspěšně smazán' });
+      successToast('Uživatel byl úspěšně smazán');
     },
-    onError: (error: any) => {
-      toast({
-        title: 'Chyba při mazání uživatele',
-        description: error.response?.data?.error || 'Neznámá chyba',
-        variant: 'destructive'
-      });
+    onError: (error: Error) => {
+      errorToast(error);
     },
   });
 
   const handleCreate = () => {
-    setEditingUser(null);
     // Default to VIEWER role if available
     const viewerRole = roles?.find(r => r.name === 'VIEWER');
     form.reset({
@@ -154,11 +139,10 @@ export default function Users() {
       password: '',
       roleIds: viewerRole ? [viewerRole.id] : [],
     });
-    setIsDialogOpen(true);
+    dialog.openCreate();
   };
 
   const handleEdit = (user: User) => {
-    setEditingUser(user);
     // Form will be updated when userRoles query completes
     form.reset({
       username: user.username,
@@ -166,22 +150,19 @@ export default function Users() {
       password: '',
       roleIds: [],
     });
-    setIsDialogOpen(true);
+    dialog.openEdit(user);
   };
 
   // Update form when userRoles data is loaded
   const currentRoleIds = userRoles?.map(r => r.id) || [];
-  if (editingUser && currentRoleIds.length > 0 && form.getValues('roleIds').length === 0) {
+  if (dialog.editingItem && currentRoleIds.length > 0 && form.getValues('roleIds').length === 0) {
     form.setValue('roleIds', currentRoleIds);
   }
 
   const handleDelete = (user: User) => {
     // Check if user is super admin
     if (user.isSuperAdmin) {
-      toast({
-        title: 'Nelze smazat super administrátora',
-        variant: 'destructive'
-      });
+      errorToast('Nelze smazat super administrátora');
       return;
     }
     if (confirm(`Opravdu chcete smazat uživatele "${user.username}"?`)) {
@@ -190,8 +171,8 @@ export default function Users() {
   };
 
   const onSubmit = (data: UserForm) => {
-    if (editingUser) {
-      updateMutation.mutate({ id: editingUser.id, data });
+    if (dialog.editingItem) {
+      updateMutation.mutate({ id: dialog.editingItem.id, data });
     } else {
       createMutation.mutate(data);
     }
@@ -221,16 +202,12 @@ export default function Users() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-serif font-bold mb-2">Uživatelé</h1>
-          <p className="text-muted-foreground">Správa uživatelů systému</p>
-        </div>
+      <PageHeader title="Uživatelé" description="Správa uživatelů systému">
         <Button onClick={handleCreate} data-testid="button-create-user" className="bg-gradient-to-r from-primary to-purple-600">
           <Plus className="w-4 h-4 mr-2" />
           Přidat uživatele
         </Button>
-      </div>
+      </PageHeader>
 
       <Card>
         <CardContent className="pt-6">
@@ -324,11 +301,11 @@ export default function Users() {
       </Card>
 
       {/* Create/Edit Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={dialog.isOpen} onOpenChange={dialog.setIsOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="font-serif">
-              {editingUser ? `Upravit uživatele: ${editingUser.username}` : 'Nový uživatel'}
+              {dialog.editingItem ? `Upravit uživatele: ${dialog.editingItem.username}` : 'Nový uživatel'}
             </DialogTitle>
           </DialogHeader>
 
@@ -367,11 +344,11 @@ export default function Users() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Heslo {editingUser && '(ponechte prázdné pro zachování)'}</FormLabel>
+                    <FormLabel>Heslo {dialog.editingItem && '(ponechte prázdné pro zachování)'}</FormLabel>
                     <FormControl>
                       <Input
                         type="password"
-                        placeholder={editingUser ? 'Nové heslo...' : 'Heslo'}
+                        placeholder={dialog.editingItem ? 'Nové heslo...' : 'Heslo'}
                         data-testid="input-password"
                         {...field}
                       />
@@ -435,7 +412,7 @@ export default function Users() {
                 )}
               />
 
-              {editingUser?.isSuperAdmin && (
+              {dialog.editingItem?.isSuperAdmin && (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                   <p className="text-sm text-amber-800">
                     <Lock className="w-4 h-4 inline mr-2" />
@@ -448,7 +425,7 @@ export default function Users() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setIsDialogOpen(false)}
+                  onClick={() => dialog.close()}
                 >
                   Zrušit
                 </Button>
@@ -460,7 +437,7 @@ export default function Users() {
                 >
                   {createMutation.isPending || updateMutation.isPending
                     ? 'Ukládání...'
-                    : editingUser
+                    : dialog.isEditing
                     ? 'Uložit změny'
                     : 'Vytvořit'}
                 </Button>

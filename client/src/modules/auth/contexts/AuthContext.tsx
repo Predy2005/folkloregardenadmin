@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { api } from '@/shared/lib/api';
 import type { User, LoginRequest, RegisterRequest, AuthResponse } from '@shared/types';
-import { useToast } from '@/shared/hooks/use-toast';
+import { successToast, errorToast } from '@/shared/lib/toast-helpers';
 
 interface AuthContextType {
   user: User | null;
@@ -23,7 +23,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const { toast } = useToast();
 
   // Načtení uživatele při mount
   useEffect(() => {
@@ -55,16 +54,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await api.post<AuthResponse>('/auth/login', credentials);
       localStorage.setItem('auth_token', response.token);
       await refreshUser();
-      toast({
-        title: 'Přihlášení úspěšné',
-        description: 'Vítejte zpět!',
-      });
+      successToast('Vítejte zpět!');
     } catch (error: any) {
-      toast({
-        title: 'Chyba přihlášení',
-        description: error.response?.data?.message || 'Nepodařilo se přihlásit',
-        variant: 'destructive',
-      });
+      errorToast(error.response?.data?.message || 'Nepodařilo se přihlásit');
       throw error;
     }
   };
@@ -74,16 +66,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await api.post<AuthResponse>('/auth/register', data);
       localStorage.setItem('auth_token', response.token);
       await refreshUser();
-      toast({
-        title: 'Registrace úspěšná',
-        description: 'Váš účet byl vytvořen',
-      });
+      successToast('Váš účet byl vytvořen');
     } catch (error: any) {
-      toast({
-        title: 'Chyba registrace',
-        description: error.response?.data?.message || 'Nepodařilo se zaregistrovat',
-        variant: 'destructive',
-      });
+      errorToast(error.response?.data?.message || 'Nepodařilo se zaregistrovat');
       throw error;
     }
   };
@@ -97,10 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('auth_token');
       localStorage.removeItem('user');
       setUser(null);
-      toast({
-        title: 'Odhlášení',
-        description: 'Byli jste úspěšně odhlášeni',
-      });
+      successToast('Byli jste úspěšně odhlášeni');
     }
   };
 

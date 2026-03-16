@@ -110,6 +110,13 @@ class Reservation
     #[ORM\OneToMany(mappedBy: 'reservation', targetEntity: Invoice::class)]
     private Collection $invoices;
 
+    #[ORM\OneToMany(mappedBy: 'reservation', targetEntity: ReservationTransfer::class, cascade: ['persist', 'remove'])]
+    private Collection $transfers;
+
+    #[ORM\ManyToOne(targetEntity: ReservationType::class)]
+    #[ORM\JoinColumn(name: 'reservation_type_id', nullable: true)]
+    private ?ReservationType $reservationType = null;
+
     // Platební údaje
     #[ORM\Column(type: Types::STRING, length: 20, nullable: true)]
     private ?string $source = 'WEB'; // 'WEB' | 'ADMIN'
@@ -140,6 +147,7 @@ class Reservation
         $this->persons = new ArrayCollection();
         $this->payments = new ArrayCollection();
         $this->invoices = new ArrayCollection();
+        $this->transfers = new ArrayCollection();
         $this->createdAt = new \DateTime();
         $this->updatedAt = new \DateTime();
     }
@@ -489,6 +497,39 @@ class Reservation
         if ($this->invoices->removeElement($invoice) && $invoice->getReservation() === $this) {
             $invoice->setReservation(null);
         }
+        return $this;
+    }
+
+    public function getTransfers(): Collection
+    {
+        return $this->transfers;
+    }
+
+    public function addTransfer(ReservationTransfer $transfer): static
+    {
+        if (!$this->transfers->contains($transfer)) {
+            $this->transfers->add($transfer);
+            $transfer->setReservation($this);
+        }
+        return $this;
+    }
+
+    public function removeTransfer(ReservationTransfer $transfer): static
+    {
+        if ($this->transfers->removeElement($transfer) && $transfer->getReservation() === $this) {
+            $transfer->setReservation(null);
+        }
+        return $this;
+    }
+
+    public function getReservationType(): ?ReservationType
+    {
+        return $this->reservationType;
+    }
+
+    public function setReservationType(?ReservationType $reservationType): static
+    {
+        $this->reservationType = $reservationType;
         return $this;
     }
 

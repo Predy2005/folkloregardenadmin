@@ -8,9 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/shared/components/ui/form';
-import { useToast } from '@/shared/hooks/use-toast';
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { Badge } from '@/shared/components/ui/badge';
 import { User, Shield, Mail, Lock } from 'lucide-react';
+import { PageHeader } from "@/shared/components/PageHeader";
 
 const profileSchema = z.object({
   username: z.string().min(3, 'Uživatelské jméno musí mít alespoň 3 znaky'),
@@ -40,7 +41,6 @@ type ProfileForm = z.infer<typeof profileSchema>;
 
 export default function Profile() {
   const { user, refreshUser } = useAuth();
-  const { toast } = useToast();
 
   const form = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
@@ -64,14 +64,10 @@ export default function Profile() {
         newPassword: '',
         confirmPassword: '',
       });
-      toast({ title: 'Profil byl úspěšně aktualizován' });
+      successToast("Profil byl úspěšně aktualizován");
     },
     onError: (error: any) => {
-      toast({
-        title: 'Chyba při aktualizaci profilu',
-        description: error.response?.data?.message || 'Nepodařilo se aktualizovat profil',
-        variant: 'destructive',
-      });
+      errorToast(error.response?.data?.message || "Nepodařilo se aktualizovat profil");
     },
   });
 
@@ -95,10 +91,7 @@ export default function Profile() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 p-6">
-      <div>
-        <h1 className="text-3xl font-serif font-bold mb-2">Můj profil</h1>
-        <p className="text-muted-foreground">Upravte své osobní údaje a heslo</p>
-      </div>
+      <PageHeader title="Můj profil" description="Upravte své osobní údaje a heslo" />
 
       {/* User Info Card */}
       <Card>

@@ -107,13 +107,21 @@ export const PERMISSIONS = {
   CASHBOX_READ: 'cashbox.read',
   CASHBOX_CREATE: 'cashbox.create',
   CASHBOX_UPDATE: 'cashbox.update',
+  CASHBOX_DELETE: 'cashbox.delete',
   CASHBOX_CLOSE: 'cashbox.close',
+  CASHBOX_REOPEN: 'cashbox.reopen',
 
   // Disabled Dates
   DISABLED_DATES_READ: 'disabled_dates.read',
   DISABLED_DATES_CREATE: 'disabled_dates.create',
   DISABLED_DATES_UPDATE: 'disabled_dates.update',
   DISABLED_DATES_DELETE: 'disabled_dates.delete',
+
+  // Reservation Types
+  RESERVATION_TYPES_READ: 'reservation_types.read',
+  RESERVATION_TYPES_CREATE: 'reservation_types.create',
+  RESERVATION_TYPES_UPDATE: 'reservation_types.update',
+  RESERVATION_TYPES_DELETE: 'reservation_types.delete',
 } as const;
 
 export type PermissionKey = typeof PERMISSIONS[keyof typeof PERMISSIONS];

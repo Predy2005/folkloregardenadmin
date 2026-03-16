@@ -40,7 +40,8 @@ import {
 import {Tabs, TabsList, TabsTrigger} from "@/shared/components/ui/tabs";
 import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from "@/shared/components/ui/tooltip";
 import {Plus, Pencil, Trash2, Search, Calendar, CalendarDays, Eye, Gauge} from "lucide-react";
-import {useToast} from "@/shared/hooks/use-toast";
+import { PageHeader } from "@/shared/components/PageHeader";
+import {successToast, errorToast} from "@/shared/lib/toast-helpers";
 import {Badge} from "@/shared/components/ui/badge";
 import dayjs from "dayjs";
 
@@ -52,8 +53,6 @@ export default function Events() {
     const [statusFilter, setStatusFilter] = useState<string>("all");
     const [typeFilter, setTypeFilter] = useState<string>("all");
     const [timeFilter, setTimeFilter] = useState<"all" | "upcoming" | "past" | "nearest">("nearest");
-    const {toast} = useToast();
-
     const {data: events, isLoading} = useQuery<Event[]>({
         queryKey: ["/api/events"],
         queryFn: () => api.get<Event[]>(`/api/events`),
@@ -65,18 +64,9 @@ export default function Events() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({queryKey: ["/api/events"]});
-            toast({
-                title: "Úspěch",
-                description: "Akce byla smazána",
-            });
+            successToast("Akce byla smazána");
         },
-        onError: () => {
-            toast({
-                title: "Chyba",
-                description: "Nepodařilo se smazat akci",
-                variant: "destructive",
-            });
-        },
+        onError: (error: Error) => errorToast(error),
     });
 
     const filteredEvents = (() => {
@@ -166,11 +156,7 @@ export default function Events() {
 
     return (
         <div className="p-6 space-y-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-serif font-bold text-foreground">Akce</h1>
-                    <p className="text-muted-foreground">Plánování a správa akcí</p>
-                </div>
+            <PageHeader title="Akce" description="Plánování a správa akcí">
                 <Button
                     onClick={() => setLocation("/events/new")}
                     className="bg-gradient-to-r from-primary to-purple-600"
@@ -179,7 +165,7 @@ export default function Events() {
                     <Plus className="w-4 h-4 mr-2"/>
                     Nová akce
                 </Button>
-            </div>
+            </PageHeader>
 
             <Card>
                 <CardHeader>

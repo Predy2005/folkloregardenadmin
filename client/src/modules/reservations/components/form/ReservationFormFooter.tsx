@@ -3,6 +3,7 @@ import { Checkbox } from '@/shared/components/ui/checkbox';
 import { FormField, FormItem, FormLabel, FormControl } from '@/shared/components/ui/form';
 import { Button } from '@/shared/components/ui/button';
 import { DialogFooter } from '@/shared/components/ui/dialog';
+import { formatCurrency } from '@/shared/lib/formatting';
 
 type Props = {
   totalPrice: number;
@@ -31,7 +32,7 @@ export function ReservationFormFooter({ totalPrice, onCancel, saving, editing }:
       <div className="flex items-center justify-between p-4 bg-muted/50 rounded-md">
         <span className="text-lg font-semibold">Celková cena:</span>
         <span className="text-2xl font-bold font-mono bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-          {Math.round(totalPrice).toLocaleString('cs-CZ')} Kč
+          {formatCurrency(Math.round(totalPrice))}
         </span>
       </div>
 

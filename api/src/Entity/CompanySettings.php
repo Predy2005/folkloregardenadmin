@@ -101,6 +101,9 @@ class CompanySettings
     #[ORM\Column(type: Types::BOOLEAN)]
     private bool $isVatPayer = true;
 
+    #[ORM\Column(name: 'main_cashbox_hidden', type: Types::BOOLEAN, options: ['default' => false])]
+    private bool $mainCashboxHidden = false;
+
     #[ORM\Column(type: Types::DATETIME_MUTABLE)]
     private \DateTimeInterface $createdAt;
 
@@ -381,6 +384,9 @@ class CompanySettings
         $this->isVatPayer = $isVatPayer;
         return $this;
     }
+
+    public function isMainCashboxHidden(): bool { return $this->mainCashboxHidden; }
+    public function setMainCashboxHidden(bool $v): static { $this->mainCashboxHidden = $v; return $this; }
 
     public function getCreatedAt(): \DateTimeInterface
     {

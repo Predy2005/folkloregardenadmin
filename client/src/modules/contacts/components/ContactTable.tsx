@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 import { Search, Edit, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Filter, X } from 'lucide-react';
 import type { Contact } from '@shared/types';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { PAGE_SIZE_OPTIONS } from '@/shared/lib/constants';
 
 type Props = {
   contacts: Contact[];
@@ -17,8 +19,6 @@ type Props = {
   onDelete: (id: number) => void;
   onNewReservation: (contact: Contact) => void;
 };
-
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 
 const COMPANY_FILTER_OPTIONS = [
   { value: '', label: 'Všechny kontakty' },
@@ -40,9 +40,6 @@ export function ContactTable({
   onDelete,
   onNewReservation,
 }: Props) {
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(20);
-
   // Filter states
   const [companyFilter, setCompanyFilter] = useState<string>('');
   const [invoiceFilter, setInvoiceFilter] = useState<string>('');
@@ -100,42 +97,34 @@ export function ContactTable({
     });
   }, [contacts, searchTerm, companyFilter, invoiceFilter, clientComeFromFilter]);
 
-  // Calculate pagination
-  const totalItems = filtered.length;
-  const totalPages = Math.ceil(totalItems / pageSize);
-  const startIndex = (currentPage - 1) * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, totalItems);
-  const paginatedData = filtered.slice(startIndex, endIndex);
+  // Pagination
+  const { page, pageSize, setPage, setPageSize, paginatedData, totalPages, totalItems } = usePagination(filtered);
 
   // Check if any filter is active
   const hasActiveFilters = companyFilter || invoiceFilter || clientComeFromFilter;
 
-  // Reset to page 1 when any filter changes
-  const resetPage = () => setCurrentPage(1);
-
   const handleSearchChange = (value: string) => {
     onSearchChange(value);
-    resetPage();
+    setPage(1);
   };
 
   const handlePageSizeChange = (value: string) => {
     setPageSize(Number(value));
-    resetPage();
   };
 
   const handleCompanyFilterChange = (value: string) => {
     setCompanyFilter(value === 'all' ? '' : value);
-    resetPage();
+    setPage(1);
   };
 
   const handleInvoiceFilterChange = (value: string) => {
     setInvoiceFilter(value === 'all' ? '' : value);
-    resetPage();
+    setPage(1);
   };
 
   const handleClientComeFromChange = (value: string) => {
     setClientComeFromFilter(value === 'all' ? '' : value);
-    resetPage();
+    setPage(1);
   };
 
   const clearAllFilters = () => {
@@ -143,14 +132,8 @@ export function ContactTable({
     setInvoiceFilter('');
     setClientComeFromFilter('');
     onSearchChange('');
-    resetPage();
+    setPage(1);
   };
-
-  // Navigation handlers
-  const goToFirstPage = () => setCurrentPage(1);
-  const goToPreviousPage = () => setCurrentPage((prev) => Math.max(1, prev - 1));
-  const goToNextPage = () => setCurrentPage((prev) => Math.min(totalPages, prev + 1));
-  const goToLastPage = () => setCurrentPage(totalPages);
 
   return (
     <TooltipProvider>
@@ -270,7 +253,7 @@ export function ContactTable({
             {companyFilter && (
               <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-full text-xs">
                 Firma: {COMPANY_FILTER_OPTIONS.find(s => s.value === companyFilter)?.label}
-                <button onClick={() => { setCompanyFilter(''); resetPage(); }} className="hover:text-primary/70">
+                <button onClick={() => { setCompanyFilter(''); setPage(1); }} className="hover:text-primary/70">
                   <X className="w-3 h-3" />
                 </button>
               </span>
@@ -278,7 +261,7 @@ export function ContactTable({
             {invoiceFilter && (
               <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-full text-xs">
                 IČO: {INVOICE_FILTER_OPTIONS.find(s => s.value === invoiceFilter)?.label}
-                <button onClick={() => { setInvoiceFilter(''); resetPage(); }} className="hover:text-primary/70">
+                <button onClick={() => { setInvoiceFilter(''); setPage(1); }} className="hover:text-primary/70">
                   <X className="w-3 h-3" />
                 </button>
               </span>
@@ -286,7 +269,7 @@ export function ContactTable({
             {clientComeFromFilter && (
               <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-full text-xs">
                 Zdroj: {clientComeFromFilter}
-                <button onClick={() => { setClientComeFromFilter(''); resetPage(); }} className="hover:text-primary/70">
+                <button onClick={() => { setClientComeFromFilter(''); setPage(1); }} className="hover:text-primary/70">
                   <X className="w-3 h-3" />
                 </button>
               </span>
@@ -391,15 +374,15 @@ export function ContactTable({
       {totalItems > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-2">
           <div className="text-sm text-muted-foreground">
-            Zobrazeno {startIndex + 1}–{endIndex} z {totalItems} kontaktů
+            Zobrazeno {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalItems)} z {totalItems} kontaktů
           </div>
           <div className="flex items-center gap-1">
             <Button
               variant="outline"
               size="icon"
               className="h-8 w-8"
-              onClick={goToFirstPage}
-              disabled={currentPage === 1}
+              onClick={() => setPage(1)}
+              disabled={page === 1}
             >
               <ChevronsLeft className="w-4 h-4" />
             </Button>
@@ -407,22 +390,22 @@ export function ContactTable({
               variant="outline"
               size="icon"
               className="h-8 w-8"
-              onClick={goToPreviousPage}
-              disabled={currentPage === 1}
+              onClick={() => setPage(page - 1)}
+              disabled={page === 1}
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <div className="flex items-center gap-1 px-2">
               <span className="text-sm">
-                Strana <strong>{currentPage}</strong> z <strong>{totalPages || 1}</strong>
+                Strana <strong>{page}</strong> z <strong>{totalPages || 1}</strong>
               </span>
             </div>
             <Button
               variant="outline"
               size="icon"
               className="h-8 w-8"
-              onClick={goToNextPage}
-              disabled={currentPage >= totalPages}
+              onClick={() => setPage(page + 1)}
+              disabled={page >= totalPages}
             >
               <ChevronRight className="w-4 h-4" />
             </Button>
@@ -430,8 +413,8 @@ export function ContactTable({
               variant="outline"
               size="icon"
               className="h-8 w-8"
-              onClick={goToLastPage}
-              disabled={currentPage >= totalPages}
+              onClick={() => setPage(totalPages)}
+              disabled={page >= totalPages}
             >
               <ChevronsRight className="w-4 h-4" />
             </Button>

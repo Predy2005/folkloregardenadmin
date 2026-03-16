@@ -1,7 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient } from "@/shared/lib/queryClient";
-import { api } from "@/shared/lib/api";
+import { useQuery } from "@tanstack/react-query";
 import type { StockMovement, StockItem } from "@shared/types";
 import { STOCK_MOVEMENT_TYPE_LABELS } from "@shared/types";
 import { Button } from "@/shared/components/ui/button";
@@ -48,10 +46,12 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Search, ArrowUpDown, TrendingUp, TrendingDown, RefreshCw } from "lucide-react";
-import { useToast } from "@/shared/hooks/use-toast";
+import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
 import { Textarea } from "@/shared/components/ui/textarea";
 import dayjs from "dayjs";
+import { useFormDialog } from "@/shared/hooks/useFormDialog";
+import { useCrudMutations } from "@/shared/hooks/useCrudMutations";
 
 const stockMovementSchema = z.object({
   stockItemId: z.number().min(1, "Vyberte skladovou položku"),
@@ -64,9 +64,8 @@ type StockMovementForm = z.infer<typeof stockMovementSchema>;
 
 export default function StockMovements() {
   const [search, setSearch] = useState("");
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [typeFilter, setTypeFilter] = useState<string>("all");
-  const { toast } = useToast();
+  const dialog = useFormDialog<StockMovement>();
 
   const { data: movements, isLoading } = useQuery<StockMovement[]>({
     queryKey: ["/api/stock-movements"],
@@ -76,7 +75,7 @@ export default function StockMovements() {
     queryKey: ["/api/stock-items"],
   });
 
-  const createForm = useForm<StockMovementForm>({
+  const form = useForm<StockMovementForm>({
     resolver: zodResolver(stockMovementSchema),
     defaultValues: {
       movementType: "IN",
@@ -85,27 +84,12 @@ export default function StockMovements() {
     },
   });
 
-  const createMutation = useMutation({
-    mutationFn: async (data: StockMovementForm) => {
-      return await api.post("/api/stock-movements", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/stock-movements"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stock-items"] });
-      setIsCreateOpen(false);
-      createForm.reset();
-      toast({
-        title: "Úspěch",
-        description: "Pohyb byl zaznamenán",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se zaznamenat pohyb",
-        variant: "destructive",
-      });
-    },
+  const { createMutation, isPending } = useCrudMutations<StockMovementForm>({
+    endpoint: "/api/stock-movements",
+    queryKey: ["/api/stock-movements"],
+    entityName: "Pohyb skladu",
+    extraInvalidateKeys: [["/api/stock-items"]],
+    onCreateSuccess: () => { dialog.close(); form.reset(); },
   });
 
   const filteredMovements = movements?.filter((movement) => {
@@ -138,20 +122,16 @@ export default function StockMovements() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-serif font-bold text-foreground">Pohyby skladu</h1>
-          <p className="text-muted-foreground">Historie příjmů, výdejů a úprav</p>
-        </div>
+      <PageHeader title="Pohyby skladu" description="Historie příjmů, výdejů a úprav">
         <Button
-          onClick={() => setIsCreateOpen(true)}
+          onClick={() => { dialog.openCreate(); form.reset(); }}
           className="bg-gradient-to-r from-primary to-purple-600"
           data-testid="button-create-stock-movement"
         >
           <Plus className="w-4 h-4 mr-2" />
           Nový pohyb
         </Button>
-      </div>
+      </PageHeader>
 
       <Card>
         <CardHeader>
@@ -258,19 +238,19 @@ export default function StockMovements() {
       </Card>
 
       {/* Create Dialog */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+      <Dialog open={dialog.isOpen} onOpenChange={(open) => { if (!open) dialog.close(); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nový pohyb skladu</DialogTitle>
             <DialogDescription>Zaznamenejte příjem, výdej nebo opravu zásob</DialogDescription>
           </DialogHeader>
-          <Form {...createForm}>
+          <Form {...form}>
             <form
-              onSubmit={createForm.handleSubmit((data) => createMutation.mutate(data))}
+              onSubmit={form.handleSubmit((data) => createMutation.mutate(data))}
               className="space-y-4"
             >
               <FormField
-                control={createForm.control}
+                control={form.control}
                 name="stockItemId"
                 render={({ field }) => (
                   <FormItem>
@@ -297,7 +277,7 @@ export default function StockMovements() {
                 )}
               />
               <FormField
-                control={createForm.control}
+                control={form.control}
                 name="movementType"
                 render={({ field }) => (
                   <FormItem>
@@ -319,7 +299,7 @@ export default function StockMovements() {
                 )}
               />
               <FormField
-                control={createForm.control}
+                control={form.control}
                 name="quantity"
                 render={({ field }) => (
                   <FormItem>
@@ -340,7 +320,7 @@ export default function StockMovements() {
                 )}
               />
               <FormField
-                control={createForm.control}
+                control={form.control}
                 name="reason"
                 render={({ field }) => (
                   <FormItem>
@@ -353,15 +333,15 @@ export default function StockMovements() {
                 )}
               />
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
+                <Button type="button" variant="outline" onClick={() => dialog.close()}>
                   Zrušit
                 </Button>
                 <Button
                   type="submit"
-                  disabled={createMutation.isPending}
+                  disabled={isPending}
                   className="bg-gradient-to-r from-primary to-purple-600"
                 >
-                  {createMutation.isPending ? "Vytváření..." : "Vytvořit"}
+                  {isPending ? "Vytváření..." : "Vytvořit"}
                 </Button>
               </DialogFooter>
             </form>

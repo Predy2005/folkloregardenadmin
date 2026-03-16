@@ -1,7 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient } from "@/shared/lib/queryClient";
-import { api } from "@/shared/lib/api";
+import { useQuery } from "@tanstack/react-query";
 import type { Voucher, Partner } from "@shared/types";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -48,10 +46,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/components/ui/tooltip";
 import { Plus, Pencil, Trash2, Search, Ticket, QrCode } from "lucide-react";
-import { useToast } from "@/shared/hooks/use-toast";
+import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
 import { Switch } from "@/shared/components/ui/switch";
 import dayjs from "dayjs";
+import { useFormDialog } from "@/shared/hooks/useFormDialog";
+import { useCrudMutations } from "@/shared/hooks/useCrudMutations";
 
 const voucherSchema = z.object({
   code: z.string().min(3, "Kód musí mít alespoň 3 znaky"),
@@ -67,10 +67,7 @@ type VoucherForm = z.infer<typeof voucherSchema>;
 
 export default function Vouchers() {
   const [search, setSearch] = useState("");
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [editingVoucher, setEditingVoucher] = useState<Voucher | null>(null);
-  const { toast } = useToast();
+  const dialog = useFormDialog<Voucher>();
 
   const { data: vouchers, isLoading } = useQuery<Voucher[]>({
     queryKey: ["/api/vouchers"],
@@ -80,7 +77,7 @@ export default function Vouchers() {
     queryKey: ["/api/partners"],
   });
 
-  const createForm = useForm<VoucherForm>({
+  const form = useForm<VoucherForm>({
     resolver: zodResolver(voucherSchema),
     defaultValues: {
       code: "",
@@ -91,72 +88,13 @@ export default function Vouchers() {
     },
   });
 
-  const editForm = useForm<VoucherForm>({
-    resolver: zodResolver(voucherSchema),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async (data: VoucherForm) => {
-      return await api.post("/api/vouchers", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/vouchers"] });
-      setIsCreateOpen(false);
-      createForm.reset();
-      toast({
-        title: "Úspěch",
-        description: "Voucher byl vytvořen",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se vytvořit voucher",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: VoucherForm }) => {
-      return await api.put(`/api/vouchers/${id}`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/vouchers"] });
-      setIsEditOpen(false);
-      setEditingVoucher(null);
-      toast({
-        title: "Úspěch",
-        description: "Voucher byl aktualizován",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se aktualizovat voucher",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return await api.delete(`/api/vouchers/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/vouchers"] });
-      toast({
-        title: "Úspěch",
-        description: "Voucher byl smazán",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se smazat voucher",
-        variant: "destructive",
-      });
-    },
+  const { createMutation, updateMutation, deleteMutation, isPending } = useCrudMutations<VoucherForm>({
+    endpoint: "/api/vouchers",
+    queryKey: ["/api/vouchers"],
+    entityName: "Voucher",
+    onCreateSuccess: () => { dialog.close(); form.reset(); },
+    onUpdateSuccess: () => dialog.close(),
+    onDeleteSuccess: () => dialog.close(),
   });
 
   const filteredVouchers = vouchers?.filter((voucher) =>
@@ -164,8 +102,8 @@ export default function Vouchers() {
   );
 
   const handleEdit = (voucher: Voucher) => {
-    setEditingVoucher(voucher);
-    editForm.reset({
+    dialog.openEdit(voucher);
+    form.reset({
       code: voucher.code,
       discountPercent: voucher.discountPercent,
       validFrom: dayjs(voucher.validFrom).format("YYYY-MM-DD"),
@@ -174,7 +112,6 @@ export default function Vouchers() {
       partnerId: voucher.partnerId,
       active: voucher.active,
     });
-    setIsEditOpen(true);
   };
 
   const handleDelete = (id: number) => {
@@ -193,20 +130,16 @@ export default function Vouchers() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-serif font-bold text-foreground">Vouchery</h1>
-          <p className="text-muted-foreground">Správa slevových kódů a QR voucherů</p>
-        </div>
+      <PageHeader title="Vouchery" description="Správa slevových kódů a QR voucherů">
         <Button
-          onClick={() => setIsCreateOpen(true)}
+          onClick={() => { dialog.openCreate(); form.reset(); }}
           className="bg-gradient-to-r from-primary to-purple-600"
           data-testid="button-create-voucher"
         >
           <Plus className="w-4 h-4 mr-2" />
           Nový voucher
         </Button>
-      </div>
+      </PageHeader>
 
       <Card>
         <CardHeader>
@@ -339,31 +272,25 @@ export default function Vouchers() {
       </Card>
 
       {/* Create/Edit Form Dialog */}
-      <Dialog open={isCreateOpen || isEditOpen} onOpenChange={(open) => {
-        if (!open) {
-          setIsCreateOpen(false);
-          setIsEditOpen(false);
-          setEditingVoucher(null);
-        }
-      }}>
+      <Dialog open={dialog.isOpen} onOpenChange={(open) => { if (!open) dialog.close(); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{isEditOpen ? "Upravit voucher" : "Nový voucher"}</DialogTitle>
+            <DialogTitle>{dialog.isEditing ? "Upravit voucher" : "Nový voucher"}</DialogTitle>
             <DialogDescription>
-              {isEditOpen ? "Upravte údaje voucheru" : "Vytvořte nový slevový voucher"}
+              {dialog.isEditing ? "Upravte údaje voucheru" : "Vytvořte nový slevový voucher"}
             </DialogDescription>
           </DialogHeader>
-          <Form {...(isEditOpen ? editForm : createForm)}>
+          <Form {...form}>
             <form
-              onSubmit={(isEditOpen ? editForm : createForm).handleSubmit((data) =>
-                isEditOpen && editingVoucher
-                  ? updateMutation.mutate({ id: editingVoucher.id, data })
+              onSubmit={form.handleSubmit((data) =>
+                dialog.isEditing && dialog.editingItem
+                  ? updateMutation.mutate({ id: dialog.editingItem.id, data })
                   : createMutation.mutate(data)
               )}
               className="space-y-4"
             >
               <FormField
-                control={(isEditOpen ? editForm : createForm).control}
+                control={form.control}
                 name="code"
                 render={({ field }) => (
                   <FormItem>
@@ -376,7 +303,7 @@ export default function Vouchers() {
                 )}
               />
               <FormField
-                control={(isEditOpen ? editForm : createForm).control}
+                control={form.control}
                 name="discountPercent"
                 render={({ field }) => (
                   <FormItem>
@@ -397,7 +324,7 @@ export default function Vouchers() {
               />
               <div className="grid grid-cols-2 gap-4">
                 <FormField
-                  control={(isEditOpen ? editForm : createForm).control}
+                  control={form.control}
                   name="validFrom"
                   render={({ field }) => (
                     <FormItem>
@@ -410,7 +337,7 @@ export default function Vouchers() {
                   )}
                 />
                 <FormField
-                  control={(isEditOpen ? editForm : createForm).control}
+                  control={form.control}
                   name="validTo"
                   render={({ field }) => (
                     <FormItem>
@@ -424,7 +351,7 @@ export default function Vouchers() {
                 />
               </div>
               <FormField
-                control={(isEditOpen ? editForm : createForm).control}
+                control={form.control}
                 name="usageLimit"
                 render={({ field }) => (
                   <FormItem>
@@ -443,7 +370,7 @@ export default function Vouchers() {
                 )}
               />
               <FormField
-                control={(isEditOpen ? editForm : createForm).control}
+                control={form.control}
                 name="partnerId"
                 render={({ field }) => (
                   <FormItem>
@@ -471,7 +398,7 @@ export default function Vouchers() {
                 )}
               />
               <FormField
-                control={(isEditOpen ? editForm : createForm).control}
+                control={form.control}
                 name="active"
                 render={({ field }) => (
                   <FormItem className="flex items-center justify-between">
@@ -484,27 +411,15 @@ export default function Vouchers() {
                 )}
               />
               <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setIsCreateOpen(false);
-                    setIsEditOpen(false);
-                    setEditingVoucher(null);
-                  }}
-                >
+                <Button type="button" variant="outline" onClick={dialog.close}>
                   Zrušit
                 </Button>
                 <Button
                   type="submit"
-                  disabled={createMutation.isPending || updateMutation.isPending}
+                  disabled={isPending}
                   className="bg-gradient-to-r from-primary to-purple-600"
                 >
-                  {createMutation.isPending || updateMutation.isPending
-                    ? "Ukládání..."
-                    : isEditOpen
-                    ? "Uložit"
-                    : "Vytvořit"}
+                  {isPending ? "Ukládání..." : dialog.isEditing ? "Uložit" : "Vytvořit"}
                 </Button>
               </DialogFooter>
             </form>

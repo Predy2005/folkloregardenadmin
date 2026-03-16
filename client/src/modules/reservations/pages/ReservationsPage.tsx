@@ -2,10 +2,11 @@ import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
-import { queryClient } from "@/shared/lib/queryClient";
+import { invalidateReservationQueries } from "@/shared/lib/query-helpers";
 import { Card, CardContent } from "@/shared/components/ui/card";
 import { Button } from "@/shared/components/ui/button";
 import { Plus } from "lucide-react";
+import { PageHeader } from "@/shared/components/PageHeader";
 import type {
   PricingDefault,
   Reservation,
@@ -14,7 +15,7 @@ import type {
 import { useFieldArray, useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useToast } from "@/shared/hooks/use-toast";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import {
   isAiConfigured,
   parseReservationWithAI,
@@ -75,7 +76,6 @@ export default function Reservations() {
   const [editingReservation, setEditingReservation] =
     useState<Reservation | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const { toast } = useToast();
   const [, navigate] = useLocation();
 
   // Fetch data
@@ -140,13 +140,13 @@ export default function Reservations() {
   const createMutation = useMutation({
     mutationFn: (data: ReservationForm) => api.post("/api/reservations", data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/reservations"] });
+      invalidateReservationQueries();
       setIsDialogOpen(false);
       form.reset();
-      toast({ title: "Rezervace byla úspěšně vytvořena" });
+      successToast("Rezervace byla úspěšně vytvořena");
     },
     onError: () => {
-      toast({ title: "Chyba při vytváření rezervace", variant: "destructive" });
+      errorToast("Chyba při vytváření rezervace");
     },
   });
 
@@ -154,28 +154,25 @@ export default function Reservations() {
     mutationFn: ({ id, data }: { id: number; data: ReservationForm }) =>
       api.put(`/api/reservations/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/reservations"] });
+      invalidateReservationQueries();
       setIsDialogOpen(false);
       setEditingReservation(null);
       form.reset();
-      toast({ title: "Rezervace byla úspěšně aktualizována" });
+      successToast("Rezervace byla úspěšně aktualizována");
     },
     onError: () => {
-      toast({
-        title: "Chyba při aktualizaci rezervace",
-        variant: "destructive",
-      });
+      errorToast("Chyba při aktualizaci rezervace");
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/api/reservations/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/reservations"] });
-      toast({ title: "Rezervace byla úspěšně smazána" });
+      invalidateReservationQueries();
+      successToast("Rezervace byla úspěšně smazána");
     },
     onError: () => {
-      toast({ title: "Chyba při mazání rezervace", variant: "destructive" });
+      errorToast("Chyba při mazání rezervace");
     },
   });
 
@@ -183,13 +180,10 @@ export default function Reservations() {
     mutationFn: (id: number) =>
       api.post(`/api/reservations/${id}/send-payment-email`),
     onSuccess: () => {
-      toast({ title: "Platební email byl odeslán" });
+      successToast("Platební email byl odeslán");
     },
     onError: () => {
-      toast({
-        title: "Chyba při odesílání platebního emailu",
-        variant: "destructive",
-      });
+      errorToast("Chyba při odesílání platebního emailu");
     },
   });
 
@@ -438,13 +432,9 @@ export default function Reservations() {
       // Nastavit osoby
       form.setValue("persons", persons);
 
-      toast({ title: "AI návrh načten do formuláře" });
+      successToast("AI návrh načten do formuláře");
     } catch (e: any) {
-      toast({
-        title: "Chyba při aplikaci AI dat",
-        description: e?.message,
-        variant: "destructive",
-      });
+      errorToast(e?.message || "Chyba při aplikaci AI dat");
     }
   };
 
@@ -480,13 +470,7 @@ export default function Reservations() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-            Rezervace
-          </h1>
-          <p className="text-muted-foreground mt-1">Správa všech rezervací</p>
-        </div>
+      <PageHeader title="Rezervace" description="Správa všech rezervací">
         <Button
           onClick={handleCreate}
           className="bg-gradient-to-r from-primary to-purple-600"
@@ -495,7 +479,7 @@ export default function Reservations() {
           <Plus className="w-4 h-4 mr-2" />
           Nová rezervace
         </Button>
-      </div>
+      </PageHeader>
 
       <Card>
         <CardContent>

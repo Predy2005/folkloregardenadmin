@@ -28,6 +28,9 @@ class ReservationPerson
     #[ORM\Column(type: "decimal", precision: 10, scale: 2)]
     private ?string $price = null; // Ukládá základní cenu + případný příplatek
 
+    #[ORM\Column(type: "string", length: 100, nullable: true)]
+    private ?string $nationality = null; // Národnost osoby pro skupinování ke stolům
+
     // Gettery a settery generujte pomocí maker nebo IDE.
 
     public function getId(): ?int
@@ -79,6 +82,18 @@ class ReservationPerson
     public function setReservation(?Reservation $reservation): static
     {
         $this->reservation = $reservation;
+
+        return $this;
+    }
+
+    public function getNationality(): ?string
+    {
+        return $this->nationality;
+    }
+
+    public function setNationality(?string $nationality): static
+    {
+        $this->nationality = $nationality;
 
         return $this;
     }

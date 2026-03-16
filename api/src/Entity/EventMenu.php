@@ -25,6 +25,10 @@ class EventMenu
     #[ORM\JoinColumn(name: 'reservation_food_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
     private ?ReservationFoods $reservationFood = null;
 
+    #[ORM\ManyToOne(targetEntity: Reservation::class)]
+    #[ORM\JoinColumn(name: 'reservation_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?Reservation $reservation = null;
+
     #[ORM\Column(type: Types::STRING, length: 255)]
     private string $menuName;
 
@@ -58,6 +62,9 @@ class EventMenu
 
     public function getReservationFood(): ?ReservationFoods { return $this->reservationFood; }
     public function setReservationFood(?ReservationFoods $rf): self { $this->reservationFood = $rf; return $this; }
+
+    public function getReservation(): ?Reservation { return $this->reservation; }
+    public function setReservation(?Reservation $r): self { $this->reservation = $r; return $this; }
 
     public function getMenuName(): string { return $this->menuName; }
     public function setMenuName(string $v): self { $this->menuName = $v; return $this; }

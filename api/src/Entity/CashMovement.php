@@ -51,6 +51,12 @@ class CashMovement
     #[ORM\JoinColumn(name: 'user_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
     private ?User $user = null;
 
+    #[ORM\Column(name: 'staff_member_id', type: Types::INTEGER, nullable: true)]
+    private ?int $staffMemberId = null;
+
+    #[ORM\Column(name: 'event_staff_assignment_id', type: Types::INTEGER, nullable: true)]
+    private ?int $eventStaffAssignmentId = null;
+
     #[ORM\Column(name: 'created_at', type: Types::DATETIME_MUTABLE)]
     private \DateTimeInterface $createdAt;
 
@@ -90,6 +96,12 @@ class CashMovement
 
     public function getUser(): ?User { return $this->user; }
     public function setUser(?User $u): self { $this->user = $u; return $this; }
+
+    public function getStaffMemberId(): ?int { return $this->staffMemberId; }
+    public function setStaffMemberId(?int $v): self { $this->staffMemberId = $v; return $this; }
+
+    public function getEventStaffAssignmentId(): ?int { return $this->eventStaffAssignmentId; }
+    public function setEventStaffAssignmentId(?int $v): self { $this->eventStaffAssignmentId = $v; return $this; }
 
     public function getCreatedAt(): \DateTimeInterface { return $this->createdAt; }
 }

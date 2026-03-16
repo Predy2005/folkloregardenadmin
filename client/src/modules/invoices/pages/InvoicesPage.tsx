@@ -2,7 +2,9 @@ import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
-import { queryClient } from "@/shared/lib/queryClient";
+import { invalidateInvoiceQueries } from "@/shared/lib/query-helpers";
+import { usePagination } from "@/shared/hooks/usePagination";
+import { PAGE_SIZE_OPTIONS } from "@/shared/lib/constants";
 import dayjs from "dayjs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Button } from "@/shared/components/ui/button";
@@ -50,9 +52,10 @@ import {
 } from "lucide-react";
 import { StatusBadge } from "@/shared/components/StatusBadge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/components/ui/tooltip";
-import { useToast } from "@/shared/hooks/use-toast";
+import { successToast } from "@/shared/lib/toast-helpers";
 import type { Invoice, InvoiceStatus, InvoiceType } from "@shared/types";
 import { INVOICE_TYPE_LABELS } from "@shared/types";
+import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
 
 const STATUS_OPTIONS = [
@@ -70,19 +73,14 @@ const TYPE_OPTIONS = [
   { value: "PARTIAL", label: "Částečné faktury" },
 ] as const;
 
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
-
 export default function Invoices() {
   const [, navigate] = useLocation();
-  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
   // Fetch invoices
@@ -95,24 +93,24 @@ export default function Invoices() {
   const sendMutation = useMutation({
     mutationFn: (id: number) => api.post(`/api/invoices/${id}/send`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
-      toast({ title: "Faktura byla označena jako odeslaná" });
+      invalidateInvoiceQueries();
+      successToast("Faktura byla označena jako odeslaná");
     },
   });
 
   const payMutation = useMutation({
     mutationFn: (id: number) => api.post(`/api/invoices/${id}/pay`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
-      toast({ title: "Faktura byla označena jako zaplacená" });
+      invalidateInvoiceQueries();
+      successToast("Faktura byla označena jako zaplacená");
     },
   });
 
   const cancelMutation = useMutation({
     mutationFn: (id: number) => api.post(`/api/invoices/${id}/cancel`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
-      toast({ title: "Faktura byla stornována" });
+      invalidateInvoiceQueries();
+      successToast("Faktura byla stornována");
     },
   });
 
@@ -160,11 +158,7 @@ export default function Invoices() {
   }, [invoices, searchTerm, statusFilter, typeFilter, dateFrom, dateTo]);
 
   // Pagination
-  const totalItems = filtered.length;
-  const totalPages = Math.ceil(totalItems / pageSize);
-  const startIndex = (currentPage - 1) * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, totalItems);
-  const paginatedData = filtered.slice(startIndex, endIndex);
+  const { page, pageSize, setPage, setPageSize, paginatedData, totalPages, totalItems } = usePagination(filtered);
 
   const hasActiveFilters = statusFilter !== "all" || typeFilter !== "all" || dateFrom || dateTo;
 
@@ -174,20 +168,12 @@ export default function Invoices() {
     setDateFrom("");
     setDateTo("");
     setSearchTerm("");
-    setCurrentPage(1);
+    setPage(1);
   };
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-            Faktury
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Správa a přehled vystavených faktur
-          </p>
-        </div>
+      <PageHeader title="Faktury" description="Správa a přehled vystavených faktur">
         <Button
           onClick={() => navigate("/invoices/new")}
           className="bg-gradient-to-r from-primary to-purple-600"
@@ -195,7 +181,7 @@ export default function Invoices() {
           <Plus className="w-4 h-4 mr-2" />
           Nová faktura
         </Button>
-      </div>
+      </PageHeader>
 
       <Card>
         <CardHeader>
@@ -217,7 +203,7 @@ export default function Invoices() {
                     value={searchTerm}
                     onChange={(e) => {
                       setSearchTerm(e.target.value);
-                      setCurrentPage(1);
+                      setPage(1);
                     }}
                     className="pl-10"
                   />
@@ -240,10 +226,7 @@ export default function Invoices() {
                 <span className="text-sm text-muted-foreground">Zobrazit:</span>
                 <Select
                   value={String(pageSize)}
-                  onValueChange={(v) => {
-                    setPageSize(Number(v));
-                    setCurrentPage(1);
-                  }}
+                  onValueChange={(v) => setPageSize(Number(v))}
                 >
                   <SelectTrigger className="w-[80px]">
                     <SelectValue />
@@ -267,7 +250,7 @@ export default function Invoices() {
                     value={statusFilter}
                     onValueChange={(v) => {
                       setStatusFilter(v);
-                      setCurrentPage(1);
+                      setPage(1);
                     }}
                   >
                     <SelectTrigger>
@@ -288,7 +271,7 @@ export default function Invoices() {
                     value={typeFilter}
                     onValueChange={(v) => {
                       setTypeFilter(v);
-                      setCurrentPage(1);
+                      setPage(1);
                     }}
                   >
                     <SelectTrigger>
@@ -310,7 +293,7 @@ export default function Invoices() {
                     value={dateFrom}
                     onChange={(e) => {
                       setDateFrom(e.target.value);
-                      setCurrentPage(1);
+                      setPage(1);
                     }}
                   />
                 </div>
@@ -321,7 +304,7 @@ export default function Invoices() {
                     value={dateTo}
                     onChange={(e) => {
                       setDateTo(e.target.value);
-                      setCurrentPage(1);
+                      setPage(1);
                     }}
                   />
                 </div>
@@ -426,7 +409,7 @@ export default function Invoices() {
                                 </TooltipTrigger>
                                 <TooltipContent>Zobrazit detail</TooltipContent>
                               </Tooltip>
-                              {(invoice.status === "DRAFT" || invoice.status === "SENT") && (
+                              {invoice.status !== "CANCELLED" && (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button
@@ -441,7 +424,7 @@ export default function Invoices() {
                                   <TooltipContent>Upravit</TooltipContent>
                                 </Tooltip>
                               )}
-                              {invoice.status === "DRAFT" && (
+                              {(invoice.status === "DRAFT" || invoice.status === "SENT" || invoice.status === "PAID") && (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button
@@ -454,7 +437,7 @@ export default function Invoices() {
                                       <Send className="w-4 h-4" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Odeslat</TooltipContent>
+                                  <TooltipContent>{invoice.status === "PAID" ? "Znovu odeslat" : "Odeslat"}</TooltipContent>
                                 </Tooltip>
                               )}
                               {(invoice.status === "DRAFT" || invoice.status === "SENT") && (
@@ -503,15 +486,15 @@ export default function Invoices() {
               {totalItems > 0 && (
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-2 mt-4">
                   <div className="text-sm text-muted-foreground">
-                    Zobrazeno {startIndex + 1}–{endIndex} z {totalItems} faktur
+                    Zobrazeno {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalItems)} z {totalItems} faktur
                   </div>
                   <div className="flex items-center gap-1">
                     <Button
                       variant="outline"
                       size="icon"
                       className="h-8 w-8"
-                      onClick={() => setCurrentPage(1)}
-                      disabled={currentPage === 1}
+                      onClick={() => setPage(1)}
+                      disabled={page === 1}
                     >
                       <ChevronsLeft className="w-4 h-4" />
                     </Button>
@@ -519,20 +502,20 @@ export default function Invoices() {
                       variant="outline"
                       size="icon"
                       className="h-8 w-8"
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
+                      onClick={() => setPage(page - 1)}
+                      disabled={page === 1}
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </Button>
                     <span className="text-sm px-2">
-                      Strana <strong>{currentPage}</strong> z <strong>{totalPages || 1}</strong>
+                      Strana <strong>{page}</strong> z <strong>{totalPages || 1}</strong>
                     </span>
                     <Button
                       variant="outline"
                       size="icon"
                       className="h-8 w-8"
-                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={currentPage >= totalPages}
+                      onClick={() => setPage(page + 1)}
+                      disabled={page >= totalPages}
                     >
                       <ChevronRight className="w-4 h-4" />
                     </Button>
@@ -540,8 +523,8 @@ export default function Invoices() {
                       variant="outline"
                       size="icon"
                       className="h-8 w-8"
-                      onClick={() => setCurrentPage(totalPages)}
-                      disabled={currentPage >= totalPages}
+                      onClick={() => setPage(totalPages)}
+                      disabled={page >= totalPages}
                     >
                       <ChevronsRight className="w-4 h-4" />
                     </Button>

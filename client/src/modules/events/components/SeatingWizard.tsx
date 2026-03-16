@@ -7,7 +7,7 @@ import { Badge } from "@/shared/components/ui/badge";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import { Loader2, Wand2, Check, X, Trash2, BarChart3 } from "lucide-react";
 import { api } from "@/shared/lib/api";
-import { useToast } from "@/shared/hooks/use-toast";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { NationalityBadge, getNationalityColor } from "./waiter";
 
 interface SeatingProposal {
@@ -42,7 +42,6 @@ export default function SeatingWizard({ eventId, tables }: SeatingWizardProps) {
   const [proposals, setProposals] = useState<SeatingProposal[]>([]);
   const [unassigned, setUnassigned] = useState<UnassignedGuest[]>([]);
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   // Fetch seating stats
   const { data: stats, isLoading: statsLoading } = useQuery<SeatingStats>({
@@ -60,17 +59,10 @@ export default function SeatingWizard({ eventId, tables }: SeatingWizardProps) {
     onSuccess: (data) => {
       setProposals(data.proposals);
       setUnassigned(data.unassigned);
-      toast({
-        title: "Návrh vygenerován",
-        description: `${data.proposals.length} přiřazení navrženo`,
-      });
+      successToast(`${data.proposals.length} přiřazení navrženo`);
     },
     onError: (error: Error) => {
-      toast({
-        title: "Chyba",
-        description: error.message,
-        variant: "destructive",
-      });
+      errorToast(error);
     },
   });
 
@@ -84,20 +76,13 @@ export default function SeatingWizard({ eventId, tables }: SeatingWizardProps) {
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
-      toast({
-        title: "Rozsazení aplikováno",
-        description: "Hosté byli přiřazeni ke stolům",
-      });
+      successToast("Hosté byli přiřazeni ke stolům");
       setIsOpen(false);
       setProposals([]);
       setUnassigned([]);
     },
     onError: (error: Error) => {
-      toast({
-        title: "Chyba",
-        description: error.message,
-        variant: "destructive",
-      });
+      errorToast(error);
     },
   });
 
@@ -106,17 +91,10 @@ export default function SeatingWizard({ eventId, tables }: SeatingWizardProps) {
     mutationFn: async () => api.delete(`/api/events/${eventId}/seating-clear`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
-      toast({
-        title: "Rozsazení vymazáno",
-        description: "Všichni hosté byli odebráni ze stolů",
-      });
+      successToast("Všichni hosté byli odebráni ze stolů");
     },
     onError: (error: Error) => {
-      toast({
-        title: "Chyba",
-        description: error.message,
-        variant: "destructive",
-      });
+      errorToast(error);
     },
   });
 

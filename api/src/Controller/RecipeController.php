@@ -7,6 +7,7 @@ use App\Repository\RecipeRepository;
 use App\Repository\RecipeIngredientRepository;
 use App\Repository\ReservationFoodsRepository;
 use App\Repository\StockItemRepository;
+use App\Service\RecipeImportService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -17,11 +18,29 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 #[Route('/api/recipes')]
 class RecipeController extends AbstractController
 {
+    public function __construct(
+        private readonly RecipeImportService $importService,
+    ) {
+    }
+
     #[Route('', methods: ['GET'])]
     #[IsGranted('recipes.read')]
     public function list(RecipeRepository $repo): JsonResponse
     {
-        return $this->json($repo->findAll());
+        $recipes = $repo->findAll();
+
+        $data = array_map(fn(Recipe $r) => $this->serializeRecipe($r), $recipes);
+
+        return $this->json($data);
+    }
+
+    #[Route('/{id}', methods: ['GET'], requirements: ['id' => '\d+'])]
+    #[IsGranted('recipes.read')]
+    public function show(int $id, RecipeRepository $repo): JsonResponse
+    {
+        $recipe = $repo->find($id);
+        if (!$recipe) { return $this->json(['error' => 'Not found'], 404); }
+        return $this->json($this->serializeRecipe($recipe));
     }
 
     #[Route('', methods: ['POST'])]
@@ -37,6 +56,9 @@ class RecipeController extends AbstractController
         $recipe->setName($data['name'] ?? '');
         $recipe->setDescription($data['description'] ?? null);
         $recipe->setPortions((int)($data['portions'] ?? 1));
+        if (array_key_exists('portionWeight', $data)) {
+            $recipe->setPortionWeight($data['portionWeight'] !== null ? (string)$data['portionWeight'] : null);
+        }
         if (!empty($data['reservationFoodId'])) {
             $food = $foodsRepo->find((int)$data['reservationFoodId']);
             if ($food) { $recipe->setReservationFood($food); }
@@ -45,8 +67,18 @@ class RecipeController extends AbstractController
         // Ingredients array
         $ingredients = $data['ingredients'] ?? [];
         foreach ($ingredients as $row) {
-            if (empty($row['stockItemId']) || !isset($row['quantityRequired'])) { continue; }
-            $stock = $stockRepo->find((int)$row['stockItemId']);
+            if (!isset($row['quantityRequired'])) { continue; }
+            $stock = null;
+            if (!empty($row['stockItemId'])) {
+                $stock = $stockRepo->find((int)$row['stockItemId']);
+            }
+            if (!$stock && !empty($row['stockItemName'])) {
+                $stock = new \App\Entity\StockItem();
+                $stock->setName($row['stockItemName']);
+                $stock->setUnit('kg');
+                $stock->setQuantityAvailable('0.00');
+                $em->persist($stock);
+            }
             if (!$stock) { continue; }
             $ing = new RecipeIngredient();
             $ing->setStockItem($stock);
@@ -58,7 +90,32 @@ class RecipeController extends AbstractController
         $em->persist($recipe);
         $em->flush();
 
-        return $this->json(['status' => 'created', 'id' => $recipe->getId()], 201);
+        return $this->json($this->serializeRecipe($recipe), 201);
+    }
+
+    #[Route('/import', methods: ['POST'])]
+    #[IsGranted('recipes.create')]
+    public function import(Request $request): JsonResponse
+    {
+        $file = $request->files->get('file');
+        if (!$file) {
+            return $this->json(['error' => 'Soubor nebyl nahrán'], 400);
+        }
+
+        $ext = strtolower($file->getClientOriginalExtension());
+        if (!in_array($ext, ['xlsx', 'xls'], true)) {
+            return $this->json(['error' => 'Podporované formáty: .xlsx, .xls'], 400);
+        }
+
+        try {
+            $result = $this->importService->importFromFile($file->getPathname());
+        } catch (\Throwable $e) {
+            return $this->json([
+                'error' => 'Chyba při importu: ' . $e->getMessage(),
+            ], 500);
+        }
+
+        return $this->json($result);
     }
 
     #[Route('/{id}', methods: ['PUT','PATCH'])]
@@ -77,6 +134,9 @@ class RecipeController extends AbstractController
         if (isset($data['name'])) $recipe->setName($data['name']);
         if (array_key_exists('description', $data)) $recipe->setDescription($data['description']);
         if (isset($data['portions'])) $recipe->setPortions((int)$data['portions']);
+        if (array_key_exists('portionWeight', $data)) {
+            $recipe->setPortionWeight($data['portionWeight'] !== null ? (string)$data['portionWeight'] : null);
+        }
         if (array_key_exists('reservationFoodId', $data)) {
             $food = $data['reservationFoodId'] ? $foodsRepo->find((int)$data['reservationFoodId']) : null;
             $recipe->setReservationFood($food);
@@ -86,8 +146,18 @@ class RecipeController extends AbstractController
             foreach ($recipe->getIngredients() as $existing) { $em->remove($existing); }
             $recipe->getIngredients()->clear();
             foreach ($data['ingredients'] as $row) {
-                if (empty($row['stockItemId']) || !isset($row['quantityRequired'])) { continue; }
-                $stock = $stockRepo->find((int)$row['stockItemId']);
+                if (!isset($row['quantityRequired'])) { continue; }
+                $stock = null;
+                if (!empty($row['stockItemId'])) {
+                    $stock = $stockRepo->find((int)$row['stockItemId']);
+                }
+                if (!$stock && !empty($row['stockItemName'])) {
+                    $stock = new \App\Entity\StockItem();
+                    $stock->setName($row['stockItemName']);
+                    $stock->setUnit('kg');
+                    $stock->setQuantityAvailable('0.00');
+                    $em->persist($stock);
+                }
                 if (!$stock) { continue; }
                 $ing = new RecipeIngredient();
                 $ing->setStockItem($stock);
@@ -97,7 +167,7 @@ class RecipeController extends AbstractController
             }
         }
         $em->flush();
-        return $this->json(['status' => 'updated']);
+        return $this->json($this->serializeRecipe($recipe));
     }
 
     #[Route('/{id}', methods: ['DELETE'])]
@@ -109,5 +179,38 @@ class RecipeController extends AbstractController
         $em->remove($recipe);
         $em->flush();
         return $this->json(['status' => 'deleted']);
+    }
+
+    private function serializeRecipe(Recipe $r): array
+    {
+        $ingredients = [];
+        foreach ($r->getIngredients() as $ing) {
+            $stockItem = $ing->getStockItem();
+            $ingredients[] = [
+                'id' => $ing->getId(),
+                'recipeId' => $r->getId(),
+                'stockItemId' => $stockItem?->getId(),
+                'quantityRequired' => $ing->getQuantityRequired(),
+                'stockItem' => $stockItem ? [
+                    'id' => $stockItem->getId(),
+                    'name' => $stockItem->getName(),
+                    'unit' => $stockItem->getUnit(),
+                    'pricePerUnit' => $stockItem->getPricePerUnit(),
+                    'supplier' => $stockItem->getSupplier(),
+                ] : null,
+            ];
+        }
+
+        return [
+            'id' => $r->getId(),
+            'name' => $r->getName(),
+            'description' => $r->getDescription(),
+            'portions' => $r->getPortions(),
+            'portionWeight' => $r->getPortionWeight() !== null ? (float) $r->getPortionWeight() : null,
+            'reservationFoodId' => $r->getReservationFood()?->getId(),
+            'ingredients' => $ingredients,
+            'createdAt' => $r->getCreatedAt()->format(DATE_ATOM),
+            'updatedAt' => $r->getUpdatedAt()->format(DATE_ATOM),
+        ];
     }
 }

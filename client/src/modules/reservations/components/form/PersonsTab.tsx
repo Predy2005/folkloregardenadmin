@@ -4,6 +4,7 @@ import { Input } from '@/shared/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/shared/components/ui/select';
 import { Plus, Trash2 } from 'lucide-react';
 import { useFormContext } from 'react-hook-form';
+import { formatCurrency } from '@/shared/lib/formatting';
 import type { ReservationFood } from '@shared/types';
 import { PERSON_TYPE_LABELS } from '@shared/types';
 
@@ -124,7 +125,7 @@ export function PersonsTab({ personFields, onAdd, onRemove, foods, totalPrice }:
           <div className="border-t pt-4 mt-4">
             <div className="flex items-center justify-between text-lg font-semibold">
               <span>Celková cena osob:</span>
-              <span className="font-mono">{Math.round(totalPrice).toLocaleString('cs-CZ')} Kč</span>
+              <span className="font-mono">{formatCurrency(Math.round(totalPrice))}</span>
             </div>
           </div>
         </div>

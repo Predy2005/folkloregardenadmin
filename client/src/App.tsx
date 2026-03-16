@@ -49,13 +49,13 @@ import { CashboxPage as Cashbox, CommissionLogsPage as CommissionLogs } from "@m
 import { FoodsPage as Foods, FoodEditPage as FoodEdit } from "@modules/foods";
 
 // Recipes module
-import { RecipesPage as Recipes } from "@modules/recipes";
+import { RecipesPage as Recipes, RecipeEditPage as RecipeEdit } from "@modules/recipes";
 
 // Stock module
-import { StockItemsPage as StockItems, StockMovementsPage as StockMovements } from "@modules/stock";
+import { StockItemsPage as StockItems, StockMovementsPage as StockMovements, StockRequirementsPage as StockRequirements } from "@modules/stock";
 
 // Admin module
-import { UsersPage as Users, RolesPage as Roles, SettingsPage as Settings, PricingPage as Pricing, DisabledDatesPage as DisabledDates } from "@modules/admin";
+import { UsersPage as Users, RolesPage as Roles, SettingsPage as Settings, PricingPage as Pricing, DisabledDatesPage as DisabledDates, ReservationTypesPage as ReservationTypes, CashMovementCategoriesPage as CashCategories } from "@modules/admin";
 
 // Other
 import NotFound from "@/pages/not-found";
@@ -243,10 +243,42 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/reservation-types">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <ReservationTypes />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/cash-categories">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <CashCategories />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/stock-items">
         <ProtectedRoute>
           <AuthenticatedLayout>
             <StockItems />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/recipes/new">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <RecipeEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/recipes/:id/edit">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <RecipeEdit />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -263,6 +295,14 @@ function Router() {
         <ProtectedRoute>
           <AuthenticatedLayout>
             <StockMovements />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/stock-requirements">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <StockRequirements />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

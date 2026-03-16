@@ -1,45 +1,27 @@
-import { z } from "zod";
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useState, useMemo } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { useToast } from "@/shared/hooks/use-toast";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { queryClient } from "@/shared/lib/queryClient";
 import { api } from "@/shared/lib/api";
+import { useToggleSet } from "@/shared/hooks/useToggleSet";
 import type { EventGuest } from "@shared/types";
+import type { GuestGroup } from "../types";
+import { useGuestSummary, invalidateGuestSummary } from "../hooks/useGuestSummary";
+
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/shared/components/ui/form";
-import { Input } from "@/shared/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/components/ui/select";
-import { Checkbox } from "@/shared/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { Badge } from "@/shared/components/ui/badge";
-import { Label } from "@/shared/components/ui/label";
-import { Loader2, Pencil, Plus, Trash2, Users, RefreshCw, CheckSquare } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/shared/components/ui/collapsible";
+import { Loader2, Plus, Users, RefreshCw, CheckSquare, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 
-const guestSchema = z.object({
-  firstName: z.string().min(1, "Zadejte jméno"),
-  lastName: z.string().optional(),
-  nationality: z.string().optional(),
-  type: z.enum(["adult", "child", "infant", "driver", "guide"], {
-    required_error: "Vyberte typ",
-  }),
-  isPaid: z.boolean().default(true),
-  isPresent: z.boolean().default(false),
-  notes: z.string().optional(),
-});
-
-export type GuestForm = z.infer<typeof guestSchema>;
-
-const GUEST_TYPE_LABELS: Record<string, string> = {
-  adult: "Dospělý",
-  child: "Dítě (3-12)",
-  infant: "Batole (0-2)",
-  driver: "Řidič",
-  guide: "Průvodce",
-};
+import {
+  GuestFormDialog,
+  BulkActionDialog,
+  GuestTable,
+  BulkAddCard,
+} from "./guests";
+import type { BulkActionType } from "./guests";
+import { GuestCommandCenter } from "./dashboard/guest-command";
 
 export interface GuestsTabProps {
   eventId: number;
@@ -49,72 +31,93 @@ export interface GuestsTabProps {
 }
 
 export default function GuestsTab({ eventId, eventType, guests, isLoading }: GuestsTabProps) {
-  const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingGuest, setEditingGuest] = useState<EventGuest | null>(null);
+
+  // Guest summary for GuestCommandCenter
+  const { data: guestSummary } = useGuestSummary(eventId);
+
+  // Collapsible state - all sections closed by default
+  const openSections = useToggleSet<string>();
 
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
-  // Bulk add state
-  const [bulkCount, setBulkCount] = useState<number>(1);
-  const [bulkType, setBulkType] = useState<string>("adult");
-  const [bulkNationality, setBulkNationality] = useState<string>("");
-  const [bulkIsPaid, setBulkIsPaid] = useState<boolean>(true);
-
   // Bulk action state
   const [bulkActionDialogOpen, setBulkActionDialogOpen] = useState(false);
-  const [bulkActionType, setBulkActionType] = useState<"nationality" | "type" | "isPaid" | "isPresent" | "delete" | null>(null);
-  const [bulkActionValue, setBulkActionValue] = useState<string>("");
+  const [bulkActionType, setBulkActionType] = useState<BulkActionType>(null);
 
   const isFolklorniShow = eventType === "folklorni_show";
 
-  const form = useForm<GuestForm>({
-    resolver: zodResolver(guestSchema),
-    defaultValues: {
-      firstName: "",
-      lastName: "",
-      nationality: "",
-      type: "adult",
-      isPaid: true,
-      isPresent: false,
-      notes: "",
-    },
-  });
+  // Group guests by reservation
+  const groupedGuests = useMemo(() => {
+    const groups: Map<number | null, EventGuest[]> = new Map();
+
+    guests.forEach(guest => {
+      const key = guest.reservationId ?? null;
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)!.push(guest);
+    });
+
+    const result: GuestGroup[] = [];
+
+    // First add reservation groups (sorted by reservationId)
+    const reservationKeys = Array.from(groups.keys())
+      .filter(k => k !== null)
+      .sort((a, b) => (a as number) - (b as number));
+
+    for (const key of reservationKeys) {
+      const groupGuests = groups.get(key)!;
+      result.push({
+        reservationId: key,
+        guests: groupGuests,
+        stats: {
+          total: groupGuests.length,
+          adults: groupGuests.filter(g => g.type === "adult").length,
+          children: groupGuests.filter(g => g.type === "child").length,
+          paid: groupGuests.filter(g => g.isPaid).length,
+          present: groupGuests.filter(g => g.isPresent).length,
+        },
+      });
+    }
+
+    // Add manual guests group if exists
+    if (groups.has(null)) {
+      const manualGuests = groups.get(null)!;
+      result.push({
+        reservationId: null,
+        guests: manualGuests,
+        stats: {
+          total: manualGuests.length,
+          adults: manualGuests.filter(g => g.type === "adult").length,
+          children: manualGuests.filter(g => g.type === "child").length,
+          paid: manualGuests.filter(g => g.isPaid).length,
+          present: manualGuests.filter(g => g.isPresent).length,
+        },
+      });
+    }
+
+    return result;
+  }, [guests]);
 
   const invalidateQueries = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "guests"] });
     queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
+    invalidateGuestSummary(eventId);
   };
 
-  const createMutation = useMutation({
-    mutationFn: async (data: GuestForm) => {
-      return await api.post(`/api/events/${eventId}/guests`, data);
+  const loadFromReservationsMutation = useMutation({
+    mutationFn: async () => {
+      return await api.post(`/api/events/${eventId}/guests/from-reservations`);
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       invalidateQueries();
-      toast({ title: "Úspěch", description: "Host byl přidán" });
-      setDialogOpen(false);
-      form.reset();
+      successToast(`Načteno ${data.guestsCount} hostů z rezervací`);
     },
     onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async (data: GuestForm & { id: number }) => {
-      return await api.put(`/api/events/${eventId}/guests/${data.id}`, data);
-    },
-    onSuccess: () => {
-      invalidateQueries();
-      toast({ title: "Úspěch", description: "Host byl aktualizován" });
-      setDialogOpen(false);
-      setEditingGuest(null);
-      form.reset();
-    },
-    onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
+      errorToast(error);
     },
   });
 
@@ -124,103 +127,21 @@ export default function GuestsTab({ eventId, eventType, guests, isLoading }: Gue
     },
     onSuccess: () => {
       invalidateQueries();
-      toast({ title: "Úspěch", description: "Host byl smazán" });
+      successToast("Host byl smazán");
     },
     onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const loadFromReservationsMutation = useMutation({
-    mutationFn: async () => {
-      return await api.post(`/api/events/${eventId}/guests/from-reservations`);
-    },
-    onSuccess: (data: any) => {
-      invalidateQueries();
-      toast({ title: "Úspěch", description: `Načteno ${data.guestsCount} hostů z rezervací` });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const bulkCreateMutation = useMutation({
-    mutationFn: async (data: { count: number; type: string; nationality?: string; isPaid: boolean }) => {
-      return await api.post(`/api/events/${eventId}/guests/bulk`, data);
-    },
-    onSuccess: (data: any) => {
-      invalidateQueries();
-      toast({ title: "Úspěch", description: `Přidáno ${data.count} hostů` });
-      setBulkCount(1);
-    },
-    onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const bulkUpdateMutation = useMutation({
-    mutationFn: async (data: { guestIds: number[]; updates: Record<string, any> }) => {
-      return await api.put(`/api/events/${eventId}/guests/bulk-update`, data);
-    },
-    onSuccess: (data: any) => {
-      invalidateQueries();
-      setSelectedIds(new Set());
-      setBulkActionDialogOpen(false);
-      toast({ title: "Úspěch", description: `Aktualizováno ${data.count} hostů` });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const bulkDeleteMutation = useMutation({
-    mutationFn: async (guestIds: number[]) => {
-      return await api.delete(`/api/events/${eventId}/guests/bulk-delete`, { data: { guestIds } });
-    },
-    onSuccess: (data: any) => {
-      invalidateQueries();
-      setSelectedIds(new Set());
-      setBulkActionDialogOpen(false);
-      toast({ title: "Úspěch", description: `Smazáno ${data.count} hostů` });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
+      errorToast(error);
     },
   });
 
   const handleEdit = (guest: EventGuest) => {
     setEditingGuest(guest);
-    form.reset({
-      firstName: guest.firstName || "",
-      lastName: guest.lastName || "",
-      nationality: guest.nationality || "",
-      type: guest.type as any,
-      isPaid: guest.isPaid,
-      isPresent: guest.isPresent,
-      notes: guest.notes || "",
-    });
     setDialogOpen(true);
   };
 
-  const onSubmit = (data: GuestForm) => {
-    if (editingGuest) {
-      updateMutation.mutate({ ...data, id: editingGuest.id });
-    } else {
-      createMutation.mutate(data);
-    }
-  };
-
-  const handleBulkAdd = () => {
-    if (bulkCount < 1) {
-      toast({ title: "Zadejte platný počet", variant: "destructive" });
-      return;
-    }
-    bulkCreateMutation.mutate({
-      count: bulkCount,
-      type: bulkType,
-      nationality: bulkNationality || undefined,
-      isPaid: bulkIsPaid,
-    });
+  const handleOpenAddDialog = () => {
+    setEditingGuest(null);
+    setDialogOpen(true);
   };
 
   const toggleSelect = (id: number) => {
@@ -235,45 +156,24 @@ export default function GuestsTab({ eventId, eventType, guests, isLoading }: Gue
     });
   };
 
-  const toggleSelectAll = () => {
-    if (selectedIds.size === guests.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(guests.map(g => g.id)));
-    }
+  const toggleSelectGroup = (groupGuests: EventGuest[]) => {
+    const allSelected = groupGuests.every(g => selectedIds.has(g.id));
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      groupGuests.forEach(g => {
+        if (allSelected) {
+          newSet.delete(g.id);
+        } else {
+          newSet.add(g.id);
+        }
+      });
+      return newSet;
+    });
   };
 
-  const openBulkAction = (action: typeof bulkActionType) => {
+  const openBulkAction = (action: BulkActionType) => {
     setBulkActionType(action);
-    setBulkActionValue("");
     setBulkActionDialogOpen(true);
-  };
-
-  const executeBulkAction = () => {
-    const guestIds = Array.from(selectedIds);
-
-    if (bulkActionType === "delete") {
-      bulkDeleteMutation.mutate(guestIds);
-      return;
-    }
-
-    const updates: Record<string, any> = {};
-    switch (bulkActionType) {
-      case "nationality":
-        updates.nationality = bulkActionValue;
-        break;
-      case "type":
-        updates.type = bulkActionValue;
-        break;
-      case "isPaid":
-        updates.isPaid = bulkActionValue === "true";
-        break;
-      case "isPresent":
-        updates.isPresent = bulkActionValue === "true";
-        break;
-    }
-
-    bulkUpdateMutation.mutate({ guestIds, updates });
   };
 
   // Count statistics
@@ -281,9 +181,6 @@ export default function GuestsTab({ eventId, eventType, guests, isLoading }: Gue
     total: guests.length,
     adults: guests.filter(g => g.type === "adult").length,
     children: guests.filter(g => g.type === "child").length,
-    infants: guests.filter(g => g.type === "infant").length,
-    paid: guests.filter(g => g.isPaid).length,
-    free: guests.filter(g => !g.isPaid).length,
     present: guests.filter(g => g.isPresent).length,
   };
 
@@ -295,9 +192,9 @@ export default function GuestsTab({ eventId, eventType, guests, isLoading }: Gue
           <Users className="h-5 w-5 text-muted-foreground" />
           <CardTitle className="text-lg">Seznam hostů</CardTitle>
           <Badge variant="secondary">{stats.total} celkem</Badge>
-          {stats.adults > 0 && <Badge variant="outline">{stats.adults} dospělých</Badge>}
+          {stats.adults > 0 && <Badge variant="outline">{stats.adults} dosp.</Badge>}
           {stats.children > 0 && <Badge variant="outline">{stats.children} dětí</Badge>}
-          {stats.infants > 0 && <Badge variant="outline">{stats.infants} batolat</Badge>}
+          {stats.present > 0 && <Badge className="bg-green-600">{stats.present} přítomno</Badge>}
         </div>
         <div className="flex gap-2">
           {isFolklorniShow && (
@@ -305,7 +202,6 @@ export default function GuestsTab({ eventId, eventType, guests, isLoading }: Gue
               variant="outline"
               onClick={() => loadFromReservationsMutation.mutate()}
               disabled={loadFromReservationsMutation.isPending}
-              data-testid="button-load-guests-from-reservations"
             >
               {loadFromReservationsMutation.isPending ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -315,7 +211,7 @@ export default function GuestsTab({ eventId, eventType, guests, isLoading }: Gue
               Obnovit z rezervací
             </Button>
           )}
-          <Button onClick={() => { setEditingGuest(null); form.reset(); setDialogOpen(true); }} data-testid="button-add-guest">
+          <Button onClick={handleOpenAddDialog}>
             <Plus className="mr-2 h-4 w-4" />
             Přidat hosta
           </Button>
@@ -323,74 +219,13 @@ export default function GuestsTab({ eventId, eventType, guests, isLoading }: Gue
       </div>
 
       {/* Bulk add section - only for non-folklorni_show */}
-      {!isFolklorniShow && (
+      {!isFolklorniShow && <BulkAddCard eventId={eventId} />}
+
+      {/* Guest Command Center - rich view from dashboard */}
+      {guestSummary && guestSummary.byReservation.length > 0 && (
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-              Hromadné přidání hostů
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
-              <div>
-                <Label className="text-xs">Počet</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={500}
-                  value={bulkCount}
-                  onChange={(e) => setBulkCount(Number(e.target.value))}
-                  className="mt-1"
-                  data-testid="input-bulk-count"
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Typ</Label>
-                <Select value={bulkType} onValueChange={setBulkType}>
-                  <SelectTrigger className="mt-1" data-testid="select-bulk-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(GUEST_TYPE_LABELS).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Národnost</Label>
-                <Input
-                  value={bulkNationality}
-                  onChange={(e) => setBulkNationality(e.target.value)}
-                  placeholder="např. Česká republika"
-                  className="mt-1"
-                  data-testid="input-bulk-nationality"
-                />
-              </div>
-              <div className="flex items-center gap-2 pt-5">
-                <Checkbox
-                  checked={bulkIsPaid}
-                  onCheckedChange={(checked) => setBulkIsPaid(Boolean(checked))}
-                  data-testid="checkbox-bulk-is-paid"
-                />
-                <Label className="text-xs">Platící</Label>
-              </div>
-              <div className="md:col-span-2">
-                <Button
-                  onClick={handleBulkAdd}
-                  disabled={bulkCreateMutation.isPending}
-                  className="w-full"
-                  data-testid="button-bulk-add"
-                >
-                  {bulkCreateMutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plus className="mr-2 h-4 w-4" />
-                  )}
-                  Přidat {bulkCount} {bulkCount === 1 ? "hosta" : "hostů"}
-                </Button>
-              </div>
-            </div>
+          <CardContent className="p-0">
+            <GuestCommandCenter data={guestSummary} eventId={eventId} />
           </CardContent>
         </Card>
       )}
@@ -405,372 +240,125 @@ export default function GuestsTab({ eventId, eventType, guests, isLoading }: Gue
                 {selectedIds.size} vybráno
               </Badge>
               <Button size="sm" variant="outline" onClick={() => openBulkAction("nationality")}>
-                Změnit národnost
+                Národnost
               </Button>
               <Button size="sm" variant="outline" onClick={() => openBulkAction("type")}>
-                Změnit typ
+                Typ
               </Button>
               <Button size="sm" variant="outline" onClick={() => openBulkAction("isPaid")}>
-                Změnit placení
+                Placení
               </Button>
               <Button size="sm" variant="outline" onClick={() => openBulkAction("isPresent")}>
-                Změnit přítomnost
+                Přítomnost
               </Button>
               <Button size="sm" variant="destructive" onClick={() => openBulkAction("delete")}>
                 <Trash2 className="mr-1 h-3 w-3" />
-                Smazat vybrané
+                Smazat
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
-                Zrušit výběr
+                Zrušit
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Guest table */}
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[50px]">
-                  <Checkbox
-                    checked={guests.length > 0 && selectedIds.size === guests.length}
-                    onCheckedChange={toggleSelectAll}
-                    data-testid="checkbox-select-all"
-                  />
-                </TableHead>
-                <TableHead>Jméno</TableHead>
-                <TableHead>Příjmení</TableHead>
-                <TableHead>Typ</TableHead>
-                <TableHead>Národnost</TableHead>
-                <TableHead>Platící</TableHead>
-                <TableHead>Přítomen</TableHead>
-                <TableHead>Poznámka</TableHead>
-                <TableHead className="w-[100px]">Akce</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={9}>
-                    <div className="flex items-center gap-2 text-muted-foreground py-4">
-                      <Loader2 className="h-4 w-4 animate-spin" /> Načítání...
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : guests.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={9} className="text-muted-foreground py-8 text-center">
-                    {isFolklorniShow
-                      ? "Zatím žádní hosté. Klikněte na 'Obnovit z rezervací' pro načtení."
-                      : "Zatím žádní hosté. Použijte hromadné přidání nebo tlačítko 'Přidat hosta'."}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                guests.map((g) => (
-                  <TableRow key={g.id} className={selectedIds.has(g.id) ? "bg-primary/5" : ""}>
-                    <TableCell>
-                      <Checkbox
-                        checked={selectedIds.has(g.id)}
-                        onCheckedChange={() => toggleSelect(g.id)}
-                        data-testid={`checkbox-guest-${g.id}`}
-                      />
-                    </TableCell>
-                    <TableCell className="font-medium">{g.firstName || "-"}</TableCell>
-                    <TableCell>{g.lastName || "-"}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {GUEST_TYPE_LABELS[g.type] || g.type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{g.nationality || "-"}</TableCell>
-                    <TableCell>
-                      <Badge variant={g.isPaid ? "default" : "secondary"}>
-                        {g.isPaid ? "Ano" : "Ne"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={g.isPresent ? "default" : "outline"}>
-                        {g.isPresent ? "Ano" : "Ne"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="max-w-[150px] truncate" title={g.notes || ""}>
-                      {g.notes || "-"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEdit(g)}
-                          data-testid={`button-edit-guest-${g.id}`}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => deleteMutation.mutate(g.id)}
-                          data-testid={`button-delete-guest-${g.id}`}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+      {/* Guest groups */}
+      {isLoading ? (
+        <Card>
+          <CardContent className="py-8">
+            <div className="flex items-center justify-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Načítání hostů...
+            </div>
+          </CardContent>
+        </Card>
+      ) : guests.length === 0 ? (
+        <Card>
+          <CardContent className="py-8 text-center text-muted-foreground">
+            {isFolklorniShow
+              ? "Zatím žádní hosté. Klikněte na 'Obnovit z rezervací' pro načtení."
+              : "Zatím žádní hosté. Použijte hromadné přidání nebo tlačítko 'Přidat hosta'."}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {groupedGuests.map((group) => {
+            const sectionKey = group.reservationId !== null ? `res-${group.reservationId}` : "manual";
+            const isOpen = openSections.isOpen(sectionKey);
+
+            return (
+              <Collapsible
+                key={sectionKey}
+                open={isOpen}
+                onOpenChange={() => openSections.toggle(sectionKey)}
+              >
+                <Card>
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/30 dark:hover:bg-blue-950/50 transition-colors py-3 rounded-t-lg">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          {isOpen ? (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          )}
+                          <CardTitle className="text-base font-medium">
+                            {group.reservationId !== null
+                              ? `Rezervace #${group.reservationId}`
+                              : "Manuálně přidaní hosté"}
+                          </CardTitle>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary">{group.stats.total} hostů</Badge>
+                          {group.stats.adults > 0 && (
+                            <Badge variant="outline" className="text-xs">{group.stats.adults} dosp.</Badge>
+                          )}
+                          {group.stats.children > 0 && (
+                            <Badge variant="outline" className="text-xs">{group.stats.children} dětí</Badge>
+                          )}
+                          {group.stats.present > 0 && (
+                            <Badge className="bg-green-600 text-xs">{group.stats.present} přít.</Badge>
+                          )}
+                        </div>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent className="pt-0 px-0">
+                      <GuestTable
+                        guests={group.guests}
+                        selectedIds={selectedIds}
+                        onToggleSelect={toggleSelect}
+                        onToggleSelectGroup={toggleSelectGroup}
+                        onEdit={handleEdit}
+                        onDelete={(id) => deleteMutation.mutate(id)}
+                      />
+                    </CardContent>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
+            );
+          })}
+        </div>
+      )}
 
       {/* Single guest dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingGuest ? "Upravit hosta" : "Přidat hosta"}</DialogTitle>
-            <DialogDescription>Vyplňte údaje o hostovi</DialogDescription>
-          </DialogHeader>
-
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="firstName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jméno *</FormLabel>
-                      <FormControl>
-                        <Input {...field} data-testid="input-first-name" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="lastName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Příjmení</FormLabel>
-                      <FormControl>
-                        <Input {...field} data-testid="input-last-name" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="type"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Typ *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-type">
-                            <SelectValue placeholder="Vyberte typ" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {Object.entries(GUEST_TYPE_LABELS).map(([value, label]) => (
-                            <SelectItem key={value} value={value}>{label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="nationality"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Národnost</FormLabel>
-                      <FormControl>
-                        <Input {...field} data-testid="input-nationality" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="isPaid"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={(checked) => field.onChange(Boolean(checked))}
-                          data-testid="checkbox-is-paid"
-                        />
-                      </FormControl>
-                      <FormLabel className="font-normal">Platící host</FormLabel>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="isPresent"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={(checked) => field.onChange(Boolean(checked))}
-                          data-testid="checkbox-is-present"
-                        />
-                      </FormControl>
-                      <FormLabel className="font-normal">Přítomen</FormLabel>
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <FormField
-                control={form.control}
-                name="notes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Poznámky</FormLabel>
-                    <FormControl>
-                      <Input {...field} data-testid="input-notes" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} data-testid="button-cancel-guest">
-                  Zrušit
-                </Button>
-                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-guest">
-                  {(createMutation.isPending || updateMutation.isPending) ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Ukládám...
-                    </>
-                  ) : editingGuest ? (
-                    "Uložit"
-                  ) : (
-                    "Přidat"
-                  )}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+      <GuestFormDialog
+        eventId={eventId}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        editingGuest={editingGuest}
+      />
 
       {/* Bulk action dialog */}
-      <Dialog open={bulkActionDialogOpen} onOpenChange={setBulkActionDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {bulkActionType === "delete"
-                ? `Smazat ${selectedIds.size} hostů?`
-                : `Hromadná změna (${selectedIds.size} hostů)`}
-            </DialogTitle>
-            <DialogDescription>
-              {bulkActionType === "delete"
-                ? "Tato akce je nevratná."
-                : "Vyberte novou hodnotu pro všechny označené hosty."}
-            </DialogDescription>
-          </DialogHeader>
-
-          {bulkActionType !== "delete" && (
-            <div className="py-4">
-              {bulkActionType === "nationality" && (
-                <div>
-                  <Label>Národnost</Label>
-                  <Input
-                    value={bulkActionValue}
-                    onChange={(e) => setBulkActionValue(e.target.value)}
-                    placeholder="např. Česká republika"
-                    className="mt-1"
-                    data-testid="input-bulk-action-nationality"
-                  />
-                </div>
-              )}
-              {bulkActionType === "type" && (
-                <div>
-                  <Label>Typ hosta</Label>
-                  <Select value={bulkActionValue} onValueChange={setBulkActionValue}>
-                    <SelectTrigger className="mt-1" data-testid="select-bulk-action-type">
-                      <SelectValue placeholder="Vyberte typ" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(GUEST_TYPE_LABELS).map(([value, label]) => (
-                        <SelectItem key={value} value={value}>{label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              {bulkActionType === "isPaid" && (
-                <div>
-                  <Label>Platící</Label>
-                  <Select value={bulkActionValue} onValueChange={setBulkActionValue}>
-                    <SelectTrigger className="mt-1" data-testid="select-bulk-action-is-paid">
-                      <SelectValue placeholder="Vyberte hodnotu" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="true">Ano - platící</SelectItem>
-                      <SelectItem value="false">Ne - neplatící</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              {bulkActionType === "isPresent" && (
-                <div>
-                  <Label>Přítomnost</Label>
-                  <Select value={bulkActionValue} onValueChange={setBulkActionValue}>
-                    <SelectTrigger className="mt-1" data-testid="select-bulk-action-is-present">
-                      <SelectValue placeholder="Vyberte hodnotu" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="true">Ano - přítomen</SelectItem>
-                      <SelectItem value="false">Ne - nepřítomen</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBulkActionDialogOpen(false)}>
-              Zrušit
-            </Button>
-            <Button
-              variant={bulkActionType === "delete" ? "destructive" : "default"}
-              onClick={executeBulkAction}
-              disabled={
-                bulkUpdateMutation.isPending ||
-                bulkDeleteMutation.isPending ||
-                (bulkActionType !== "delete" && !bulkActionValue)
-              }
-              data-testid="button-execute-bulk-action"
-            >
-              {(bulkUpdateMutation.isPending || bulkDeleteMutation.isPending) ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : null}
-              {bulkActionType === "delete" ? "Smazat" : "Aplikovat"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <BulkActionDialog
+        eventId={eventId}
+        open={bulkActionDialogOpen}
+        onOpenChange={setBulkActionDialogOpen}
+        selectedIds={selectedIds}
+        actionType={bulkActionType}
+        onSuccess={() => setSelectedIds(new Set())}
+      />
     </div>
   );
 }

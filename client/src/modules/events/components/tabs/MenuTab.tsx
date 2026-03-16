@@ -1,135 +1,135 @@
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { useMutation } from "@tanstack/react-query";
-import { queryClient } from "@/shared/lib/queryClient";
+import { useMemo } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { api } from "@/shared/lib/api";
+import { queryClient } from "@/shared/lib/queryClient";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
+import { useToggleSet } from "@/shared/hooks/useToggleSet";
 import type { EventMenu } from "@shared/types";
+import type { ReservationInfo, MenuGroup } from "../../types";
+import { invalidateGuestSummary } from "../../hooks/useGuestSummary";
 import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/shared/components/ui/form";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
-import { Textarea } from "@/shared/components/ui/textarea";
 import { Skeleton } from "@/shared/components/ui/skeleton";
-import { useToast } from "@/shared/hooks/use-toast";
-import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
-
-const menuSchema = z.object({
-  menuName: z.string().min(1, "Zadejte název jídla"),
-  quantity: z.number().min(1, "Zadejte množství"),
-  pricePerUnit: z.number().optional(),
-  totalPrice: z.number().optional(),
-  servingTime: z.string().optional(),
-  notes: z.string().optional(),
-});
-
-type MenuForm = z.infer<typeof menuSchema>;
+import { Badge } from "@/shared/components/ui/badge";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/shared/components/ui/collapsible";
+import { ChevronDown, ChevronRight, UtensilsCrossed, ExternalLink, RefreshCw, Loader2 } from "lucide-react";
+import { formatCurrency } from "@/shared/lib/formatting";
 
 export interface MenuTabProps {
   eventId: number;
+  eventType?: string;
   menu: EventMenu[];
   isLoading: boolean;
 }
 
-export default function MenuTab({ eventId, menu, isLoading }: MenuTabProps) {
-  const { toast } = useToast();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<EventMenu | null>(null);
+export default function MenuTab({ eventId, eventType, menu, isLoading }: MenuTabProps) {
+  const [, setLocation] = useLocation();
 
-  const form = useForm<MenuForm>({
-    resolver: zodResolver(menuSchema),
-    defaultValues: {
-      menuName: "",
-      quantity: 1,
-      pricePerUnit: undefined,
-      totalPrice: undefined,
-      servingTime: "",
-      notes: "",
+  // Sync guests from reservations mutation (populates menu data)
+  const syncFromReservationsMutation = useMutation({
+    mutationFn: async () => {
+      return await api.post(`/api/events/${eventId}/guests/from-reservations`);
     },
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async (data: MenuForm) => {
-      return await api.post(`/api/events/${eventId}/menu`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "menu"] });
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
-      toast({ title: "Úspěch", description: "Jídlo bylo přidáno" });
-      setDialogOpen(false);
-      form.reset();
+      invalidateGuestSummary(eventId);
+      successToast(`Synchronizováno ${data.guestsCount ?? ""} hostů z rezervací`);
     },
     onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
+      errorToast(error);
     },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: async (data: MenuForm & { id: number }) => {
-      return await api.put(`/api/events/${eventId}/menu/${data.id}`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "menu"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
-      toast({ title: "Úspěch", description: "Jídlo bylo aktualizováno" });
-      setDialogOpen(false);
-      setEditingItem(null);
-      form.reset();
-    },
-    onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
-    },
+  // Collapsible state
+  const openSections = useToggleSet<string>();
+
+  // Fetch reservations linked to this event
+  const { data: reservationsData } = useQuery<{ groups: ReservationInfo[] }>({
+    queryKey: ["/api/events", eventId, "guests/by-reservation"],
+    queryFn: () => api.get(`/api/events/${eventId}/guests/by-reservation`),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return await api.delete(`/api/events/${eventId}/menu/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "menu"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
-      toast({ title: "Úspěch", description: "Jídlo bylo smazáno" });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Chyba", description: error.message, variant: "destructive" });
-    },
-  });
+  const reservations = reservationsData?.groups || [];
 
-  const handleEdit = (item: EventMenu) => {
-    setEditingItem(item);
-    form.reset({
-      menuName: item.menuName,
-      quantity: item.quantity,
-      pricePerUnit: item.pricePerUnit,
-      totalPrice: item.totalPrice,
-      servingTime: item.servingTime || "",
-      notes: item.notes || "",
+  const isWedding = eventType === "svatba";
+
+  // Group menu items by reservation - include ALL reservations from guests
+  const groupedMenu = useMemo(() => {
+    const menuByReservation: Map<number, EventMenu[]> = new Map();
+
+    menu.forEach(item => {
+      if (item.reservationId) {
+        if (!menuByReservation.has(item.reservationId)) {
+          menuByReservation.set(item.reservationId, []);
+        }
+        menuByReservation.get(item.reservationId)!.push(item);
+      }
     });
-    setDialogOpen(true);
-  };
 
-  const handleAdd = () => {
-    setEditingItem(null);
-    form.reset({
-      menuName: "",
-      quantity: 1,
-      pricePerUnit: undefined,
-      totalPrice: undefined,
-      servingTime: "",
-      notes: "",
-    });
-    setDialogOpen(true);
-  };
+    const result: MenuGroup[] = [];
 
-  const onSubmit = (data: MenuForm) => {
-    if (editingItem) {
-      updateMutation.mutate({ ...data, id: editingItem.id });
-    } else {
-      createMutation.mutate(data);
+    // Add ALL reservations from the event (even if they have no menu items)
+    for (const res of reservations) {
+      const items = menuByReservation.get(res.reservationId) || [];
+      result.push({
+        reservationId: res.reservationId,
+        contactName: res.contactName,
+        items,
+        totalQuantity: items.reduce((sum, i) => sum + i.quantity, 0),
+        totalPrice: items.reduce((sum, i) => sum + (i.totalPrice || 0), 0),
+      });
     }
-  };
+
+    // Add any menu items that belong to reservations not in the guests list
+    const knownReservationIds = new Set(reservations.map(r => r.reservationId));
+    menuByReservation.forEach((items, resId) => {
+      if (!knownReservationIds.has(resId)) {
+        result.push({
+          reservationId: resId,
+          items,
+          totalQuantity: items.reduce((sum: number, i: EventMenu) => sum + i.quantity, 0),
+          totalPrice: items.reduce((sum: number, i: EventMenu) => sum + (i.totalPrice || 0), 0),
+        });
+      }
+    });
+
+    return result;
+  }, [menu, reservations]);
+
+  const toggleSection = openSections.toggle;
+
+  // Stats
+  const totalItems = menu.reduce((sum, i) => sum + i.quantity, 0);
+  const totalPrice = menu.reduce((sum, i) => sum + (i.totalPrice || 0), 0);
+
+  const renderMenuTable = (items: EventMenu[]) => (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Název</TableHead>
+          <TableHead className="w-20">Počet</TableHead>
+          <TableHead className="w-24">Cena/ks</TableHead>
+          <TableHead className="w-24">Celkem</TableHead>
+          {isWedding && <TableHead className="w-24">Čas</TableHead>}
+          <TableHead>Poznámky</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {items.map((item) => (
+          <TableRow key={item.id}>
+            <TableCell className="font-medium">{item.menuName}</TableCell>
+            <TableCell>{item.quantity}</TableCell>
+            <TableCell>{item.pricePerUnit ? `${item.pricePerUnit} Kč` : "-"}</TableCell>
+            <TableCell className="font-medium">{item.totalPrice ? `${item.totalPrice} Kč` : "-"}</TableCell>
+            {isWedding && <TableCell>{item.servingTime || "-"}</TableCell>}
+            <TableCell className="text-muted-foreground text-sm">{item.notes || "-"}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
 
   if (isLoading) {
     return (
@@ -142,215 +142,125 @@ export default function MenuTab({ eventId, menu, isLoading }: MenuTabProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={handleAdd} data-testid="button-add-menu">
-          <Plus className="mr-2 h-4 w-4" />
-          Přidat jídlo
-        </Button>
-      </div>
-
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Název</TableHead>
-              <TableHead>Množství</TableHead>
-              <TableHead>Cena/ks</TableHead>
-              <TableHead>Celkem</TableHead>
-              <TableHead>Čas podání</TableHead>
-              <TableHead>Poznámky</TableHead>
-              <TableHead className="w-24">Akce</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {menu.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground">
-                  Zatím nejsou žádná jídla
-                </TableCell>
-              </TableRow>
+      {/* Header with stats */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <UtensilsCrossed className="h-5 w-5 text-muted-foreground" />
+          <CardTitle className="text-lg">Menu</CardTitle>
+          <Badge variant="secondary">{totalItems} položek</Badge>
+          {totalPrice > 0 && (
+            <Badge variant="outline">{formatCurrency(totalPrice)}</Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <p className="text-sm text-muted-foreground">
+            Menu je odvozeno z rezervací.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => syncFromReservationsMutation.mutate()}
+            disabled={syncFromReservationsMutation.isPending}
+          >
+            {syncFromReservationsMutation.isPending ? (
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
             ) : (
-              menu.map((item) => (
-                <TableRow key={item.id} data-testid={`row-menu-${item.id}`}>
-                  <TableCell data-testid={`cell-menu-${item.id}-name`}>{item.menuName}</TableCell>
-                  <TableCell data-testid={`cell-menu-${item.id}-quantity`}>{item.quantity}</TableCell>
-                  <TableCell data-testid={`cell-menu-${item.id}-price`}>{item.pricePerUnit}</TableCell>
-                  <TableCell data-testid={`cell-menu-${item.id}-total`}>{item.totalPrice}</TableCell>
-                  <TableCell data-testid={`cell-menu-${item.id}-time`}>{item.servingTime}</TableCell>
-                  <TableCell data-testid={`cell-menu-${item.id}-notes`}>{item.notes}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => handleEdit(item)}
-                        data-testid={`button-edit-menu-${item.id}`}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => deleteMutation.mutate(item.id)}
-                        data-testid={`button-delete-menu-${item.id}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+              <RefreshCw className="mr-1 h-3 w-3" />
             )}
-          </TableBody>
-        </Table>
+            Synchronizovat z rezervací
+          </Button>
+        </div>
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingItem ? "Upravit jídlo" : "Přidat jídlo"}</DialogTitle>
-            <DialogDescription>
-              Vyplňte údaje o jídle
-            </DialogDescription>
-          </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="menuName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Název *</FormLabel>
-                    <FormControl>
-                      <Input {...field} data-testid="input-menu-name" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+      {/* Menu groups - always show all reservations as collapsible sections */}
+      <div className="space-y-2">
+        {groupedMenu.map((group) => {
+          const sectionKey = `res-${group.reservationId}`;
+          const isOpen = openSections.isOpen(sectionKey);
+          const hasItems = group.items.length > 0;
 
-              <div className="grid grid-cols-3 gap-4">
-                <FormField
-                  control={form.control}
-                  name="quantity"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Množství *</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="1"
-                          {...field}
-                          onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
-                          data-testid="input-menu-quantity"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+          return (
+            <Collapsible
+              key={sectionKey}
+              open={isOpen}
+              onOpenChange={() => toggleSection(sectionKey)}
+            >
+              <Card>
+                <CollapsibleTrigger asChild>
+                  <CardHeader className="cursor-pointer bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/30 dark:hover:bg-blue-950/50 transition-colors py-3 rounded-t-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {isOpen ? (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        )}
+                        <CardTitle className="text-base font-medium">
+                          Rezervace #{group.reservationId}{group.contactName ? ` - ${group.contactName}` : ""}
+                        </CardTitle>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={hasItems ? "secondary" : "outline"}>
+                          {group.totalQuantity} ks
+                        </Badge>
+                        {group.totalPrice > 0 && (
+                          <Badge variant="outline">{formatCurrency(group.totalPrice)}</Badge>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLocation(`/reservations/${group.reservationId}/edit`);
+                          }}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                          Upravit
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent className="pt-0 px-0">
+                    {hasItems ? (
+                      renderMenuTable(group.items)
+                    ) : (
+                      <div className="p-4 text-center text-muted-foreground text-sm border-t">
+                        Žádná jídla v této rezervaci
+                      </div>
+                    )}
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
+          );
+        })}
+      </div>
 
-                <FormField
-                  control={form.control}
-                  name="pricePerUnit"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Cena/ks</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
-                          data-testid="input-menu-price"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="totalPrice"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Celkem</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
-                          data-testid="input-menu-total"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <FormField
-                control={form.control}
-                name="servingTime"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Čas podání</FormLabel>
-                    <FormControl>
-                      <Input type="time" {...field} data-testid="input-menu-time" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="notes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Poznámky</FormLabel>
-                    <FormControl>
-                      <Textarea {...field} data-testid="textarea-menu-notes" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setDialogOpen(false)}
-                  data-testid="button-cancel-menu"
-                >
-                  Zrušit
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={createMutation.isPending || updateMutation.isPending}
-                  data-testid="button-submit-menu"
-                >
-                  {(createMutation.isPending || updateMutation.isPending) ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Ukládám...
-                    </>
-                  ) : editingItem ? (
-                    "Uložit"
-                  ) : (
-                    "Přidat"
-                  )}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+      {/* Show message when no reservations exist */}
+      {groupedMenu.length === 0 && (
+        <Card>
+          <CardContent className="py-8 text-center space-y-3">
+            <p className="text-muted-foreground">
+              Zatím nejsou žádné rezervace přiřazené k této akci.
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => syncFromReservationsMutation.mutate()}
+              disabled={syncFromReservationsMutation.isPending}
+            >
+              {syncFromReservationsMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              Synchronizovat z rezervací
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

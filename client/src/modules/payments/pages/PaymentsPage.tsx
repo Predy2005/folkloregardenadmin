@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/shared/lib/api';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { PAGE_SIZE_OPTIONS } from '@/shared/lib/constants';
 import { Card, CardContent, CardHeader } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
@@ -11,15 +13,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/compo
 import { StatusBadge } from '@/shared/components/StatusBadge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 import { Search, Filter, X, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, CreditCard, User, Calendar, Phone, Mail, MapPin } from 'lucide-react';
+import { PageHeader } from "@/shared/components/PageHeader";
 import type { Payment, Reservation } from '@shared/types';
+import { formatCurrency } from '@/shared/lib/formatting';
 import dayjs from 'dayjs';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
 dayjs.extend(isSameOrAfter);
 dayjs.extend(isSameOrBefore);
-
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 
 const STATUS_OPTIONS = [
   { value: 'all', label: 'Všechny' },
@@ -36,8 +38,6 @@ export default function Payments() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(20);
 
   // Detail dialog state
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
@@ -104,12 +104,8 @@ export default function Payments() {
     });
   }, [payments, searchTerm, statusFilter, dateFrom, dateTo]);
 
-  // Calculate pagination
-  const totalItems = filteredPayments.length;
-  const totalPages = Math.ceil(totalItems / pageSize);
-  const startIndex = (currentPage - 1) * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, totalItems);
-  const paginatedData = filteredPayments.slice(startIndex, endIndex);
+  // Pagination
+  const { page, pageSize, setPage, setPageSize, paginatedData, totalPages, totalItems } = usePagination(filteredPayments);
 
   // Stats
   const totalAmount = filteredPayments.reduce((sum: number, p: Payment) => {
@@ -124,32 +120,28 @@ export default function Payments() {
   // Check if any filter is active
   const hasActiveFilters = statusFilter !== 'all' || dateFrom || dateTo;
 
-  // Reset to page 1 when filter changes
-  const resetPage = () => setCurrentPage(1);
-
   const handleSearchChange = (value: string) => {
     setSearchTerm(value);
-    resetPage();
+    setPage(1);
   };
 
   const handleStatusChange = (value: string) => {
     setStatusFilter(value);
-    resetPage();
+    setPage(1);
   };
 
   const handleDateFromChange = (value: string) => {
     setDateFrom(value);
-    resetPage();
+    setPage(1);
   };
 
   const handleDateToChange = (value: string) => {
     setDateTo(value);
-    resetPage();
+    setPage(1);
   };
 
   const handlePageSizeChange = (value: string) => {
     setPageSize(Number(value));
-    resetPage();
   };
 
   const clearAllFilters = () => {
@@ -157,7 +149,7 @@ export default function Payments() {
     setDateFrom('');
     setDateTo('');
     setSearchTerm('');
-    resetPage();
+    setPage(1);
   };
 
   const handleViewPayment = (payment: Payment) => {
@@ -169,12 +161,6 @@ export default function Payments() {
   const linkedReservation = selectedPayment
     ? reservationMap.get(selectedPayment.reservationReference)
     : null;
-
-  // Navigation handlers
-  const goToFirstPage = () => setCurrentPage(1);
-  const goToPreviousPage = () => setCurrentPage((prev) => Math.max(1, prev - 1));
-  const goToNextPage = () => setCurrentPage((prev) => Math.min(totalPages, prev + 1));
-  const goToLastPage = () => setCurrentPage(totalPages);
 
   if (isLoading) {
     return (
@@ -189,12 +175,7 @@ export default function Payments() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-          Platby
-        </h1>
-        <p className="text-muted-foreground mt-1">Přehled všech plateb z Comgate</p>
-      </div>
+      <PageHeader title="Platby" description="Přehled všech plateb z Comgate" />
 
       {/* Stats */}
       <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
@@ -222,7 +203,7 @@ export default function Payments() {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold" data-testid="stat-total-amount">
-              {totalAmount.toLocaleString('cs-CZ')} Kč
+              {formatCurrency(totalAmount)}
             </p>
           </CardContent>
         </Card>
@@ -330,7 +311,7 @@ export default function Payments() {
                   {statusFilter !== 'all' && (
                     <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-full text-xs">
                       Status: {STATUS_OPTIONS.find(s => s.value === statusFilter)?.label}
-                      <button onClick={() => { setStatusFilter('all'); resetPage(); }} className="hover:text-primary/70">
+                      <button onClick={() => { setStatusFilter('all'); setPage(1); }} className="hover:text-primary/70">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -338,7 +319,7 @@ export default function Payments() {
                   {dateFrom && (
                     <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-full text-xs">
                       Od: {dayjs(dateFrom).format('DD.MM.YYYY')}
-                      <button onClick={() => { setDateFrom(''); resetPage(); }} className="hover:text-primary/70">
+                      <button onClick={() => { setDateFrom(''); setPage(1); }} className="hover:text-primary/70">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -346,7 +327,7 @@ export default function Payments() {
                   {dateTo && (
                     <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-full text-xs">
                       Do: {dayjs(dateTo).format('DD.MM.YYYY')}
-                      <button onClick={() => { setDateTo(''); resetPage(); }} className="hover:text-primary/70">
+                      <button onClick={() => { setDateTo(''); setPage(1); }} className="hover:text-primary/70">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -401,7 +382,7 @@ export default function Payments() {
                             </div>
                           </TableCell>
                           <TableCell className="font-mono font-medium">
-                            {Number(payment.amount).toLocaleString('cs-CZ')} Kč
+                            {formatCurrency(Number(payment.amount))}
                           </TableCell>
                           <TableCell className="text-sm">
                             {dayjs(payment.createdAt).format('DD.MM.YYYY HH:mm')}
@@ -441,15 +422,15 @@ export default function Payments() {
             {totalItems > 0 && (
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-2">
                 <div className="text-sm text-muted-foreground">
-                  Zobrazeno {startIndex + 1}–{endIndex} z {totalItems} plateb
+                  Zobrazeno {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalItems)} z {totalItems} plateb
                 </div>
                 <div className="flex items-center gap-1">
                   <Button
                     variant="outline"
                     size="icon"
                     className="h-8 w-8"
-                    onClick={goToFirstPage}
-                    disabled={currentPage === 1}
+                    onClick={() => setPage(1)}
+                    disabled={page === 1}
                   >
                     <ChevronsLeft className="w-4 h-4" />
                   </Button>
@@ -457,22 +438,22 @@ export default function Payments() {
                     variant="outline"
                     size="icon"
                     className="h-8 w-8"
-                    onClick={goToPreviousPage}
-                    disabled={currentPage === 1}
+                    onClick={() => setPage(page - 1)}
+                    disabled={page === 1}
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </Button>
                   <div className="flex items-center gap-1 px-2">
                     <span className="text-sm">
-                      Strana <strong>{currentPage}</strong> z <strong>{totalPages || 1}</strong>
+                      Strana <strong>{page}</strong> z <strong>{totalPages || 1}</strong>
                     </span>
                   </div>
                   <Button
                     variant="outline"
                     size="icon"
                     className="h-8 w-8"
-                    onClick={goToNextPage}
-                    disabled={currentPage >= totalPages}
+                    onClick={() => setPage(page + 1)}
+                    disabled={page >= totalPages}
                   >
                     <ChevronRight className="w-4 h-4" />
                   </Button>
@@ -480,8 +461,8 @@ export default function Payments() {
                     variant="outline"
                     size="icon"
                     className="h-8 w-8"
-                    onClick={goToLastPage}
-                    disabled={currentPage >= totalPages}
+                    onClick={() => setPage(totalPages)}
+                    disabled={page >= totalPages}
                   >
                     <ChevronsRight className="w-4 h-4" />
                   </Button>
@@ -518,7 +499,7 @@ export default function Payments() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Částka</p>
-                    <p className="font-bold text-lg">{Number(selectedPayment.amount).toLocaleString('cs-CZ')} Kč</p>
+                    <p className="font-bold text-lg">{formatCurrency(Number(selectedPayment.amount))}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Datum vytvoření</p>
@@ -578,7 +559,7 @@ export default function Payments() {
                         <div>
                           <p className="text-sm text-muted-foreground">Celková cena rezervace</p>
                           <p className="font-medium">
-                            {(linkedReservation.persons || []).reduce((sum, p) => sum + Number(p.price || 0), 0).toLocaleString('cs-CZ')} Kč
+                            {formatCurrency((linkedReservation.persons || []).reduce((sum, p) => sum + Number(p.price || 0), 0))}
                           </p>
                         </div>
                       </div>

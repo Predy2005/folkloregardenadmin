@@ -28,14 +28,14 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { Search, DollarSign, CheckCircle, XCircle } from "lucide-react";
+import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
 import dayjs from "dayjs";
-import { useToast } from "@/shared/hooks/use-toast";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 
 export default function CommissionLogs() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const { toast } = useToast();
 
   const { data: logs, isLoading } = useQuery<CommissionLog[]>({
     queryKey: ["/api/commission-logs"],
@@ -52,18 +52,9 @@ export default function CommissionLogs() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/commission-logs"] });
       queryClient.invalidateQueries({ queryKey: ["/api/partners"] });
-      toast({
-        title: "Úspěch",
-        description: "Provize označena jako zaplacená",
-      });
+      successToast("Provize označena jako zaplacená");
     },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se označit provizi jako zaplacenou",
-        variant: "destructive",
-      });
-    },
+    onError: (error: Error) => errorToast(error),
   });
 
   const filteredLogs = logs?.filter((log) => {
@@ -85,12 +76,7 @@ export default function CommissionLogs() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-serif font-bold text-foreground">Provizní logy</h1>
-          <p className="text-muted-foreground">Záznamy o provizích a výplatách</p>
-        </div>
-      </div>
+      <PageHeader title="Provizní logy" description="Záznamy o provizích a výplatách" />
 
       <div className="grid grid-cols-3 gap-4">
         <Card>

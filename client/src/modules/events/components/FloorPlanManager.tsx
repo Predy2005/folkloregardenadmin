@@ -2,140 +2,17 @@ import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/shared/lib/queryClient";
 import { api } from "@/shared/lib/api";
-import type { Event, EventTable, EventGuest, Reservation, ReservationPerson } from "@shared/types";
-import { EVENT_SPACE_LABELS } from "@shared/types";
-import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
-import { Card, CardContent } from "@/shared/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/shared/components/ui/form";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/shared/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { Plus, Trash2, GripVertical, Users } from "lucide-react";
-import { useToast } from "@/shared/hooks/use-toast";
-import { Badge } from "@/shared/components/ui/badge";
-import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCenter, useSensor, useSensors, PointerSensor, useDroppable } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import type { Event, EventTable, EventGuest, Reservation } from "@shared/types";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
+import { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import dayjs from "dayjs";
 
-const tableSchema = z.object({
-  tableName: z.string().min(1, "Zadejte název stolu"),
-  room: z.enum(["roubenka", "terasa", "stodolka", "cely_areal"], {
-    required_error: "Vyberte místnost",
-  }),
-  capacity: z.coerce.number().min(1, "Kapacita musí být alespoň 1"),
-});
-
-type TableForm = z.infer<typeof tableSchema>;
+import { FloorPlanCanvas, FloorPlanToolbar, TableEditorDialog } from "./floor-plan";
+import type { TableForm } from "./floor-plan";
 
 interface FloorPlanManagerProps {
   event: Event;
   reservations?: Reservation[];
-}
-
-// DroppableTableArea - ensures tables are droppable even when empty
-interface DroppableTableAreaProps {
-  tableId: number;
-  children: React.ReactNode;
-}
-
-function DroppableTableArea({ tableId, children }: DroppableTableAreaProps) {
-  const { setNodeRef } = useDroppable({
-    id: `table-${tableId}`,
-  });
-
-  return (
-    <div ref={setNodeRef} className="space-y-1 min-h-[40px]">
-      {children}
-    </div>
-  );
-}
-
-// DroppableUnassignedArea - ensures unassigned roster is droppable even when empty
-interface DroppableUnassignedAreaProps {
-  children: React.ReactNode;
-}
-
-function DroppableUnassignedArea({ children }: DroppableUnassignedAreaProps) {
-  const { setNodeRef } = useDroppable({
-    id: 'unassigned',
-  });
-
-  return (
-    <div ref={setNodeRef} className="space-y-2 max-h-[500px] overflow-y-auto min-h-[100px]">
-      {children}
-    </div>
-  );
-}
-
-interface DraggableGuestCardProps {
-  guest: EventGuest;
-  onRemove: () => void;
-}
-
-function DraggableGuestCard({ guest, onRemove }: DraggableGuestCardProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: `guest-${guest.id}`,
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="flex items-center gap-2 p-2 bg-background border rounded-md hover-elevate"
-      data-testid={`guest-card-${guest.id}`}
-    >
-      <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
-        <GripVertical className="w-4 h-4 text-muted-foreground" />
-      </div>
-      <div className="flex-1">
-        <div className="text-sm font-medium">{guest.name}</div>
-        <div className="text-xs text-muted-foreground">
-          {guest.type === 'adult' ? 'Dospělý' : 'Dítě'}
-          {guest.nationality && ` • ${guest.nationality}`}
-        </div>
-      </div>
-      <Button
-        size="icon"
-        variant="ghost"
-        onClick={onRemove}
-        className="h-6 w-6"
-        data-testid={`button-remove-guest-${guest.id}`}
-      >
-        <Trash2 className="w-3 h-3" />
-      </Button>
-    </div>
-  );
 }
 
 export default function FloorPlanManager({ event, reservations }: FloorPlanManagerProps) {
@@ -146,7 +23,6 @@ export default function FloorPlanManager({ event, reservations }: FloorPlanManag
   const [localTables, setLocalTables] = useState<EventTable[]>([]);
   const [localGuests, setLocalGuests] = useState<EventGuest[]>([]);
   const [nationalityFilter, setNationalityFilter] = useState<string>("all");
-  const { toast } = useToast();
 
   // Hydrate state from event prop whenever it changes
   useEffect(() => {
@@ -183,23 +59,6 @@ export default function FloorPlanManager({ event, reservations }: FloorPlanManag
 
     setLocalGuests(allGuests);
   }, [event]); // Re-run when event changes (includes refetched data)
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    })
-  );
-
-  const tableForm = useForm<TableForm>({
-    resolver: zodResolver(tableSchema),
-    defaultValues: {
-      tableName: "",
-      room: selectedRoom,
-      capacity: 10,
-    },
-  });
 
   // Import hostů z rezervací na daný den
   const handleImportGuests = () => {
@@ -243,10 +102,7 @@ export default function FloorPlanManager({ event, reservations }: FloorPlanManag
     });
 
     setLocalGuests([...localGuests, ...importedGuests]);
-    toast({
-      title: "Úspěch",
-      description: `Importováno ${importedGuests.length} hostů z ${dayReservations.length} rezervací`,
-    });
+    successToast(`Importováno ${importedGuests.length} hostů z ${dayReservations.length} rezervací`);
   };
 
   // Přidání/editace stolu
@@ -257,7 +113,7 @@ export default function FloorPlanManager({ event, reservations }: FloorPlanManag
           ? { ...t, ...data, guests: t.guests }
           : t
       ));
-      toast({ title: "Stůl upraven" });
+      successToast("Stůl upraven");
     } else {
       const newTable: EventTable = {
         id: localTables.length > 0 ? Math.max(...localTables.map(t => t.id)) + 1 : 1,
@@ -266,11 +122,10 @@ export default function FloorPlanManager({ event, reservations }: FloorPlanManag
         guests: [],
       };
       setLocalTables([...localTables, newTable]);
-      toast({ title: "Stůl přidán" });
+      successToast("Stůl přidán");
     }
     setIsTableDialogOpen(false);
     setEditingTable(null);
-    tableForm.reset();
   };
 
   // Smazání stolu
@@ -286,10 +141,10 @@ export default function FloorPlanManager({ event, reservations }: FloorPlanManag
 
     setLocalGuests(updatedGuests);
     setLocalTables(localTables.filter(t => t.id !== tableId));
-    toast({ title: "Stůl smazán", description: `${tableGuests.length} hostů přesunuto zpět` });
+    successToast(`Stůl smazán, ${tableGuests.length} hostů přesunuto zpět`);
   };
 
-  // Drag and drop handler
+  // Drag and drop handlers
   const handleDragStart = (event: DragStartEvent) => {
     setActiveGuestId(event.active.id as string);
   };
@@ -325,10 +180,40 @@ export default function FloorPlanManager({ event, reservations }: FloorPlanManag
     ));
 
     if (destinationTableId !== undefined) {
-      toast({ title: "Host přesunut ke stolu" });
+      successToast("Host přesunut ke stolu");
     } else {
-      toast({ title: "Host odstraněn ze stolu" });
+      successToast("Host odstraněn ze stolu");
     }
+  };
+
+  // Remove guest from table (back to unassigned)
+  const handleRemoveGuestFromTable = (guestId: number) => {
+    setLocalGuests(localGuests.map(g =>
+      g.id === guestId ? { ...g, eventTableId: undefined } : g
+    ));
+  };
+
+  // Remove guest entirely
+  const handleRemoveGuestEntirely = (guestId: number) => {
+    setLocalGuests(localGuests.filter(g => g.id !== guestId));
+  };
+
+  // Open add table dialog for a specific room
+  const handleOpenAddTable = (room: string) => {
+    setEditingTable(null);
+    setIsTableDialogOpen(true);
+  };
+
+  // Open edit table dialog
+  const handleEditTable = (table: EventTable) => {
+    setEditingTable(table);
+    setIsTableDialogOpen(true);
+  };
+
+  // Cancel table dialog
+  const handleCancelTableDialog = () => {
+    setIsTableDialogOpen(false);
+    setEditingTable(null);
   };
 
   // Uložení celého floor planu
@@ -348,17 +233,10 @@ export default function FloorPlanManager({ event, reservations }: FloorPlanManag
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      toast({
-        title: "Úspěch",
-        description: "Plánek stolů byl uložen",
-      });
+      successToast("Plánek stolů byl uložen");
     },
     onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se uložit plánek stolů",
-        variant: "destructive",
-      });
+      errorToast("Nepodařilo se uložit plánek stolů");
     },
   });
 
@@ -368,7 +246,7 @@ export default function FloorPlanManager({ event, reservations }: FloorPlanManag
     ? unassignedGuests
     : unassignedGuests.filter(g => g.nationality === nationalityFilter);
 
-  const uniqueNationalities = Array.from(new Set(unassignedGuests.map(g => g.nationality).filter(Boolean)));
+  const uniqueNationalities = Array.from(new Set(unassignedGuests.map(g => g.nationality).filter(Boolean))) as string[];
 
   // Computed vs manual count
   const computedPaidCount = localGuests.filter(g => g.isPaid).length;
@@ -379,302 +257,45 @@ export default function FloorPlanManager({ event, reservations }: FloorPlanManag
   return (
     <div className="space-y-4">
       {/* Header s tlačítky */}
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <h3 className="font-semibold">Správa plánku stolů</h3>
-          <div className="text-sm text-muted-foreground flex items-center gap-4">
-            <span>
-              Celkem hostů: <strong>{totalComputed}</strong>
-            </span>
-            {totalComputed !== totalManual && (
-              <Badge variant="outline" className="text-xs">
-                Manuální korekce: {totalManual} ({event.paidCount} platících + {event.freeCount} zdarma)
-              </Badge>
-            )}
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleImportGuests}
-            data-testid="button-import-guests"
-          >
-            <Users className="w-4 h-4 mr-2" />
-            Importovat hosty z rezervací
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => saveFloorPlanMutation.mutate()}
-            disabled={saveFloorPlanMutation.isPending}
-            className="bg-gradient-to-r from-primary to-purple-600"
-            data-testid="button-save-floorplan"
-          >
-            {saveFloorPlanMutation.isPending ? "Ukládání..." : "Uložit plánek"}
-          </Button>
-        </div>
-      </div>
+      <FloorPlanToolbar
+        totalComputed={totalComputed}
+        totalManual={totalManual}
+        paidCount={event.paidCount}
+        freeCount={event.freeCount}
+        onImportGuests={handleImportGuests}
+        onSave={() => saveFloorPlanMutation.mutate()}
+        isSaving={saveFloorPlanMutation.isPending}
+      />
 
-      {/* Tabs pro místnosti */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
+      {/* Tabs pro místnosti + DnD canvas */}
+      <FloorPlanCanvas
+        selectedRoom={selectedRoom}
+        onSelectedRoomChange={setSelectedRoom}
+        localTables={localTables}
+        localGuests={localGuests}
+        filteredUnassignedGuests={filteredUnassignedGuests}
+        nationalityFilter={nationalityFilter}
+        onNationalityFilterChange={setNationalityFilter}
+        uniqueNationalities={uniqueNationalities}
+        onOpenAddTable={handleOpenAddTable}
+        onEditTable={handleEditTable}
+        onDeleteTable={handleDeleteTable}
+        onRemoveGuestFromTable={handleRemoveGuestFromTable}
+        onRemoveGuestEntirely={handleRemoveGuestEntirely}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
-      >
-        <Tabs value={selectedRoom} onValueChange={(v) => setSelectedRoom(v as Event['space'])} className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="roubenka">Roubenka</TabsTrigger>
-            <TabsTrigger value="terasa">Terasa</TabsTrigger>
-            <TabsTrigger value="stodolka">Stodolka</TabsTrigger>
-            <TabsTrigger value="cely_areal">Celý areál</TabsTrigger>
-          </TabsList>
-
-          {(['roubenka', 'terasa', 'stodolka', 'cely_areal'] as const).map((room) => (
-            <TabsContent key={room} value={room} className="mt-4">
-              <div className="flex gap-4">
-                {/* Floor Plan Canvas - stoly */}
-                <div className="flex-1 border rounded-md p-4 min-h-[500px] bg-muted/20">
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="font-semibold">
-                      Místnost: {EVENT_SPACE_LABELS[room]}
-                    </h4>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        tableForm.setValue('room', room);
-                        setIsTableDialogOpen(true);
-                      }}
-                      data-testid={`button-add-table-${room}`}
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Přidat stůl
-                    </Button>
-                  </div>
-
-                  {/* Grid zobrazení stolů */}
-                  <div className="grid grid-cols-4 gap-3">
-                    {localTables
-                      .filter(table => table.room === room)
-                      .map((table) => {
-                        const tableGuests = localGuests.filter(g => g.eventTableId === table.id);
-                        return (
-                          <SortableContext
-                            key={table.id}
-                            id={`table-${table.id}`}
-                            items={tableGuests.map(g => `guest-${g.id}`)}
-                            strategy={verticalListSortingStrategy}
-                          >
-                            <Card
-                              className="hover-elevate cursor-pointer"
-                              data-testid={`table-${table.id}`}
-                            >
-                              <CardContent className="p-3">
-                                <div className="flex items-center justify-between mb-2">
-                                  <div className="text-sm font-semibold">{table.tableName}</div>
-                                  <div className="flex gap-1">
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6"
-                                      onClick={() => {
-                                        setEditingTable(table);
-                                        tableForm.reset(table);
-                                        setIsTableDialogOpen(true);
-                                      }}
-                                    >
-                                      <Plus className="w-3 h-3" />
-                                    </Button>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-6 w-6"
-                                      onClick={() => handleDeleteTable(table.id)}
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </Button>
-                                  </div>
-                                </div>
-                                <div className="text-xs text-muted-foreground mb-2">
-                                  {tableGuests.length} / {table.capacity} hostů
-                                </div>
-                                <DroppableTableArea tableId={table.id}>
-                                  {tableGuests.map((guest) => (
-                                    <DraggableGuestCard
-                                      key={guest.id}
-                                      guest={guest}
-                                      onRemove={() => {
-                                        setLocalGuests(localGuests.map(g =>
-                                          g.id === guest.id ? { ...g, eventTableId: undefined } : g
-                                        ));
-                                      }}
-                                    />
-                                  ))}
-                                </DroppableTableArea>
-                              </CardContent>
-                            </Card>
-                          </SortableContext>
-                        );
-                      })}
-                  </div>
-
-                  {!localTables.some(t => t.room === room) && (
-                    <div className="text-center py-12 text-muted-foreground">
-                      V této místnosti zatím nejsou žádné stoly
-                    </div>
-                  )}
-                </div>
-
-                {/* Guest Roster - nepřiřazení hosté */}
-                <div className="w-80 border rounded-md p-4" id="unassigned">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-semibold">Nepřiřazení hosté ({filteredUnassignedGuests.length})</h4>
-                    {uniqueNationalities.length > 0 && (
-                      <Select value={nationalityFilter} onValueChange={setNationalityFilter}>
-                        <SelectTrigger className="w-28 h-7 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Vše</SelectItem>
-                          {uniqueNationalities.map(nat => (
-                            <SelectItem key={nat} value={nat!}>{nat}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-                  <div className="text-xs text-muted-foreground mb-3">
-                    Přetáhněte hosty ke stolům
-                  </div>
-                  <SortableContext
-                    id="unassigned"
-                    items={filteredUnassignedGuests.map(g => `guest-${g.id}`)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <DroppableUnassignedArea>
-                      {filteredUnassignedGuests.map((guest) => (
-                        <DraggableGuestCard
-                          key={guest.id}
-                          guest={guest}
-                          onRemove={() => {
-                            setLocalGuests(localGuests.filter(g => g.id !== guest.id));
-                          }}
-                        />
-                      ))}
-                      {filteredUnassignedGuests.length === 0 && (
-                        <div className="text-sm text-muted-foreground text-center py-8">
-                          {nationalityFilter === "all"
-                            ? "Zatím žádní nepřiřazení hosté"
-                            : "Žádní hosté s touto národností"}
-                        </div>
-                      )}
-                    </DroppableUnassignedArea>
-                  </SortableContext>
-                </div>
-              </div>
-            </TabsContent>
-          ))}
-        </Tabs>
-
-        <DragOverlay>
-          {activeGuestId && (() => {
-            const guest = localGuests.find(g => `guest-${g.id}` === activeGuestId);
-            return guest ? (
-              <div className="p-2 bg-background border rounded-md shadow-lg">
-                <div className="text-sm font-medium">{guest.name}</div>
-              </div>
-            ) : null;
-          })()}
-        </DragOverlay>
-      </DndContext>
+        activeGuestId={activeGuestId}
+      />
 
       {/* Table Management Dialog */}
-      <Dialog open={isTableDialogOpen} onOpenChange={setIsTableDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingTable ? "Upravit stůl" : "Nový stůl"}</DialogTitle>
-            <DialogDescription>
-              Zadejte informace o stolu
-            </DialogDescription>
-          </DialogHeader>
-          <Form {...tableForm}>
-            <form onSubmit={tableForm.handleSubmit(handleSaveTable)} className="space-y-4">
-              <FormField
-                control={tableForm.control}
-                name="tableName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Název stolu *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Stůl 1" {...field} data-testid="input-table-name" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={tableForm.control}
-                name="room"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Místnost *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger data-testid="select-table-room">
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="roubenka">Roubenka</SelectItem>
-                        <SelectItem value="terasa">Terasa</SelectItem>
-                        <SelectItem value="stodolka">Stodolka</SelectItem>
-                        <SelectItem value="cely_areal">Celý areál</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={tableForm.control}
-                name="capacity"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Kapacita *</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min="1"
-                        {...field}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
-                        data-testid="input-table-capacity"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setIsTableDialogOpen(false);
-                    setEditingTable(null);
-                    tableForm.reset();
-                  }}
-                >
-                  Zrušit
-                </Button>
-                <Button type="submit" data-testid="button-save-table">
-                  {editingTable ? "Uložit" : "Vytvořit"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+      <TableEditorDialog
+        open={isTableDialogOpen}
+        onOpenChange={setIsTableDialogOpen}
+        editingTable={editingTable}
+        defaultRoom={selectedRoom}
+        onSave={handleSaveTable}
+        onCancel={handleCancelTableDialog}
+      />
     </div>
   );
 }

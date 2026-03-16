@@ -1,264 +1,227 @@
 import { useState } from "react";
-import {
-  UserCheck,
-  Phone,
-  Mail,
-  AlertTriangle,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  Banknote,
-} from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
+import { UserCheck, Phone, RefreshCw } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
+import { InfoTooltip } from "@/shared/components/ui/info-tooltip";
+import { api } from "@/shared/lib/api";
+import { useToggleSet } from "@/shared/hooks/useToggleSet";
+import { ATTENDANCE_STATUS_STYLES } from "@/shared/lib/constants";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/shared/components/ui/dialog";
-import type { StaffingOverview, StaffAssignmentWithContact } from "@shared/types";
+  useAddStaffAssignment,
+  useRemoveStaffAssignment,
+  useUpdateStaffAttendance,
+  useRecalculateStaffRequirements,
+  useUpdateStaffRequirement,
+  useResetStaffRequirement,
+} from "../../hooks";
+import type { StaffingOverview, StaffMember } from "@shared/types";
+import { StaffCategoryRow, StaffDialog, type DialogMode } from "./staff";
 
 interface StaffPlanningCardProps {
   staffing: StaffingOverview;
   eventId: number;
 }
 
-const ATTENDANCE_STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  UNKNOWN: { label: "Neznámý", className: "bg-gray-500" },
-  CONFIRMED: { label: "Potvrzen", className: "bg-blue-500" },
-  PRESENT: { label: "Přítomen", className: "bg-green-500" },
-  ABSENT: { label: "Nepřítomen", className: "bg-red-500" },
-  LEFT_EARLY: { label: "Odešel dříve", className: "bg-orange-500" },
-};
-
-const PAYMENT_STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  PENDING: { label: "Nezaplaceno", className: "bg-orange-500" },
-  PAID: { label: "Zaplaceno", className: "bg-green-500" },
-  PARTIAL: { label: "Částečně", className: "bg-yellow-500" },
-};
-
 export function StaffPlanningCard({ staffing, eventId }: StaffPlanningCardProps) {
-  const [showContacts, setShowContacts] = useState(false);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [staffDialogOpen, setStaffDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<DialogMode>("contacts");
+  const expandedCategories = useToggleSet<string>();
+  const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
+  const [selectedRoleLabel, setSelectedRoleLabel] = useState<string>("");
+  const [staffSearch, setStaffSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
 
+  const addStaffMutation = useAddStaffAssignment(eventId);
+  const removeStaffMutation = useRemoveStaffAssignment(eventId);
+  const updateAttendanceMutation = useUpdateStaffAttendance(eventId);
+  const recalculateMutation = useRecalculateStaffRequirements(eventId);
+  const updateRequirementMutation = useUpdateStaffRequirement(eventId);
+  const resetRequirementMutation = useResetStaffRequirement(eventId);
+
+  // Calculate totals - use 'assigned' for planning view
   const hasShortfall = staffing.required.some((r) => r.shortfall > 0);
-  const presentCount = staffing.assignments.filter(
-    (a) => a.attendanceStatus === "PRESENT"
-  ).length;
-  const totalAssigned = staffing.assignments.length;
+  const totalRequired = staffing.required.reduce((sum, r) => sum + r.required, 0);
+  const totalAssigned = staffing.required.reduce((sum, r) => sum + r.assigned, 0);
 
-  const toggleCategory = (category: string) => {
-    const newSet = new Set(expandedCategories);
-    if (newSet.has(category)) {
-      newSet.delete(category);
-    } else {
-      newSet.add(category);
+  // Fetch available staff members
+  const { data: availableStaff, isLoading: isLoadingStaff } = useQuery<StaffMember[]>({
+    queryKey: ["/api/staff"],
+    queryFn: () => api.get("/api/staff"),
+    enabled: staffDialogOpen,
+  });
+
+  // Filter assigned contacts by role and search
+  const filteredContacts = staffing.assignments.filter((a) => {
+    if (!a.staffMember) return false;
+    if (roleFilter !== "all") {
+      const filterRoleId = Number(roleFilter);
+      if (a.roleId !== filterRoleId) return false;
     }
-    setExpandedCategories(newSet);
+    if (staffSearch) {
+      const search = staffSearch.toLowerCase();
+      const name = a.staffMember.name?.toLowerCase() || "";
+      const role = a.role?.toLowerCase() || "";
+      return name.includes(search) || role.includes(search);
+    }
+    return true;
+  });
+
+  // Filter available staff for adding (exclude already assigned)
+  const assignedStaffIds = new Set(staffing.assignments.map(a => a.staffMember?.id).filter(Boolean));
+  const filteredAvailableStaff = (availableStaff || []).filter(staff => {
+    if (assignedStaffIds.has(staff.id)) return false;
+    if (!staffSearch) return true;
+    const search = staffSearch.toLowerCase();
+    const name = `${staff.firstName} ${staff.lastName}`.toLowerCase();
+    return name.includes(search) || staff.position?.toLowerCase().includes(search);
+  });
+
+  const toggleCategory = expandedCategories.toggle;
+
+  const getAssignmentsForRole = (roleId: number | null) => {
+    return staffing.assignments.filter(a => a.roleId === roleId);
   };
 
-  // Group assignments by role
-  const assignmentsByRole = staffing.assignments.reduce(
-    (acc, assignment) => {
-      const role = assignment.role || "Bez role";
-      if (!acc[role]) {
-        acc[role] = [];
-      }
-      acc[role].push(assignment);
-      return acc;
-    },
-    {} as Record<string, StaffAssignmentWithContact[]>
-  );
+  const openStaffDialog = (mode: DialogMode, category?: string, roleId?: number | null) => {
+    setDialogMode(mode);
+    setSelectedRoleLabel(category || "");
+    setSelectedRoleId(roleId ?? null);
+    if (mode === "add" && roleId !== undefined) {
+      setRoleFilter(roleId !== null ? String(roleId) : "all");
+    }
+    setStaffSearch("");
+    setStaffDialogOpen(true);
+  };
+
+  const closeStaffDialog = () => {
+    setStaffDialogOpen(false);
+    setStaffSearch("");
+    setRoleFilter("all");
+  };
+
+  const handleAddStaff = (staffMemberId: number, staffRoleId: number | null) => {
+    addStaffMutation.mutate({ staffMemberId, staffRoleId });
+  };
+
+  const handleMarkPresent = (assignmentId: number) => {
+    updateAttendanceMutation.mutate({ assignmentId, status: "PRESENT" });
+  };
+
+  const handleRemoveStaff = (assignmentId: number) => {
+    removeStaffMutation.mutate(assignmentId);
+  };
+
+  const handleRecalculate = () => {
+    recalculateMutation.mutate(false);
+  };
+
+  const handleUpdateRequired = (category: string, count: number) => {
+    updateRequirementMutation.mutate({ category, count });
+  };
+
+  const handleResetToAuto = (category: string) => {
+    resetRequirementMutation.mutate(category);
+  };
+
+  const isUpdatingRequirement = updateRequirementMutation.isPending || resetRequirementMutation.isPending;
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <UserCheck className="h-5 w-5 text-primary" />
-          Personál
-          <Badge
-            variant={hasShortfall ? "destructive" : "secondary"}
-            className="ml-auto"
-          >
-            {presentCount}/{totalAssigned} přítomno
-          </Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {/* Requirements overview */}
-        <div className="space-y-1.5">
-          {staffing.required.map((req) => (
-            <div
-              key={req.category}
-              className="flex items-center justify-between text-sm"
-            >
-              <span>{req.label}</span>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`font-medium ${
-                    req.shortfall > 0 ? "text-red-500" : "text-green-600"
-                  }`}
-                >
-                  {req.assigned}/{req.required}
-                </span>
-                {req.shortfall > 0 && (
-                  <AlertTriangle className="h-4 w-4 text-red-500" />
-                )}
-                {req.shortfall === 0 && req.required > 0 && (
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+    <>
+      <div className="p-4 space-y-3">
+        {/* Quick stats toolbar */}
+        <div className="flex items-center justify-between">
+          <InfoTooltip
+            content={
+              <div className="space-y-1">
+                <div><span className="font-medium">Přiřazeno:</span> {totalAssigned} osob</div>
+                <div><span className="font-medium">Potřeba:</span> {totalRequired} osob</div>
+                {hasShortfall && (
+                  <div className="text-red-500 text-xs pt-1 border-t">
+                    Chybí {totalRequired - totalAssigned} osob
+                  </div>
                 )}
               </div>
-            </div>
+            }
+          >
+            <Badge
+              variant={hasShortfall ? "destructive" : "secondary"}
+              className="cursor-help"
+            >
+              {totalAssigned}/{totalRequired}
+            </Badge>
+          </InfoTooltip>
+          <InfoTooltip content="Přepočítat požadavky na personál podle počtu hostů">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={handleRecalculate}
+              disabled={recalculateMutation.isPending}
+            >
+              <RefreshCw className={`h-4 w-4 ${recalculateMutation.isPending ? "animate-spin" : ""}`} />
+            </Button>
+          </InfoTooltip>
+        </div>
+
+        {/* Requirements overview with expandable staff list */}
+        <div className="space-y-1">
+          {staffing.required.map((req) => (
+            <StaffCategoryRow
+              key={req.category}
+              requirement={req}
+              assignments={getAssignmentsForRole(req.roleId)}
+              isExpanded={expandedCategories.isOpen(req.category)}
+              onToggle={() => toggleCategory(req.category)}
+              onAddStaff={() => openStaffDialog("add", req.label, req.roleId)}
+              onMarkPresent={handleMarkPresent}
+              onRemoveStaff={handleRemoveStaff}
+              onUpdateRequired={handleUpdateRequired}
+              onResetToAuto={handleResetToAuto}
+              isUpdating={updateAttendanceMutation.isPending}
+              isRemoving={removeStaffMutation.isPending}
+              isUpdatingRequirement={isUpdatingRequirement}
+              attendanceStatusStyles={ATTENDANCE_STATUS_STYLES}
+            />
           ))}
         </div>
 
-        {/* Staff list by role */}
-        {Object.keys(assignmentsByRole).length > 0 && (
-          <div className="border-t pt-3 space-y-2">
-            <h4 className="text-xs font-medium text-muted-foreground">
-              Přiřazení
-            </h4>
-            {Object.entries(assignmentsByRole).map(([role, assignments]) => (
-              <div key={role} className="border rounded-lg overflow-hidden">
-                <button
-                  onClick={() => toggleCategory(role)}
-                  className="w-full flex items-center justify-between p-2 bg-muted/30 hover:bg-muted/50 touch-manipulation min-h-[44px]"
-                >
-                  <div className="flex items-center gap-2">
-                    {expandedCategories.has(role) ? (
-                      <ChevronDown className="h-4 w-4" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4" />
-                    )}
-                    <span className="font-medium text-sm">{role}</span>
-                    <Badge variant="outline" className="text-xs">
-                      {assignments.length}
-                    </Badge>
-                  </div>
-                </button>
-
-                {expandedCategories.has(role) && (
-                  <div className="p-2 space-y-2">
-                    {assignments.map((assignment) => (
-                      <AssignmentItem
-                        key={assignment.id}
-                        assignment={assignment}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Show contacts button */}
-        <Dialog open={showContacts} onOpenChange={setShowContacts}>
-          <DialogTrigger asChild>
-            <Button
-              variant="outline"
-              className="w-full min-h-[44px] touch-manipulation"
-            >
-              <Phone className="h-4 w-4 mr-2" />
-              Seznam kontaktů
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Kontakty na personál</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3">
-              {staffing.assignments
-                .filter((a) => a.staffMember)
-                .map((assignment) => (
-                  <div
-                    key={assignment.id}
-                    className="flex items-start gap-3 p-3 border rounded-lg"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium">
-                        {assignment.staffMember?.name || "Neznámý"}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {assignment.role}
-                      </div>
-                      {assignment.staffMember?.phone && (
-                        <a
-                          href={`tel:${assignment.staffMember.phone}`}
-                          className="flex items-center gap-1 text-sm text-primary hover:underline mt-1"
-                        >
-                          <Phone className="h-3 w-3" />
-                          {assignment.staffMember.phone}
-                        </a>
-                      )}
-                      {assignment.staffMember?.email && (
-                        <a
-                          href={`mailto:${assignment.staffMember.email}`}
-                          className="flex items-center gap-1 text-sm text-primary hover:underline"
-                        >
-                          <Mail className="h-3 w-3" />
-                          {assignment.staffMember.email}
-                        </a>
-                      )}
-                    </div>
-                    <Badge
-                      className={`${ATTENDANCE_STATUS_LABELS[assignment.attendanceStatus]?.className || "bg-gray-500"} text-white text-xs`}
-                    >
-                      {ATTENDANCE_STATUS_LABELS[assignment.attendanceStatus]
-                        ?.label || assignment.attendanceStatus}
-                    </Badge>
-                  </div>
-                ))}
-            </div>
-          </DialogContent>
-        </Dialog>
-      </CardContent>
-    </Card>
-  );
-}
-
-interface AssignmentItemProps {
-  assignment: StaffAssignmentWithContact;
-}
-
-function AssignmentItem({ assignment }: AssignmentItemProps) {
-  const attendanceInfo = ATTENDANCE_STATUS_LABELS[assignment.attendanceStatus];
-  const paymentInfo = PAYMENT_STATUS_LABELS[assignment.paymentStatus];
-
-  return (
-    <div className="flex items-center justify-between p-2 bg-background rounded border">
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium truncate">
-          {assignment.staffMember?.name || "Nepřiřazeno"}
-        </div>
-        {assignment.staffMember?.phone && (
-          <a
-            href={`tel:${assignment.staffMember.phone}`}
-            className="text-xs text-muted-foreground hover:text-primary"
-          >
-            {assignment.staffMember.phone}
-          </a>
-        )}
-      </div>
-      <div className="flex items-center gap-1.5">
-        <Badge
-          className={`${attendanceInfo?.className || "bg-gray-500"} text-white text-xs`}
+        {/* Show staff dialog button */}
+        <Button
+          variant="outline"
+          className="w-full min-h-[44px] touch-manipulation"
+          onClick={() => openStaffDialog("contacts")}
         >
-          {attendanceInfo?.label || assignment.attendanceStatus}
-        </Badge>
-        {assignment.paymentAmount && (
-          <Badge
-            variant="outline"
-            className="text-xs flex items-center gap-1"
-          >
-            <Banknote className="h-3 w-3" />
-            {assignment.paymentAmount} Kč
-          </Badge>
-        )}
+          <Phone className="h-4 w-4 mr-2" />
+          Seznam kontaktu
+        </Button>
       </div>
-    </div>
+
+      <StaffDialog
+        isOpen={staffDialogOpen}
+        onClose={closeStaffDialog}
+        mode={dialogMode}
+        setMode={setDialogMode}
+        selectedRoleLabel={selectedRoleLabel}
+        selectedRoleId={selectedRoleId}
+        staffSearch={staffSearch}
+        setStaffSearch={setStaffSearch}
+        roleFilter={roleFilter}
+        setRoleFilter={setRoleFilter}
+        setSelectedRoleId={setSelectedRoleId}
+        setSelectedRoleLabel={setSelectedRoleLabel}
+        requirements={staffing.required}
+        filteredContacts={filteredContacts}
+        filteredAvailableStaff={filteredAvailableStaff}
+        isLoadingStaff={isLoadingStaff}
+        onAddStaff={handleAddStaff}
+        onMarkPresent={handleMarkPresent}
+        onRemoveStaff={handleRemoveStaff}
+        isAdding={addStaffMutation.isPending}
+        isUpdating={updateAttendanceMutation.isPending}
+        isRemoving={removeStaffMutation.isPending}
+        attendanceStatusStyles={ATTENDANCE_STATUS_STYLES}
+      />
+    </>
   );
 }

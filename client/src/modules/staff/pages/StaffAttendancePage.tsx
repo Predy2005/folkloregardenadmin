@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/shared/lib/queryClient";
 import { api } from "@/shared/lib/api";
 import type { StaffAttendance, StaffMember } from "@shared/types";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import {
@@ -45,27 +46,17 @@ import {
 } from "@/shared/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { attendanceSchema, type AttendanceForm } from "../types";
 import { Plus, Search, Clock, CheckCircle, XCircle } from "lucide-react";
-import { useToast } from "@/shared/hooks/use-toast";
+import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
 import { Textarea } from "@/shared/components/ui/textarea";
 import dayjs from "dayjs";
-
-const attendanceSchema = z.object({
-  staffMemberId: z.number().min(1, "Vyberte člena personálu"),
-  date: z.string().min(1, "Zadejte datum"),
-  hoursWorked: z.number().min(0.1, "Počet hodin musí být větší než 0"),
-  note: z.string().optional(),
-});
-
-type AttendanceForm = z.infer<typeof attendanceSchema>;
 
 export default function StaffAttendance() {
   const [search, setSearch] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const { toast } = useToast();
 
   const { data: attendances, isLoading } = useQuery<StaffAttendance[]>({
     queryKey: ["/api/staff-attendance"],
@@ -92,18 +83,9 @@ export default function StaffAttendance() {
       queryClient.invalidateQueries({ queryKey: ["/api/staff-attendance"] });
       setIsCreateOpen(false);
       createForm.reset();
-      toast({
-        title: "Úspěch",
-        description: "Docházka byla zaznamenána",
-      });
+      successToast("Docházka byla zaznamenána");
     },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se zaznamenat docházku",
-        variant: "destructive",
-      });
-    },
+    onError: (error: Error) => errorToast(error),
   });
 
   const markAsPaidMutation = useMutation({
@@ -112,18 +94,9 @@ export default function StaffAttendance() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/staff-attendance"] });
-      toast({
-        title: "Úspěch",
-        description: "Docházka označena jako zaplacená",
-      });
+      successToast("Docházka označena jako zaplacená");
     },
-    onError: () => {
-      toast({
-        title: "Chyba",
-        description: "Nepodařilo se označit docházku jako zaplacenou",
-        variant: "destructive",
-      });
-    },
+    onError: (error: Error) => errorToast(error),
   });
 
   const filteredAttendances = attendances?.filter((attendance) => {
@@ -145,15 +118,11 @@ export default function StaffAttendance() {
 
   const totalUnpaidAmount = attendances
     ?.filter((a) => !a.isPaid && a.staffMember?.hourlyRate)
-    .reduce((sum, a) => sum + a.hoursWorked * (a.staffMember?.hourlyRate || 0), 0) || 0;
+    .reduce((sum, a) => sum + a.hoursWorked * (Number(a.staffMember?.hourlyRate) || 0), 0) || 0;
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-serif font-bold text-foreground">Docházka personálu</h1>
-          <p className="text-muted-foreground">Evidence odpracovaných hodin</p>
-        </div>
+      <PageHeader title="Docházka personálu" description="Evidence odpracovaných hodin">
         <Button
           onClick={() => setIsCreateOpen(true)}
           className="bg-gradient-to-r from-primary to-purple-600"
@@ -162,7 +131,7 @@ export default function StaffAttendance() {
           <Plus className="w-4 h-4 mr-2" />
           Nová docházka
         </Button>
-      </div>
+      </PageHeader>
 
       <div className="grid grid-cols-2 gap-4">
         <Card>
@@ -245,7 +214,7 @@ export default function StaffAttendance() {
               <TableBody>
                 {filteredAttendances.map((attendance) => {
                   const amount = attendance.staffMember?.hourlyRate
-                    ? attendance.hoursWorked * attendance.staffMember.hourlyRate
+                    ? attendance.hoursWorked * Number(attendance.staffMember.hourlyRate)
                     : 0;
                   return (
                     <TableRow key={attendance.id} data-testid={`row-attendance-${attendance.id}`}>
@@ -340,7 +309,7 @@ export default function StaffAttendance() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {staff?.filter((m) => m.active).map((member) => (
+                        {staff?.filter((m) => m.isActive).map((member) => (
                           <SelectItem key={member.id} value={member.id.toString()}>
                             {member.firstName} {member.lastName}
                             {member.hourlyRate && ` (${member.hourlyRate} Kč/h)`}

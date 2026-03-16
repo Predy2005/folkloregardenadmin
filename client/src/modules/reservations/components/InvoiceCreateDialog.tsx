@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
-import { queryClient } from "@/shared/lib/queryClient";
-import { useToast } from "@/shared/hooks/use-toast";
+import { invalidateInvoiceQueries } from "@/shared/lib/query-helpers";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import {
   Dialog,
   DialogContent,
@@ -23,27 +23,9 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { Loader2, Plus, Trash2 } from "lucide-react";
-import type { Invoice } from "@shared/types";
-
-interface InvoiceItem {
-  description: string;
-  quantity: number;
-  unitPrice: number;
-  total: number;
-}
-
-interface InvoicePreview {
-  invoiceType: string;
-  items: InvoiceItem[];
-  subtotal: number;
-  vatRate: number;
-  vatAmount: number;
-  total: number;
-  totalPrice?: number;
-  percent?: number;
-  defaultDescription?: string;
-  paidDeposits?: number;
-}
+import { formatCurrency } from "@/shared/lib/formatting";
+import type { Invoice, InvoiceItem } from "@shared/types";
+import type { InvoicePreview } from "@modules/invoices/types";
 
 interface InvoiceCreateDialogProps {
   open: boolean;
@@ -62,7 +44,6 @@ export function InvoiceCreateDialog({
   depositPercent = 25,
   onSuccess,
 }: InvoiceCreateDialogProps) {
-  const { toast } = useToast();
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [selectedPercent, setSelectedPercent] = useState(depositPercent);
 
@@ -111,29 +92,16 @@ export function InvoiceCreateDialog({
       return api.post<Invoice>(endpoint, payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
-      queryClient.invalidateQueries({
-        queryKey: ["/api/invoices/reservation", reservationId],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["/api/reservations", reservationId, "payment-summary"],
-      });
-      toast({
-        title:
-          invoiceType === "DEPOSIT"
-            ? "Zálohová faktura vytvořena"
-            : "Ostrá faktura vytvořena",
-      });
+      invalidateInvoiceQueries(reservationId);
+      successToast(
+        invoiceType === "DEPOSIT"
+          ? "Zálohová faktura vytvořena"
+          : "Ostrá faktura vytvořena"
+      );
       onOpenChange(false);
       onSuccess?.();
     },
-    onError: (error: Error) => {
-      toast({
-        title: "Chyba při vytváření faktury",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
+    onError: (error: Error) => errorToast(error),
   });
 
   const updateItem = (index: number, updates: Partial<InvoiceItem>) => {
@@ -213,7 +181,7 @@ export function InvoiceCreateDialog({
                 {preview?.totalPrice && (
                   <span className="text-sm text-muted-foreground">
                     z celkové ceny{" "}
-                    {Math.round(preview.totalPrice).toLocaleString("cs-CZ")} Kč
+                    {formatCurrency(Math.round(preview.totalPrice))}
                   </span>
                 )}
               </div>
@@ -223,7 +191,7 @@ export function InvoiceCreateDialog({
             {invoiceType === "FINAL" && preview?.paidDeposits && preview.paidDeposits > 0 && (
               <div className="p-3 bg-blue-50 text-blue-700 rounded-lg text-sm">
                 Odečteny zaplacené zálohy:{" "}
-                {Math.round(preview.paidDeposits).toLocaleString("cs-CZ")} Kč
+                {formatCurrency(Math.round(preview.paidDeposits))}
               </div>
             )}
 
@@ -286,7 +254,7 @@ export function InvoiceCreateDialog({
                       Celkem
                     </Label>
                     <div className="mt-1 h-9 px-3 py-2 text-sm font-medium bg-muted rounded-md">
-                      {Math.round(item.total).toLocaleString("cs-CZ")} Kč
+                      {formatCurrency(Math.round(item.total))}
                     </div>
                   </div>
                   <div className="col-span-1 flex items-end justify-center pb-1">
@@ -308,21 +276,21 @@ export function InvoiceCreateDialog({
               <div className="flex justify-between text-sm">
                 <span>Mezisoučet:</span>
                 <span className="font-mono">
-                  {Math.round(calculateSubtotal()).toLocaleString("cs-CZ")} Kč
+                  {formatCurrency(Math.round(calculateSubtotal()))}
                 </span>
               </div>
               {preview?.vatRate && preview.vatRate > 0 && (
                 <div className="flex justify-between text-sm text-muted-foreground">
                   <span>DPH ({preview.vatRate}%):</span>
                   <span className="font-mono">
-                    {Math.round(calculateVat()).toLocaleString("cs-CZ")} Kč
+                    {formatCurrency(Math.round(calculateVat()))}
                   </span>
                 </div>
               )}
               <div className="flex justify-between text-lg font-bold">
                 <span>Celkem:</span>
                 <span className="font-mono">
-                  {Math.round(calculateTotal()).toLocaleString("cs-CZ")} Kč
+                  {formatCurrency(Math.round(calculateTotal()))}
                 </span>
               </div>
             </div>
