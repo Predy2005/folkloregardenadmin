@@ -9,6 +9,7 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 #[Route('/api/pricing')]
 class PricingController extends AbstractController
@@ -149,6 +150,33 @@ class PricingController extends AbstractController
             'createdAt' => $override->getCreatedAt()->format('c'),
             'updatedAt' => $override->getUpdatedAt()->format('c'),
         ], 201);
+    }
+
+    #[Route('/date-overrides/bulk-delete', name: 'api_pricing_date_overrides_bulk_delete', methods: ['DELETE'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function bulkDeleteDateOverrides(Request $request): JsonResponse
+    {
+        $data = json_decode($request->getContent(), true);
+        $ids = $data['ids'] ?? [];
+
+        if (empty($ids) || !is_array($ids)) {
+            return $this->json(['error' => 'No IDs provided'], 400);
+        }
+
+        $repo = $this->em->getRepository(PricingDateOverride::class);
+        $count = 0;
+
+        foreach ($ids as $id) {
+            $override = $repo->find($id);
+            if ($override) {
+                $this->em->remove($override);
+                $count++;
+            }
+        }
+
+        $this->em->flush();
+
+        return $this->json(['status' => 'deleted', 'count' => $count]);
     }
 
     #[Route('/date-overrides/{id}', name: 'api_pricing_date_overrides_get', methods: ['GET'])]

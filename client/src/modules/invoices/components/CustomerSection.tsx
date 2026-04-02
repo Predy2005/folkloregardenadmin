@@ -20,7 +20,9 @@ import {
   PopoverTrigger,
 } from "@/shared/components/ui/popover";
 import { Loader2, Search, Building2, Users } from "lucide-react";
-import { searchCompanies, parseCompanyData, type CompanySearchResult } from "@modules/contacts/utils/companySearch";
+import { searchCompanies, parseCompanyData, smartCompanySearch, type CompanySearchResult, type ViesParsedResult } from "@modules/contacts/utils/companySearch";
+import { Badge } from "@/shared/components/ui/badge";
+import { Globe, CheckCircle2, XCircle } from "lucide-react";
 import type { Contact } from "@shared/types";
 import type { InvoiceFormData } from "@modules/invoices/types";
 
@@ -30,11 +32,13 @@ interface CustomerSectionProps {
 }
 
 export default function CustomerSection({ formData, onFormChange }: CustomerSectionProps) {
-  // ARES search state
+  // ARES / VIES search state
   const [aresQuery, setAresQuery] = useState("");
   const [aresResults, setAresResults] = useState<CompanySearchResult[]>([]);
   const [aresLoading, setAresLoading] = useState(false);
   const [aresOpen, setAresOpen] = useState(false);
+  const [searchSource, setSearchSource] = useState<'ares' | 'vies'>('ares');
+  const [viesResult, setViesResult] = useState<ViesParsedResult | null>(null);
 
   // Contact selection state
   const [contactOpen, setContactOpen] = useState(false);
@@ -62,15 +66,20 @@ export default function CustomerSection({ formData, onFormChange }: CustomerSect
     );
   }, [contactsData, contactSearch]);
 
-  // ARES search handler
+  // Smart search handler (ARES for CZ, VIES for EU VAT)
   const handleAresSearch = async () => {
     if (aresQuery.length < 2) return;
     setAresLoading(true);
+    setViesResult(null);
     try {
-      const results = await searchCompanies(aresQuery);
-      setAresResults(results);
+      const result = await smartCompanySearch(aresQuery);
+      setSearchSource(result.source);
+      setAresResults(result.results);
+      if (result.viesResult) {
+        setViesResult(result.viesResult);
+      }
     } catch (error) {
-      console.error("ARES search failed:", error);
+      console.error("Company search failed:", error);
     } finally {
       setAresLoading(false);
     }
@@ -134,14 +143,14 @@ export default function CustomerSection({ formData, onFormChange }: CustomerSect
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm">
                 <Building2 className="w-4 h-4 mr-2" />
-                Načíst z ARES
+                Načíst z ARES / VIES
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-96 p-4" align="start">
               <div className="space-y-4">
                 <div className="flex gap-2">
                   <Input
-                    placeholder="IČO nebo název firmy..."
+                    placeholder="IČO, název firmy nebo EU DIČ (SK2020...)..."
                     value={aresQuery}
                     onChange={(e) => setAresQuery(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleAresSearch()}
@@ -158,21 +167,62 @@ export default function CustomerSection({ formData, onFormChange }: CustomerSect
                     )}
                   </Button>
                 </div>
-                {aresResults.length > 0 && (
-                  <div className="max-h-60 overflow-y-auto space-y-2">
-                    {aresResults.map((result, idx) => (
-                      <div
-                        key={idx}
-                        className="p-2 rounded-lg border hover:bg-muted cursor-pointer"
-                        onClick={() => handleSelectAres(result)}
-                      >
-                        <p className="font-medium text-sm">{result.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          IČO: {result.ico} | {result.city}
-                        </p>
-                      </div>
-                    ))}
+                {/* VIES validation result */}
+                {viesResult && (
+                  <div className={`p-3 rounded-lg border ${viesResult.valid ? 'bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800' : 'bg-red-50 border-red-200 dark:bg-red-950 dark:border-red-800'}`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      {viesResult.valid ? (
+                        <CheckCircle2 className="w-4 h-4 text-green-600" />
+                      ) : (
+                        <XCircle className="w-4 h-4 text-red-600" />
+                      )}
+                      <Badge variant="outline" className="text-xs">
+                        <Globe className="w-3 h-3 mr-1" />
+                        VIES EU
+                      </Badge>
+                      <span className={`text-sm font-medium ${viesResult.valid ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
+                        DIČ {viesResult.valid ? 'platné' : 'neplatné'}
+                      </span>
+                    </div>
+                    {viesResult.valid && viesResult.name && (
+                      <p className="text-sm font-medium">{viesResult.name}</p>
+                    )}
+                    {viesResult.valid && viesResult.address && (
+                      <p className="text-xs text-muted-foreground">{viesResult.address}</p>
+                    )}
                   </div>
+                )}
+
+                {/* Search results */}
+                {aresResults.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-xs">
+                        {searchSource === 'vies' ? 'VIES EU' : 'ARES CZ'}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">{aresResults.length} výsledků</span>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto space-y-2">
+                      {aresResults.map((result, idx) => (
+                        <div
+                          key={idx}
+                          className="p-2 rounded-lg border hover:bg-muted cursor-pointer"
+                          onClick={() => handleSelectAres(result)}
+                        >
+                          <p className="font-medium text-sm">{result.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {searchSource === 'vies' ? `DIČ: ${result.dic}` : `IČO: ${result.ico}`} | {result.city}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {!aresLoading && aresResults.length === 0 && !viesResult && aresQuery.length >= 2 && (
+                  <p className="text-xs text-muted-foreground">
+                    Tip: Zadejte IČO nebo název pro ARES, nebo EU DIČ (např. SK2020123456) pro VIES.
+                  </p>
                 )}
               </div>
             </PopoverContent>

@@ -2,6 +2,7 @@ import dayjs from 'dayjs';
 import { Button } from '@/shared/components/ui/button';
 import { TableCell, TableRow } from '@/shared/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/components/ui/tooltip';
+import { Checkbox } from '@/shared/components/ui/checkbox';
 import { Eye, Edit, Trash2, Mail } from 'lucide-react';
 import { StatusBadge } from '@/shared/components/StatusBadge';
 import type { Reservation } from '@shared/types';
@@ -12,11 +13,22 @@ type Props = {
   onEdit: (reservation: Reservation) => void;
   onDelete: (id: number) => void;
   onSendPayment: (id: number) => void;
+  showCheckbox?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (id: number) => void;
 };
 
-export function ReservationRow({ reservation, onView, onEdit, onDelete, onSendPayment }: Props) {
+export function ReservationRow({ reservation, onView, onEdit, onDelete, onSendPayment, showCheckbox, isSelected, onToggleSelect }: Props) {
   return (
     <TableRow data-testid={`row-reservation-${reservation.id}`}>
+      {showCheckbox && (
+        <TableCell className="w-[40px]">
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={() => onToggleSelect?.(reservation.id)}
+          />
+        </TableCell>
+      )}
       <TableCell className="font-mono text-xs text-muted-foreground">#{reservation.id}</TableCell>
       <TableCell>
         <div className="flex flex-col gap-0.5">

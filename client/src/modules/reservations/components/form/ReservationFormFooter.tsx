@@ -31,7 +31,7 @@ export function ReservationFormFooter({ totalPrice, onCancel, saving, editing }:
 
       <div className="flex items-center justify-between p-4 bg-muted/50 rounded-md">
         <span className="text-lg font-semibold">Celková cena:</span>
-        <span className="text-2xl font-bold font-mono bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+        <span className="text-2xl font-bold font-mono text-primary">
           {formatCurrency(Math.round(totalPrice))}
         </span>
       </div>
@@ -40,7 +40,7 @@ export function ReservationFormFooter({ totalPrice, onCancel, saving, editing }:
         <Button type="button" variant="outline" onClick={onCancel} data-testid="button-cancel-reservation">
           Zrušit
         </Button>
-        <Button type="submit" disabled={saving} className="bg-gradient-to-r from-primary to-purple-600" data-testid="button-save-reservation">
+        <Button type="submit" disabled={saving} className="bg-primary hover:bg-primary/90" data-testid="button-save-reservation">
           {saving ? 'Ukládání...' : editing ? 'Uložit změny' : 'Vytvořit rezervaci'}
         </Button>
       </DialogFooter>

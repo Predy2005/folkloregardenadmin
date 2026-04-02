@@ -39,34 +39,54 @@ import {
 } from "@/shared/components/ui/select";
 import {Tabs, TabsList, TabsTrigger} from "@/shared/components/ui/tabs";
 import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from "@/shared/components/ui/tooltip";
-import {Plus, Pencil, Trash2, Search, Calendar, CalendarDays, Eye, Gauge} from "lucide-react";
+import {Plus, Pencil, Trash2, Search, Calendar, CalendarDays, Eye, Gauge, Loader2, AlertTriangle} from "lucide-react";
+import {Label} from "@/shared/components/ui/label";
+import {Checkbox} from "@/shared/components/ui/checkbox";
 import { PageHeader } from "@/shared/components/PageHeader";
 import {successToast, errorToast} from "@/shared/lib/toast-helpers";
 import {Badge} from "@/shared/components/ui/badge";
+import {useAuth} from "@/modules/auth/contexts/AuthContext";
 import dayjs from "dayjs";
 
 export default function Events() {
     const [, setLocation] = useLocation();
+    const { isSuperAdmin } = useAuth();
     const [search, setSearch] = useState("");
     const [isViewOpen, setIsViewOpen] = useState(false);
     const [viewingEvent, setViewingEvent] = useState<Event | null>(null);
     const [statusFilter, setStatusFilter] = useState<string>("all");
     const [typeFilter, setTypeFilter] = useState<string>("all");
     const [timeFilter, setTimeFilter] = useState<"all" | "upcoming" | "past" | "nearest">("nearest");
+    const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+    const [bulkActionOpen, setBulkActionOpen] = useState(false);
+    const [bulkActionType, setBulkActionType] = useState<'status' | 'eventType' | 'delete' | null>(null);
+    const [bulkValue, setBulkValue] = useState("");
     const {data: events, isLoading} = useQuery<Event[]>({
         queryKey: ["/api/events"],
         queryFn: () => api.get<Event[]>(`/api/events`),
     });
 
+    const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+    const [singleDeleteBlockers, setSingleDeleteBlockers] = useState<any[] | null>(null);
+
     const deleteMutation = useMutation({
-        mutationFn: async (id: number) => {
-            return await api.delete(`/api/events/${id}`);
+        mutationFn: async ({ id, force }: { id: number; force?: boolean }) => {
+            return await api.delete(`/api/events/${id}`, { data: force ? { force: true } : undefined });
         },
         onSuccess: () => {
             queryClient.invalidateQueries({queryKey: ["/api/events"]});
+            setPendingDeleteId(null);
+            setSingleDeleteBlockers(null);
             successToast("Akce byla smazána");
         },
-        onError: (error: Error) => errorToast(error),
+        onError: (error: any) => {
+            const data = error?.response?.data || error?.data;
+            if (data?.blockers) {
+                errorToast(`Akci nelze smazat:\n${data.blockers.map((b: any) => b.message).join('\n')}`);
+            } else {
+                errorToast(error);
+            }
+        },
     });
 
     const filteredEvents = (() => {
@@ -118,13 +138,101 @@ export default function Events() {
         return filtered;
     })();
 
+    const toggleSelect = (id: number) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+    const toggleSelectAll = () => {
+        const allIds = filteredEvents.map(e => e.id);
+        if (allIds.every(id => selectedIds.has(id))) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(allIds));
+        }
+    };
+    const clearSelection = () => setSelectedIds(new Set());
+
+    const bulkUpdateMutation = useMutation({
+        mutationFn: async (data: { ids: number[]; updates: Record<string, any> }) => {
+            return await api.put('/api/events/bulk-update', data);
+        },
+        onSuccess: (data: any) => {
+            queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+            setBulkActionOpen(false);
+            clearSelection();
+            successToast(`Aktualizováno ${data.count} akcí`);
+        },
+        onError: (error: Error) => errorToast(error),
+    });
+
+    const [deleteBlockers, setDeleteBlockers] = useState<any[] | null>(null);
+
+    const bulkDeleteMutation = useMutation({
+        mutationFn: async ({ ids, force }: { ids: number[]; force?: boolean }) => {
+            return await api.delete('/api/events/bulk-delete', { data: { ids, force } });
+        },
+        onSuccess: (data: any) => {
+            queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+            setBulkActionOpen(false);
+            clearSelection();
+            setDeleteBlockers(null);
+            const actionsMsg = data.actions ? '\n' + Object.entries(data.actions).map(([name, acts]: [string, any]) => `${name}: ${acts.join(', ')}`).join('\n') : '';
+            successToast(`Smazáno ${data.count} akcí${actionsMsg}`);
+        },
+        onError: (error: any) => {
+            const data = error?.response?.data || error?.data;
+            if (data?.blocked) {
+                setDeleteBlockers(data.blocked);
+            } else {
+                errorToast(error);
+            }
+        },
+    });
+
+    const executeBulkAction = () => {
+        const ids = Array.from(selectedIds);
+        if (bulkActionType === 'delete') {
+            setDeleteBlockers(null);
+            bulkDeleteMutation.mutate({ ids });
+            return;
+        }
+        const updates: Record<string, any> = {};
+        if (bulkActionType === 'status') updates.status = bulkValue;
+        if (bulkActionType === 'eventType') updates.eventType = bulkValue;
+        bulkUpdateMutation.mutate({ ids, updates });
+    };
+
+    const executeForceDelete = () => {
+        const ids = Array.from(selectedIds);
+        bulkDeleteMutation.mutate({ ids, force: true });
+    };
+
     const handleEdit = (event: Event) => {
         setLocation(`/events/${event.id}/edit`);
     };
 
-    const handleDelete = (id: number) => {
-        if (confirm("Opravdu chcete smazat tuto akci?")) {
-            deleteMutation.mutate(id);
+    const handleDelete = async (id: number) => {
+        if (!confirm("Opravdu chcete smazat tuto akci?")) return;
+        try {
+            await api.delete(`/api/events/${id}`);
+            queryClient.invalidateQueries({queryKey: ["/api/events"]});
+            successToast("Akce byla smazána");
+        } catch (error: any) {
+            const data = error?.response?.data || error?.data;
+            if (data?.blockers && isSuperAdmin) {
+                const msgs = data.blockers.map((b: any) => b.message).join('\n');
+                if (confirm(`Akce má závislosti:\n${msgs}\n\nChcete vynutit smazání?\n(Zůstatek pokladny bude převeden do hlavní kasy)`)) {
+                    deleteMutation.mutate({ id, force: true });
+                }
+            } else if (data?.blockers) {
+                errorToast(`Akci nelze smazat:\n${data.blockers.map((b: any) => b.message).join('\n')}`);
+            } else {
+                errorToast(error);
+            }
         }
     };
 
@@ -159,7 +267,7 @@ export default function Events() {
             <PageHeader title="Akce" description="Plánování a správa akcí">
                 <Button
                     onClick={() => setLocation("/events/new")}
-                    className="bg-gradient-to-r from-primary to-purple-600"
+                    className="bg-primary hover:bg-primary/90"
                     data-testid="button-create-event"
                 >
                     <Plus className="w-4 h-4 mr-2"/>
@@ -241,6 +349,23 @@ export default function Events() {
                                 </SelectContent>
                             </Select>
                         </div>
+                        {isSuperAdmin && selectedIds.size > 0 && (
+                            <div className="flex items-center gap-2 p-3 bg-primary/5 border rounded-lg">
+                                <Badge variant="secondary">{selectedIds.size} vybráno</Badge>
+                                <Button size="sm" variant="outline" onClick={() => { setBulkActionType('status'); setBulkValue(''); setBulkActionOpen(true); }}>
+                                    Změnit status
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => { setBulkActionType('eventType'); setBulkValue(''); setBulkActionOpen(true); }}>
+                                    Změnit typ
+                                </Button>
+                                <Button size="sm" variant="destructive" onClick={() => { setBulkActionType('delete'); setBulkValue(''); setBulkActionOpen(true); }}>
+                                    Smazat
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={clearSelection}>
+                                    Zrušit výběr
+                                </Button>
+                            </div>
+                        )}
                     </div>
                 </CardHeader>
                 <CardContent>
@@ -250,6 +375,14 @@ export default function Events() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
+                                    {isSuperAdmin && (
+                                        <TableHead className="w-[40px]">
+                                            <Checkbox
+                                                checked={filteredEvents.length > 0 && filteredEvents.every(e => selectedIds.has(e.id))}
+                                                onCheckedChange={toggleSelectAll}
+                                            />
+                                        </TableHead>
+                                    )}
                                     <TableHead>Název</TableHead>
                                     <TableHead>Typ</TableHead>
                                     <TableHead>Datum</TableHead>
@@ -262,7 +395,15 @@ export default function Events() {
                             </TableHeader>
                             <TableBody>
                                 {filteredEvents.map((event) => (
-                                    <TableRow key={event.id} data-testid={`row-event-${event.id}`}>
+                                    <TableRow key={event.id} data-testid={`row-event-${event.id}`} className={selectedIds.has(event.id) ? 'bg-primary/5' : ''}>
+                                        {isSuperAdmin && (
+                                            <TableCell className="w-[40px]">
+                                                <Checkbox
+                                                    checked={selectedIds.has(event.id)}
+                                                    onCheckedChange={() => toggleSelect(event.id)}
+                                                />
+                                            </TableCell>
+                                        )}
                                         <TableCell className="font-medium" data-testid={`text-name-${event.id}`}>
                                             {event.name}
                                         </TableCell>
@@ -402,25 +543,23 @@ export default function Events() {
                                     </Badge>
                                 </div>
                                 <div>
-                                    <p className="text-sm font-medium text-muted-foreground">Kontaktní osoba</p>
-                                    <p className="text-sm">{viewingEvent.contactPerson || "Neurčeno"}</p>
+                                    <p className="text-sm font-medium text-muted-foreground">Organizátor</p>
+                                    <p className="text-sm">{viewingEvent.organizerPerson || "Neurčeno"}</p>
                                 </div>
-                                <div>
-                                    <p className="text-sm font-medium text-muted-foreground">Koordinátor</p>
-                                    <p className="text-sm">{viewingEvent.coordinator || "Neurčeno"}</p>
-                                </div>
+                                {viewingEvent.coordinatorId && (
+                                    <div>
+                                        <p className="text-sm font-medium text-muted-foreground">Koordinátor</p>
+                                        <p className="text-sm">ID: {viewingEvent.coordinatorId}</p>
+                                    </div>
+                                )}
                                 <div className="col-span-2">
                                     <p className="text-sm font-medium text-muted-foreground">Prostory</p>
                                     <div className="flex flex-wrap gap-1 mt-1">
-                                        {viewingEvent.spaces?.map((space: any) => {
-                                            const key = typeof space === "string" ? space : space.id ?? String(space.spaceName);
-                                            const label = typeof space === "string" ? EVENT_SPACE_LABELS[space] : space.spaceName;
-                                            return (
-                                                <Badge key={key} variant="outline">
-                                                    {label}
-                                                </Badge>
-                                            );
-                                        })}
+                                        {viewingEvent.spaces?.map((space) => (
+                                            <Badge key={space.spaceName} variant="outline">
+                                                {EVENT_SPACE_LABELS[space.spaceName]}
+                                            </Badge>
+                                        ))}
                                     </div>
                                 </div>
                                 <div>
@@ -466,6 +605,101 @@ export default function Events() {
                         <Button onClick={() => setIsViewOpen(false)} data-testid="button-close">
                             Zavřít
                         </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Bulk Action Dialog */}
+            <Dialog open={bulkActionOpen} onOpenChange={(open) => { setBulkActionOpen(open); if (!open) setBulkValue(''); }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>
+                            {bulkActionType === 'delete'
+                                ? `Smazat ${selectedIds.size} akcí?`
+                                : `Hromadná změna (${selectedIds.size} akcí)`}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {bulkActionType === 'delete'
+                                ? 'Tato akce je nevratná.'
+                                : 'Vyberte novou hodnotu pro všechny označené akce.'}
+                        </DialogDescription>
+                    </DialogHeader>
+                    {bulkActionType === 'status' && (
+                        <div className="py-4">
+                            <Label>Nový status</Label>
+                            <Select value={bulkValue} onValueChange={setBulkValue}>
+                                <SelectTrigger className="mt-1">
+                                    <SelectValue placeholder="Vyberte status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {Object.entries(EVENT_STATUS_LABELS).map(([val, label]) => (
+                                        <SelectItem key={val} value={val}>{label}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+                    {bulkActionType === 'eventType' && (
+                        <div className="py-4">
+                            <Label>Nový typ</Label>
+                            <Select value={bulkValue} onValueChange={setBulkValue}>
+                                <SelectTrigger className="mt-1">
+                                    <SelectValue placeholder="Vyberte typ" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {Object.entries(EVENT_TYPE_LABELS).map(([val, label]) => (
+                                        <SelectItem key={val} value={val}>{label}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+                    {bulkActionType === 'delete' && deleteBlockers && deleteBlockers.length > 0 && (
+                        <div className="space-y-2">
+                            <div className="rounded-lg border border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950 p-4 space-y-2">
+                                <div className="flex items-center gap-2 text-orange-700 dark:text-orange-400 font-medium text-sm">
+                                    <AlertTriangle className="h-4 w-4" />
+                                    Některé akce mají závislosti:
+                                </div>
+                                {deleteBlockers.map((b: any) => (
+                                    <div key={b.eventId} className="text-sm text-orange-600 dark:text-orange-300 pl-6">
+                                        <span className="font-medium">{b.eventName}</span>
+                                        <ul className="list-disc pl-4 text-xs mt-1">
+                                            {b.blockers.map((bl: any, i: number) => (
+                                                <li key={i}>{bl.message}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                ))}
+                                <p className="text-xs text-orange-500 dark:text-orange-400 pl-6 pt-1">
+                                    Vynucené smazání automaticky převede zůstatek pokladny do hlavní kasy a odstraní převody.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => { setBulkActionOpen(false); setDeleteBlockers(null); }}>Zrušit</Button>
+                        {bulkActionType === 'delete' && deleteBlockers && deleteBlockers.length > 0 ? (
+                            <Button
+                                variant="destructive"
+                                onClick={executeForceDelete}
+                                disabled={bulkDeleteMutation.isPending}
+                            >
+                                {bulkDeleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Vynutit smazání
+                            </Button>
+                        ) : (
+                            <Button
+                                variant={bulkActionType === 'delete' ? 'destructive' : 'default'}
+                                onClick={executeBulkAction}
+                                disabled={bulkUpdateMutation.isPending || bulkDeleteMutation.isPending || (bulkActionType !== 'delete' && !bulkValue)}
+                            >
+                                {(bulkUpdateMutation.isPending || bulkDeleteMutation.isPending) && (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                )}
+                                {bulkActionType === 'delete' ? 'Smazat' : 'Aplikovat'}
+                            </Button>
+                        )}
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

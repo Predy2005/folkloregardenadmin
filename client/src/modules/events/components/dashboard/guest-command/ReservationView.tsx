@@ -20,11 +20,11 @@ import { Input } from "@/shared/components/ui/input";
 import { Progress } from "@/shared/components/ui/progress";
 import { InfoTooltip } from "@/shared/components/ui/info-tooltip";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/shared/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -375,17 +375,17 @@ function ReservationDetailSheet({
   ) || 0;
 
   return (
-    <Sheet open={!!reservation} onOpenChange={() => onClose()}>
-      <SheetContent side="bottom" className="h-auto max-h-[85vh] overflow-y-auto">
-        <SheetHeader className="pb-4">
+    <Dialog open={!!reservation} onOpenChange={() => onClose()}>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader className="pb-4">
           <div className="flex items-center justify-between">
-            <SheetTitle className="flex items-center gap-3">
+            <DialogTitle className="flex items-center gap-3">
               {isoCode && <FlagIcon code={isoCode} className="h-6 w-9 rounded shadow-sm" />}
               {reservation.contactName || `Rezervace #${reservation.reservationId}`}
-            </SheetTitle>
+            </DialogTitle>
             <EditReservationLink reservationId={reservation.reservationId} />
           </div>
-        </SheetHeader>
+        </DialogHeader>
 
         <div className="space-y-4">
           {/* Contact info */}
@@ -590,8 +590,8 @@ function ReservationDetailSheet({
             </div>
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
 

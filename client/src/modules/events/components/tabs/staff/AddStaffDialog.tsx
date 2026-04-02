@@ -54,8 +54,12 @@ export default function AddStaffDialog({
       );
     }
 
-    // Filter out already assigned
-    filtered = filtered.filter(s => !assignedStaffIds.has(s.id));
+    // Sort: unassigned first, then already assigned
+    filtered.sort((a, b) => {
+      const aAssigned = assignedStaffIds.has(a.id) ? 1 : 0;
+      const bAssigned = assignedStaffIds.has(b.id) ? 1 : 0;
+      return aAssigned - bAssigned;
+    });
 
     return filtered;
   }, [staffMembers, category, searchTerm, assignedStaffIds]);
@@ -127,35 +131,49 @@ export default function AddStaffDialog({
                   {STAFF_ROLE_LABELS[position] || position} ({members.length})
                 </div>
                 <div className="space-y-1">
-                  {members.map((member) => (
-                    <div
-                      key={member.id}
-                      className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium">
-                          {member.firstName} {member.lastName}
-                        </div>
-                        {member.phone && (
-                          <div className="text-sm text-muted-foreground flex items-center gap-1">
-                            <Phone className="h-3 w-3" />
-                            {member.phone}
-                          </div>
-                        )}
-                      </div>
-                      <Button
-                        size="sm"
-                        onClick={() => addStaffMutation.mutate(member)}
-                        disabled={addStaffMutation.isPending}
+                  {members.map((member) => {
+                    const alreadyAssigned = assignedStaffIds.has(member.id);
+                    return (
+                      <div
+                        key={member.id}
+                        className={`flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors ${
+                          alreadyAssigned ? "opacity-60 border-dashed" : ""
+                        }`}
                       >
-                        {addStaffMutation.isPending ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <UserPlus className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
-                  ))}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium flex items-center gap-1.5">
+                            {member.firstName} {member.lastName}
+                            {member.isGroup && (
+                              <span className="text-[10px] text-muted-foreground border rounded px-1">skupina</span>
+                            )}
+                          </div>
+                          <div className="text-sm text-muted-foreground flex items-center gap-2">
+                            {member.phone && (
+                              <span className="flex items-center gap-1">
+                                <Phone className="h-3 w-3" />
+                                {member.phone}
+                              </span>
+                            )}
+                            {alreadyAssigned && (
+                              <span className="text-xs text-amber-600">již přiřazen</span>
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant={alreadyAssigned ? "outline" : "default"}
+                          onClick={() => addStaffMutation.mutate(member)}
+                          disabled={addStaffMutation.isPending}
+                        >
+                          {addStaffMutation.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <UserPlus className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))

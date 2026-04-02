@@ -142,6 +142,9 @@ class Reservation
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $paymentNote = null;
 
+    #[ORM\Column(name: 'partner_id', type: Types::INTEGER, nullable: true)]
+    private ?int $partnerId = null;
+
     public function __construct()
     {
         $this->persons = new ArrayCollection();
@@ -644,5 +647,16 @@ class Reservation
         $total = (float)($this->totalPrice ?? 0);
         $paid = (float)($this->paidAmount ?? 0);
         return $total > 0 && $paid >= $total;
+    }
+
+    public function getPartnerId(): ?int
+    {
+        return $this->partnerId;
+    }
+
+    public function setPartnerId(?int $partnerId): static
+    {
+        $this->partnerId = $partnerId;
+        return $this;
     }
 }

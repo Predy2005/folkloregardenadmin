@@ -203,7 +203,7 @@ export default function Users() {
   return (
     <div className="space-y-6">
       <PageHeader title="Uživatelé" description="Správa uživatelů systému">
-        <Button onClick={handleCreate} data-testid="button-create-user" className="bg-gradient-to-r from-primary to-purple-600">
+        <Button onClick={handleCreate} data-testid="button-create-user" className="bg-primary hover:bg-primary/90">
           <Plus className="w-4 h-4 mr-2" />
           Přidat uživatele
         </Button>
@@ -433,7 +433,7 @@ export default function Users() {
                   type="submit"
                   disabled={createMutation.isPending || updateMutation.isPending}
                   data-testid="button-save-user"
-                  className="bg-gradient-to-r from-primary to-purple-600"
+                  className="bg-primary hover:bg-primary/90"
                 >
                   {createMutation.isPending || updateMutation.isPending
                     ? 'Ukládání...'

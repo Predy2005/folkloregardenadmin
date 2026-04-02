@@ -4,11 +4,18 @@ export interface PersonEntry {
   menu: string;
   price: number;
   nationality: string;
+  drinkOption: string;
+  drinkName: string;
+  drinkPrice: number;
+  drinkItemId: number | null;
 }
 
 export interface TransferEntry {
   personCount: number;
   address: string;
+  transportCompanyId?: number | null;
+  transportVehicleId?: number | null;
+  transportDriverId?: number | null;
 }
 
 export interface ReservationEntry {

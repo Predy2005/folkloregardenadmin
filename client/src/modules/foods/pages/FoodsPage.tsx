@@ -8,14 +8,30 @@ import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/components/ui/tooltip";
-import { Edit, Plus, Trash2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/components/ui/dialog";
+import { Checkbox } from "@/shared/components/ui/checkbox";
+import { Badge } from "@/shared/components/ui/badge";
+import { Edit, Plus, Trash2, Loader2 } from "lucide-react";
 import { PageHeader } from "@/shared/components/PageHeader";
 import type { ReservationFood } from "@shared/types";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
+import { useAuth } from "@/modules/auth/contexts/AuthContext";
 
 export default function Foods() {
   const [, navigate] = useLocation();
   const [searchTerm, setSearchTerm] = useState("");
+  const { isSuperAdmin } = useAuth();
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkActionOpen, setBulkActionOpen] = useState(false);
+  const [bulkActionType, setBulkActionType] = useState<'delete' | null>(null);
+
   // Fetch foods
   const { data: foods, isLoading } = useQuery({
     queryKey: ["/api/reservation-foods"],
@@ -40,6 +56,46 @@ export default function Foods() {
     }
   };
 
+  // Selection helpers
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = () => {
+    const allIds = filteredFoods.map(f => f.id);
+    if (allIds.every(id => selectedIds.has(id))) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allIds));
+    }
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // Bulk mutations
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      return await api.delete('/api/reservation-foods/bulk-delete', { data: { ids } });
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/reservation-foods"] });
+      setBulkActionOpen(false);
+      clearSelection();
+      successToast(`Smazáno ${data.count} jídel`);
+    },
+    onError: (error: Error) => errorToast(error),
+  });
+
+  const executeBulkAction = () => {
+    const ids = Array.from(selectedIds);
+    if (bulkActionType === 'delete') {
+      bulkDeleteMutation.mutate(ids);
+    }
+  };
+
   // Filter foods
   const filteredFoods =
     foods?.filter(
@@ -53,7 +109,7 @@ export default function Foods() {
       <PageHeader title="Jídla" description="Správa nabídky jídel, cen a dostupnosti">
         <Button
           onClick={() => navigate("/foods/new")}
-          className="bg-gradient-to-r from-primary to-purple-600"
+          className="bg-primary hover:bg-primary/90"
         >
           <Plus className="w-4 h-4 mr-2" />
           Nové jídlo
@@ -73,6 +129,18 @@ export default function Foods() {
             />
           </div>
 
+          {isSuperAdmin && selectedIds.size > 0 && (
+            <div className="flex items-center gap-2 p-3 mb-4 bg-primary/5 border rounded-lg">
+              <Badge variant="secondary">{selectedIds.size} vybráno</Badge>
+              <Button size="sm" variant="destructive" onClick={() => { setBulkActionType('delete'); setBulkActionOpen(true); }}>
+                Smazat
+              </Button>
+              <Button size="sm" variant="ghost" onClick={clearSelection}>
+                Zrušit výběr
+              </Button>
+            </div>
+          )}
+
           {isLoading ? (
             <div className="text-center py-8 text-muted-foreground">Načítání...</div>
           ) : filteredFoods.length > 0 ? (
@@ -80,6 +148,14 @@ export default function Foods() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    {isSuperAdmin && (
+                      <TableHead className="w-[40px]">
+                        <Checkbox
+                          checked={filteredFoods.length > 0 && filteredFoods.every(f => selectedIds.has(f.id))}
+                          onCheckedChange={toggleSelectAll}
+                        />
+                      </TableHead>
+                    )}
                     <TableHead>Název</TableHead>
                     <TableHead>Popis</TableHead>
                     <TableHead>Základní cena</TableHead>
@@ -93,9 +169,17 @@ export default function Foods() {
                   {filteredFoods.map((food) => (
                     <TableRow
                       key={food.id}
-                      className="cursor-pointer hover:bg-muted/50"
+                      className={`cursor-pointer hover:bg-muted/50 ${selectedIds.has(food.id) ? 'bg-primary/5' : ''}`}
                       onClick={() => navigate(`/foods/${food.id}/edit`)}
                     >
+                      {isSuperAdmin && (
+                        <TableCell className="w-[40px]" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={selectedIds.has(food.id)}
+                            onCheckedChange={() => toggleSelect(food.id)}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell className="font-medium">{food.name}</TableCell>
                       <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
                         {food.description || "-"}
@@ -169,6 +253,27 @@ export default function Foods() {
           )}
         </CardContent>
       </Card>
+
+      {/* Bulk Delete Dialog */}
+      <Dialog open={bulkActionOpen} onOpenChange={(open) => { setBulkActionOpen(open); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Smazat {selectedIds.size} jídel?</DialogTitle>
+            <DialogDescription>Tato akce je nevratná.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkActionOpen(false)}>Zrušit</Button>
+            <Button
+              variant="destructive"
+              onClick={executeBulkAction}
+              disabled={bulkDeleteMutation.isPending}
+            >
+              {bulkDeleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Smazat
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

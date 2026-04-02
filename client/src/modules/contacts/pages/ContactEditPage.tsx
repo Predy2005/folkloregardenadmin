@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import ContactForm from "../components/ContactForm";
 import { StatusBadge } from "@/shared/components/StatusBadge";
-import { ArrowLeft, Loader2, Plus, Calendar, Users, Banknote } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Calendar, Users, Banknote, Users2 } from "lucide-react";
 import { formatCurrency } from "@/shared/lib/formatting";
 import dayjs from "dayjs";
 
@@ -123,9 +123,15 @@ export default function ContactEdit() {
             {data?.email && <p className="text-sm text-muted-foreground">{data.email}</p>}
           </div>
         </div>
-        <Button onClick={() => navigate(`/reservations/new?contactId=${id}`)}>
-          <Plus className="h-4 w-4 mr-2" /> Nová rezervace
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => navigate(`/partners/new?fromContact=${id}`)}>
+            <Users2 className="w-4 h-4 mr-2" />
+            Vytvorit partnera
+          </Button>
+          <Button onClick={() => navigate(`/reservations/new?contactId=${id}`)}>
+            <Plus className="h-4 w-4 mr-2" /> Nová rezervace
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (

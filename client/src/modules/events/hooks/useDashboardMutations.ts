@@ -304,6 +304,19 @@ export function useAddIncome(eventId: number) {
   });
 }
 
+export function useStornoMovement(eventId: number) {
+  return useMutation({
+    mutationFn: async ({ movementId, reason }: { movementId: number; reason: string }) => {
+      return api.post(`/api/events/${eventId}/movements/${movementId}/storno`, { reason });
+    },
+    onSuccess: () => {
+      invalidateDashboard(eventId);
+      successToast("Storno provedeno");
+    },
+    onError: (error: Error) => errorToast(error),
+  });
+}
+
 // ============================================================================
 // QUICK ADD GUEST
 // ============================================================================

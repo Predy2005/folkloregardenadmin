@@ -261,9 +261,143 @@ export async function searchCompanies(query: string): Promise<CompanySearchResul
   }
 }
 
+// ─── VIES VAT Validation (EU) ───────────────────────────────────
+
+const VIES_API = 'https://ec.europa.eu/taxation_customs/vies/rest-api/check-vat-number';
+
+export interface ViesResult {
+  countryCode: string;
+  vatNumber: string;
+  requestDate: string;
+  valid: boolean;
+  name: string;
+  address: string;
+  traderName: string;
+  traderStreet: string;
+  traderPostalCode: string;
+  traderCity: string;
+  traderCompanyType: string;
+}
+
+export interface ViesParsedResult {
+  valid: boolean;
+  countryCode: string;
+  vatNumber: string;
+  name: string;
+  address: string;
+  street: string;
+  city: string;
+  zip: string;
+}
+
+/**
+ * Validate and lookup a VAT number via VIES (EU VAT validation).
+ * Input: full VAT ID like "CZ06691439" or country code + number separately.
+ */
+export async function validateVatVies(vatId: string): Promise<ViesParsedResult | null> {
+  if (!vatId || vatId.length < 4) return null;
+
+  // Extract country code (first 2 letters) and number
+  const cleaned = vatId.replace(/\s/g, '').toUpperCase();
+  const countryCode = cleaned.substring(0, 2);
+  const vatNumber = cleaned.substring(2);
+
+  if (!/^[A-Z]{2}$/.test(countryCode) || !vatNumber) return null;
+
+  try {
+    const response = await axios.post<ViesResult>(VIES_API, {
+      countryCode,
+      vatNumber,
+    }, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const data = response.data;
+
+    // Parse address from traderStreet/City/PostalCode or fallback to address string
+    let street = data.traderStreet && data.traderStreet !== '---' ? data.traderStreet : '';
+    let city = data.traderCity && data.traderCity !== '---' ? data.traderCity : '';
+    let zip = data.traderPostalCode && data.traderPostalCode !== '---' ? data.traderPostalCode : '';
+    const name = data.traderName && data.traderName !== '---' ? data.traderName : (data.name || '');
+
+    // If trader fields are empty, try parsing the address string
+    if (!street && !city && data.address) {
+      const parts = data.address.split('\n').map(s => s.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        street = parts[0];
+        // Last part often has zip + city
+        const lastPart = parts[parts.length - 1];
+        const zipCityMatch = lastPart.match(/^(\d{3}\s?\d{2})\s+(.+)$/);
+        if (zipCityMatch) {
+          zip = zipCityMatch[1].replace(/\s/g, '');
+          city = zipCityMatch[2];
+        } else {
+          city = lastPart;
+        }
+      }
+    }
+
+    return {
+      valid: data.valid,
+      countryCode,
+      vatNumber,
+      name,
+      address: data.address || '',
+      street,
+      city,
+      zip,
+    };
+  } catch (error) {
+    console.error('VIES VAT validation failed:', error);
+    return null;
+  }
+}
+
+/**
+ * Auto-detect whether to use ARES (Czech IČO/name) or VIES (EU VAT ID).
+ * - Starts with 2 letters (country code) → VIES
+ * - Pure digits → ARES by IČO
+ * - Text → ARES by name
+ */
+export async function smartCompanySearch(query: string): Promise<{
+  source: 'ares' | 'vies';
+  results: CompanySearchResult[];
+  viesResult?: ViesParsedResult | null;
+}> {
+  const cleaned = query.trim();
+  if (!cleaned || cleaned.length < 2) {
+    return { source: 'ares', results: [] };
+  }
+
+  // Check if it looks like an EU VAT ID (2 letters + digits)
+  const vatPattern = /^[A-Za-z]{2}\d/;
+  if (vatPattern.test(cleaned) && cleaned.length >= 4) {
+    const viesResult = await validateVatVies(cleaned);
+    if (viesResult) {
+      // Convert VIES result to CompanySearchResult format for unified handling
+      const results: CompanySearchResult[] = viesResult.name ? [{
+        name: viesResult.name,
+        ico: viesResult.vatNumber,
+        dic: `${viesResult.countryCode}${viesResult.vatNumber}`,
+        street: viesResult.street,
+        city: viesResult.city,
+        zipcode: viesResult.zip,
+      }] : [];
+      return { source: 'vies', results, viesResult };
+    }
+    return { source: 'vies', results: [], viesResult };
+  }
+
+  // Default: ARES search
+  const results = await searchCompanies(cleaned);
+  return { source: 'ares', results };
+}
+
 export const companySearchApi = {
   searchByIco,
   searchByName,
   searchCompanies,
   parseCompanyData,
+  validateVatVies,
+  smartCompanySearch,
 };

@@ -165,7 +165,7 @@ export default function InvoiceEdit() {
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold text-primary">
               {isNew ? "Nová faktura" : `Faktura ${invoice?.invoiceNumber}`}
             </h1>
             <p className="text-muted-foreground mt-1">
@@ -199,11 +199,19 @@ export default function InvoiceEdit() {
         </div>
       </div>
 
+      {invoice?.status === 'SENT' && (
+        <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-sm text-amber-700">
+          Odeslaná faktura - lze měnit pouze poznámku.
+        </div>
+      )}
+
       <form onSubmit={handleSubmit}>
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Left column - Invoice details */}
           <div className="lg:col-span-2 space-y-6">
-            <CustomerSection formData={formData} onFormChange={setFormData} />
+            <fieldset disabled={invoice?.status === 'SENT'} className="contents">
+              <CustomerSection formData={formData} onFormChange={setFormData} />
+            </fieldset>
 
             <InvoiceItemsEditor
               formData={formData}
@@ -211,16 +219,19 @@ export default function InvoiceEdit() {
               subtotal={subtotal}
               vatAmount={vatAmount}
               total={total}
+              disableItems={invoice?.status === 'SENT'}
             />
           </div>
 
           {/* Right column - Invoice meta */}
           <div className="space-y-6">
-            <InvoiceMetaSidebar
-              formData={formData}
-              onFormChange={setFormData}
-              isNew={isNew}
-            />
+            <fieldset disabled={invoice?.status === 'SENT'} className="contents">
+              <InvoiceMetaSidebar
+                formData={formData}
+                onFormChange={setFormData}
+                isNew={isNew}
+              />
+            </fieldset>
           </div>
         </div>
       </form>

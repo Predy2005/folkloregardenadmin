@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { NationalityInput } from "@/shared/components/NationalityInput";
 import {
   Dialog,
   DialogContent,
@@ -51,17 +52,7 @@ interface QuickReservationData {
   isPaid: boolean;
 }
 
-const NATIONALITIES = [
-  { code: "CZ", label: "Cesko" },
-  { code: "SK", label: "Slovensko" },
-  { code: "EN", label: "Anglie" },
-  { code: "DE", label: "Nemecko" },
-  { code: "CN", label: "Cina" },
-  { code: "RU", label: "Rusko" },
-  { code: "ES", label: "Spanelsko" },
-  { code: "FR", label: "Francie" },
-  { code: "IT", label: "Italie" },
-  { code: "JP", label: "Japonsko" },
+const _NATIONALITIES_LEGACY = [
   { code: "KR", label: "Korea" },
   { code: "PL", label: "Polsko" },
   { code: "US", label: "USA" },
@@ -245,18 +236,10 @@ export function QuickAddGuestDialog({
           {/* Nationality */}
           <div className="space-y-2">
             <Label htmlFor="nationality">Narodnost</Label>
-            <Select value={nationality} onValueChange={setNationality}>
-              <SelectTrigger id="nationality">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {NATIONALITIES.map((nat) => (
-                  <SelectItem key={nat.code} value={nat.code}>
-                    {nat.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <NationalityInput
+              value={nationality}
+              onChange={setNationality}
+            />
           </div>
 
           {/* Menu selection */}

@@ -12,8 +12,10 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 #[Route('/api/staff-assignments')]
+#[IsGranted('IS_AUTHENTICATED_FULLY')]
 class StaffReservationAssignmentController extends AbstractController
 {
     #[Route('', methods: ['GET'])]

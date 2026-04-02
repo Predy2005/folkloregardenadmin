@@ -19,7 +19,13 @@ use App\Service\EventGuestSummaryService;
 use App\Service\StaffRequirementService;
 use App\Service\EventStockRequirementService;
 use App\Service\CashboxService;
+use App\Entity\CashMovement;
 use App\Entity\User;
+use App\Entity\EventTable;
+use App\Entity\FloorPlanElement;
+use App\Entity\FloorPlanTemplate;
+use App\Entity\TableExpense;
+use App\Entity\Room;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -60,6 +66,144 @@ class EventController extends AbstractController
     }
 
     /**
+     * Validate whether an event can be safely deleted.
+     * Returns array of blocking reasons, empty if deletion is safe.
+     */
+    private function getEventDeletionBlockers(Event $event): array
+    {
+        $eventId = $event->getId();
+        $blockers = [];
+
+        // 1. Check for cashbox transfers (RESTRICT FK - hard blocker)
+        $transferCount = (int) $this->em->createQuery(
+            'SELECT COUNT(ct.id) FROM App\Entity\CashboxTransfer ct WHERE ct.targetEvent = :eventId'
+        )->setParameter('eventId', $eventId)->getSingleScalarResult();
+
+        if ($transferCount > 0) {
+            $blockers[] = [
+                'type' => 'cashbox_transfer',
+                'message' => "Akce má {$transferCount} převod(ů) z pokladny. Před smazáním je musíte zrušit nebo dokončit.",
+            ];
+        }
+
+        // 2. Check for active cashbox with non-zero balance
+        $cashbox = $this->em->createQueryBuilder()
+            ->select('c')
+            ->from(\App\Entity\Cashbox::class, 'c')
+            ->where('c.event = :eventId')
+            ->setParameter('eventId', $eventId)
+            ->getQuery()
+            ->getOneOrNullResult();
+
+        if ($cashbox) {
+            $balance = (float) $cashbox->getCurrentBalance();
+            if ($balance != 0) {
+                $blockers[] = [
+                    'type' => 'cashbox_balance',
+                    'message' => "Akce má pokladnu se zůstatkem " . number_format($balance, 2, ',', ' ') . " Kč. Nejprve převeďte zůstatek do hlavní pokladny a uzavřete ji.",
+                ];
+            } elseif ($cashbox->isActive()) {
+                $blockers[] = [
+                    'type' => 'cashbox_active',
+                    'message' => "Akce má otevřenou pokladnu. Nejprve ji uzavřete.",
+                ];
+            }
+        }
+
+        // 3. Check for staff assignments (informational - they cascade delete)
+        // EventStaffAssignment has no isPaid field, so we just note if staff is assigned
+
+        return $blockers;
+    }
+
+    /**
+     * Safely remove an event after all blockers are resolved.
+     * Cleans up non-cascaded but safe-to-remove dependencies.
+     */
+    private function removeEventSafe(Event $event): void
+    {
+        $eventId = $event->getId();
+
+        // Clean up staff requirements (no cascade in entity, but has CASCADE in DB)
+        $this->em->createQuery('DELETE FROM App\Entity\EventStaffRequirement sr WHERE sr.event = :eventId')
+            ->setParameter('eventId', $eventId)
+            ->execute();
+
+        // Cashbox with 0 balance - detach from event (SET NULL handles this in DB, but be explicit)
+        $this->em->createQuery('UPDATE App\Entity\Cashbox c SET c.event = NULL WHERE c.event = :eventId')
+            ->setParameter('eventId', $eventId)
+            ->execute();
+
+        // Remove the event (Doctrine cascade handles guests, menus, spaces, schedules, etc.)
+        $this->em->remove($event);
+    }
+
+    /**
+     * Force-remove an event (super admin only).
+     * Handles all blockers automatically: removes transfers, closes cashbox, moves balance.
+     */
+    private function forceRemoveEvent(Event $event): array
+    {
+        $eventId = $event->getId();
+        $actions = [];
+
+        // 1. Remove all cashbox transfers
+        $deletedTransfers = (int) $this->em->createQuery(
+            'DELETE FROM App\Entity\CashboxTransfer ct WHERE ct.targetEvent = :eventId'
+        )->setParameter('eventId', $eventId)->execute();
+
+        if ($deletedTransfers > 0) {
+            $actions[] = "Smazáno {$deletedTransfers} převod(ů) z pokladny";
+        }
+
+        // 2. Handle cashbox - close and move balance to main cashbox
+        $cashbox = $this->em->createQueryBuilder()
+            ->select('c')
+            ->from(\App\Entity\Cashbox::class, 'c')
+            ->where('c.event = :eventId')
+            ->setParameter('eventId', $eventId)
+            ->getQuery()
+            ->getOneOrNullResult();
+
+        if ($cashbox) {
+            $balance = (float) $cashbox->getCurrentBalance();
+            if ($balance != 0) {
+                // Transfer balance to main cashbox
+                $mainCashbox = $this->cashboxService->getOrCreateMainCashbox();
+                $newBalance = (float) $mainCashbox->getCurrentBalance() + $balance;
+                $mainCashbox->setCurrentBalance(number_format($newBalance, 2, '.', ''));
+
+                // Record movement in main cashbox
+                $this->cashboxService->addMovement($mainCashbox, 'INCOME', number_format(abs($balance), 2, '.', ''), [
+                    'category' => 'Převod z mazané akce',
+                    'description' => "Automatický převod zůstatku ze smazané akce \"{$event->getName()}\" (ID: {$eventId})",
+                ]);
+
+                $actions[] = "Převedeno " . number_format($balance, 2, ',', ' ') . " Kč do hlavní pokladny";
+            }
+
+            // Close and detach
+            $cashbox->setIsActive(false);
+            if (!$cashbox->getClosedAt()) {
+                $cashbox->setClosedAt(new \DateTime());
+            }
+            $cashbox->setEvent(null);
+            $actions[] = "Pokladna uzavřena a odpojena";
+        }
+
+        // 3. Clean up staff requirements
+        $this->em->createQuery('DELETE FROM App\Entity\EventStaffRequirement sr WHERE sr.event = :eventId')
+            ->setParameter('eventId', $eventId)
+            ->execute();
+
+        // 4. Remove the event
+        $this->em->remove($event);
+        $actions[] = "Akce smazána";
+
+        return $actions;
+    }
+
+    /**
      * Převede event type na frontend formát
      */
     private function normalizeEventTypeForFrontend(?string $eventType): ?string
@@ -88,6 +232,9 @@ class EventController extends AbstractController
                 $spaces[] = [
                     'id' => $s->getId(),
                     'spaceName' => $s->getSpaceName(),
+                    'roomId' => $s->getRoomEntity()?->getId(),
+                    'roomName' => $s->getRoomEntity()?->getName(),
+                    'buildingName' => $s->getRoomEntity()?->getBuilding()?->getName(),
                 ];
             }
 
@@ -110,6 +257,118 @@ class EventController extends AbstractController
         }, $events);
 
         return $this->json($data);
+    }
+
+    #[Route('/bulk-update', name: 'api_events_bulk_update', methods: ['PUT', 'PATCH'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function bulkUpdate(Request $request, EventRepository $eventRepository): JsonResponse
+    {
+        $data = json_decode($request->getContent(), true) ?? [];
+        $ids = $data['ids'] ?? [];
+        $updates = $data['updates'] ?? [];
+
+        if (empty($ids) || !is_array($ids)) {
+            return $this->json(['error' => 'Missing or invalid "ids" array'], 400);
+        }
+        if (empty($updates) || !is_array($updates)) {
+            return $this->json(['error' => 'Missing or invalid "updates" object'], 400);
+        }
+
+        $allowedStatuses = ['DRAFT', 'PLANNED', 'CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
+        $allowedEventTypes = ['folklorni_show', 'svatba', 'event', 'privat'];
+        $count = 0;
+
+        foreach ($ids as $id) {
+            $event = $eventRepository->find($id);
+            if (!$event) {
+                continue;
+            }
+
+            if (isset($updates['status'])) {
+                $status = (string)$updates['status'];
+                if (!in_array($status, $allowedStatuses, true)) {
+                    return $this->json(['error' => 'Invalid status value: ' . $status . '. Allowed: ' . implode(', ', $allowedStatuses)], 400);
+                }
+                $event->setStatus($status);
+            }
+
+            if (isset($updates['eventType'])) {
+                $eventType = (string)$updates['eventType'];
+                if (!in_array($eventType, $allowedEventTypes, true)) {
+                    return $this->json(['error' => 'Invalid eventType value: ' . $eventType . '. Allowed: ' . implode(', ', $allowedEventTypes)], 400);
+                }
+                $event->setEventType($eventType);
+            }
+
+            $count++;
+        }
+
+        $this->em->flush();
+
+        return $this->json(['status' => 'updated', 'count' => $count]);
+    }
+
+    #[Route('/bulk-delete', name: 'api_events_bulk_delete', methods: ['DELETE'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function bulkDelete(Request $request, EventRepository $eventRepository): JsonResponse
+    {
+        $data = json_decode($request->getContent(), true) ?? [];
+        $ids = $data['ids'] ?? [];
+        $force = $data['force'] ?? false;
+
+        if (empty($ids) || !is_array($ids)) {
+            return $this->json(['error' => 'Missing or invalid "ids" array'], 400);
+        }
+
+        // First pass: check all events for blockers
+        $allBlockers = [];
+        $eventsToDelete = [];
+        foreach ($ids as $id) {
+            $event = $eventRepository->find($id);
+            if (!$event) {
+                continue;
+            }
+            $blockers = $this->getEventDeletionBlockers($event);
+            if (!empty($blockers)) {
+                $allBlockers[] = [
+                    'eventId' => $event->getId(),
+                    'eventName' => $event->getName(),
+                    'blockers' => $blockers,
+                ];
+            }
+            $eventsToDelete[] = $event;
+        }
+
+        // If blockers exist and force not set, return error with details
+        if (!empty($allBlockers) && !$force) {
+            return $this->json([
+                'error' => 'Některé akce nelze smazat',
+                'blocked' => $allBlockers,
+                'deletableCount' => count($eventsToDelete) - count($allBlockers),
+            ], 409);
+        }
+
+        // Delete all events (force mode handles blockers automatically)
+        $count = 0;
+        $allActions = [];
+        foreach ($eventsToDelete as $event) {
+            $blockers = $this->getEventDeletionBlockers($event);
+            if (!empty($blockers) && $force) {
+                $actions = $this->forceRemoveEvent($event);
+                $allActions[$event->getName()] = $actions;
+            } else {
+                $this->removeEventSafe($event);
+            }
+            $count++;
+        }
+
+        $this->em->flush();
+
+        $response = ['status' => 'deleted', 'count' => $count];
+        if (!empty($allActions)) {
+            $response['actions'] = $allActions;
+        }
+        return $this->json($response);
     }
 
     #[Route('/{id}', name: 'event_detail', methods: ['GET'])]
@@ -157,7 +416,13 @@ class EventController extends AbstractController
 
         $spaces = [];
         foreach ($event->getSpaces() as $s) {
-            $spaces[] = $s->getSpaceName();
+            $spaces[] = [
+                'id' => $s->getId(),
+                'spaceName' => $s->getSpaceName(),
+                'roomId' => $s->getRoomEntity()?->getId(),
+                'roomName' => $s->getRoomEntity()?->getName(),
+                'buildingName' => $s->getRoomEntity()?->getBuilding()?->getName(),
+            ];
         }
 
         $data = [
@@ -443,6 +708,69 @@ class EventController extends AbstractController
     }
 
     /**
+     * Storno pohybu v pokladně (vytvoří protipohyb)
+     *
+     * Body params:
+     * - reason: string (důvod storna)
+     */
+    #[Route('/{id}/movements/{movementId}/storno', name: 'event_storno_movement', methods: ['POST'])]
+    #[IsGranted('events.update')]
+    public function stornoMovement(int $id, int $movementId, Request $request, EventRepository $eventRepository): JsonResponse
+    {
+        $event = $eventRepository->find($id);
+        if (!$event) {
+            return $this->json(['error' => 'Event not found'], 404);
+        }
+
+        $originalMovement = $this->em->getRepository(CashMovement::class)->find($movementId);
+        if (!$originalMovement) {
+            return $this->json(['error' => 'Movement not found'], 404);
+        }
+
+        // Verify the movement belongs to this event's cashbox
+        $eventCashbox = $this->cashboxService->getEventCashbox($event);
+        if (!$eventCashbox || $originalMovement->getCashbox()?->getId() !== $eventCashbox->getId()) {
+            return $this->json(['error' => 'Movement does not belong to this event'], 400);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        $reason = $data['reason'] ?? 'Storno';
+
+        $user = $this->getUser();
+        $originalAmount = (float) $originalMovement->getAmount();
+        $originalType = $originalMovement->getMovementType();
+        $originalCategory = $originalMovement->getCategory() ?? 'OTHER';
+        $originalDesc = $originalMovement->getDescription() ?? '';
+
+        // Create reverse movement
+        $reverseType = $originalType === 'EXPENSE' ? 'INCOME' : 'EXPENSE';
+        $stornoDesc = "STORNO: {$originalDesc} — {$reason}";
+
+        try {
+            $stornoMovement = $this->cashboxService->addMovement($eventCashbox, $reverseType, (string) $originalAmount, [
+                'category' => $originalCategory,
+                'description' => $stornoDesc,
+                'paymentMethod' => $originalMovement->getPaymentMethod(),
+                'user' => $user instanceof User ? $user : null,
+            ]);
+            $this->em->flush();
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        }
+
+        return $this->json([
+            'success' => true,
+            'stornoMovement' => [
+                'id' => $stornoMovement->getId(),
+                'amount' => $originalAmount,
+                'type' => $reverseType,
+                'description' => $stornoDesc,
+            ],
+            'cashboxBalance' => (float) $eventCashbox->getCurrentBalance(),
+        ]);
+    }
+
+    /**
      * Get payment overview for event - all reservations and their payment status
      */
     #[Route('/{id}/payments', name: 'event_payments_overview', methods: ['GET'])]
@@ -644,11 +972,16 @@ class EventController extends AbstractController
         $this->em->persist($event);
         $this->em->flush();
 
-        // spaces (může přijít jako pole s názvy)
+        // spaces (může přijít jako pole s názvy — napojení na Room entity)
         if (!empty($data['spaces']) && is_array($data['spaces'])) {
+            $roomRepo = $this->em->getRepository(Room::class);
             foreach ($data['spaces'] as $spaceName) {
                 $space = new EventSpace();
                 $space->setEvent($event)->setSpaceName(strtolower((string)$spaceName));
+                $room = $roomRepo->findOneBy(['slug' => strtolower((string)$spaceName)]);
+                if ($room) {
+                    $space->setRoomEntity($room);
+                }
                 $this->em->persist($space);
             }
             $this->em->flush();
@@ -791,10 +1124,16 @@ class EventController extends AbstractController
             foreach ($event->getSpaces() as $s) {
                 $this->em->remove($s);
             }
-            // Add new spaces
+            // Add new spaces — try to link to Room entity by slug
+            $roomRepo = $this->em->getRepository(Room::class);
             foreach ($data['spaces'] as $spaceName) {
                 $space = new EventSpace();
                 $space->setEvent($event)->setSpaceName(strtolower((string)$spaceName));
+                // Try to find matching Room by slug
+                $room = $roomRepo->findOneBy(['slug' => strtolower((string)$spaceName)]);
+                if ($room) {
+                    $space->setRoomEntity($room);
+                }
                 $this->em->persist($space);
             }
         }
@@ -2201,14 +2540,7 @@ class EventController extends AbstractController
 
         $tables = [];
         foreach ($event->getTables() as $t) {
-            $tables[] = [
-                'id' => $t->getId(),
-                'tableName' => $t->getTableName(),
-                'room' => $t->getRoom(),
-                'capacity' => $t->getCapacity(),
-                'positionX' => $t->getPositionX(),
-                'positionY' => $t->getPositionY(),
-            ];
+            $tables[] = $this->serializeTable($t);
         }
 
         return $this->json($tables);
@@ -2225,25 +2557,30 @@ class EventController extends AbstractController
 
         $data = json_decode($request->getContent(), true) ?? [];
 
-        $table = new \App\Entity\EventTable();
+        $table = new EventTable();
         $table->setEvent($event);
         $table->setTableName($data['tableName'] ?? '');
-        $table->setRoom($data['room'] ?? 'roubenka');
+        $table->setRoom($data['room'] ?? 'cely_areal');
         $table->setCapacity($data['capacity'] ?? 4);
-        $table->setPositionX($data['positionX'] ?? null);
-        $table->setPositionY($data['positionY'] ?? null);
+        $table->setPositionX(isset($data['positionX']) ? (float)$data['positionX'] : null);
+        $table->setPositionY(isset($data['positionY']) ? (float)$data['positionY'] : null);
+        $table->setShape($data['shape'] ?? 'round');
+        if (isset($data['widthPx'])) $table->setWidthPx((float)$data['widthPx']);
+        if (isset($data['heightPx'])) $table->setHeightPx((float)$data['heightPx']);
+        $table->setRotation((float)($data['rotation'] ?? 0));
+        if (isset($data['tableNumber'])) $table->setTableNumber((int)$data['tableNumber']);
+        if (isset($data['color'])) $table->setColor($data['color']);
+        if (isset($data['sortOrder'])) $table->setSortOrder((int)$data['sortOrder']);
+
+        if (!empty($data['roomId'])) {
+            $room = $this->em->getRepository(Room::class)->find($data['roomId']);
+            $table->setRoomEntity($room);
+        }
 
         $this->em->persist($table);
         $this->em->flush();
 
-        return $this->json([
-            'id' => $table->getId(),
-            'tableName' => $table->getTableName(),
-            'room' => $table->getRoom(),
-            'capacity' => $table->getCapacity(),
-            'positionX' => $table->getPositionX(),
-            'positionY' => $table->getPositionY(),
-        ], 201);
+        return $this->json($this->serializeTable($table), 201);
     }
 
     #[Route('/{id}/tables/{tableId}', name: 'event_table_update', methods: ['PUT'])]
@@ -2255,7 +2592,7 @@ class EventController extends AbstractController
             return $this->json(['error' => 'Event not found'], 404);
         }
 
-        $table = $this->em->getRepository(\App\Entity\EventTable::class)->find($tableId);
+        $table = $this->em->getRepository(EventTable::class)->find($tableId);
         if (!$table || $table->getEvent()->getId() !== $id) {
             return $this->json(['error' => 'Table not found'], 404);
         }
@@ -2265,19 +2602,24 @@ class EventController extends AbstractController
         if (isset($data['tableName'])) $table->setTableName($data['tableName']);
         if (isset($data['room'])) $table->setRoom($data['room']);
         if (isset($data['capacity'])) $table->setCapacity($data['capacity']);
-        if (array_key_exists('positionX', $data)) $table->setPositionX($data['positionX']);
-        if (array_key_exists('positionY', $data)) $table->setPositionY($data['positionY']);
+        if (array_key_exists('positionX', $data)) $table->setPositionX($data['positionX'] !== null ? (float)$data['positionX'] : null);
+        if (array_key_exists('positionY', $data)) $table->setPositionY($data['positionY'] !== null ? (float)$data['positionY'] : null);
+        if (isset($data['shape'])) $table->setShape($data['shape']);
+        if (array_key_exists('widthPx', $data)) $table->setWidthPx($data['widthPx'] !== null ? (float)$data['widthPx'] : null);
+        if (array_key_exists('heightPx', $data)) $table->setHeightPx($data['heightPx'] !== null ? (float)$data['heightPx'] : null);
+        if (isset($data['rotation'])) $table->setRotation((float)$data['rotation']);
+        if (array_key_exists('tableNumber', $data)) $table->setTableNumber($data['tableNumber'] !== null ? (int)$data['tableNumber'] : null);
+        if (array_key_exists('color', $data)) $table->setColor($data['color']);
+        if (isset($data['sortOrder'])) $table->setSortOrder((int)$data['sortOrder']);
+
+        if (array_key_exists('roomId', $data)) {
+            $room = $data['roomId'] ? $this->em->getRepository(Room::class)->find($data['roomId']) : null;
+            $table->setRoomEntity($room);
+        }
 
         $this->em->flush();
 
-        return $this->json([
-            'id' => $table->getId(),
-            'tableName' => $table->getTableName(),
-            'room' => $table->getRoom(),
-            'capacity' => $table->getCapacity(),
-            'positionX' => $table->getPositionX(),
-            'positionY' => $table->getPositionY(),
-        ]);
+        return $this->json($this->serializeTable($table));
     }
 
     #[Route('/{id}/tables/{tableId}', name: 'event_table_delete', methods: ['DELETE'])]
@@ -2289,7 +2631,7 @@ class EventController extends AbstractController
             return $this->json(['error' => 'Event not found'], 404);
         }
 
-        $table = $this->em->getRepository(\App\Entity\EventTable::class)->find($tableId);
+        $table = $this->em->getRepository(EventTable::class)->find($tableId);
         if (!$table || $table->getEvent()->getId() !== $id) {
             return $this->json(['error' => 'Table not found'], 404);
         }
@@ -2743,15 +3085,38 @@ class EventController extends AbstractController
 
     #[Route('/{id}', name: 'event_delete', methods: ['DELETE'])]
     #[IsGranted('events.delete')]
-    public function delete(int $id, EventRepository $eventRepository): JsonResponse
+    public function delete(int $id, Request $request, EventRepository $eventRepository): JsonResponse
     {
         $event = $eventRepository->find($id);
         if (!$event) {
             return $this->json(['error' => 'Not found'], 404);
         }
-        $this->em->remove($event);
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        $force = $data['force'] ?? false;
+
+        $blockers = $this->getEventDeletionBlockers($event);
+        if (!empty($blockers) && !$force) {
+            return $this->json([
+                'error' => 'Akci nelze smazat',
+                'blockers' => $blockers,
+            ], 409);
+        }
+
+        $actions = [];
+        if (!empty($blockers) && $force) {
+            $actions = $this->forceRemoveEvent($event);
+        } else {
+            $this->removeEventSafe($event);
+        }
+
         $this->em->flush();
-        return $this->json(['status' => 'deleted']);
+
+        $response = ['status' => 'deleted'];
+        if (!empty($actions)) {
+            $response['actions'] = $actions;
+        }
+        return $this->json($response);
     }
 
     /**
@@ -3456,5 +3821,620 @@ class EventController extends AbstractController
             'byReservation' => array_values($byReservation),
             'availableSpaces' => $spaces,
         ]);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // FLOOR PLAN - bulk save/load, templates, copy
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Route('/{id}/floor-plan', name: 'event_floor_plan_get', methods: ['GET'])]
+    #[IsGranted('events.read')]
+    public function getFloorPlan(int $id, EventRepository $eventRepository): JsonResponse
+    {
+        $event = $eventRepository->find($id);
+        if (!$event) {
+            return $this->json(['error' => 'Event not found'], 404);
+        }
+
+        $tables = [];
+        foreach ($event->getTables() as $t) {
+            $tableData = $this->serializeTable($t);
+            // Include guests assigned to this table
+            $guests = $this->em->getRepository(EventGuest::class)->findBy(['eventTable' => $t->getId()]);
+            $tableData['guests'] = array_map(fn(EventGuest $g) => [
+                'id' => $g->getId(),
+                'firstName' => $g->getFirstName(),
+                'lastName' => $g->getLastName(),
+                'nationality' => $g->getNationality(),
+                'type' => $g->getType(),
+                'isPaid' => $g->isPaid(),
+                'isPresent' => $g->isPresent(),
+                'menuItemId' => $g->getMenuItem()?->getId(),
+            ], $guests);
+            $tables[] = $tableData;
+        }
+
+        $elements = [];
+        foreach ($event->getFloorPlanElements() as $el) {
+            $elements[] = $this->serializeFloorPlanElement($el);
+        }
+
+        return $this->json([
+            'eventId' => $event->getId(),
+            'tables' => $tables,
+            'elements' => $elements,
+        ]);
+    }
+
+    #[Route('/{id}/floor-plan', name: 'event_floor_plan_save', methods: ['PUT'])]
+    #[IsGranted('events.update')]
+    public function saveFloorPlan(int $id, Request $request, EventRepository $eventRepository): JsonResponse
+    {
+        $event = $eventRepository->find($id);
+        if (!$event) {
+            return $this->json(['error' => 'Event not found'], 404);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        $roomRepo = $this->em->getRepository(Room::class);
+
+        // ── Sync tables ──
+        $incomingTables = $data['tables'] ?? [];
+        $existingTablesById = [];
+        foreach ($event->getTables() as $t) {
+            $existingTablesById[$t->getId()] = $t;
+        }
+
+        $processedIds = [];
+        $tempIdToTable = []; // Map temp IDs to new table entities
+        foreach ($incomingTables as $td) {
+            $incomingId = $td['id'] ?? null;
+            if (!empty($incomingId) && $incomingId > 0 && isset($existingTablesById[$incomingId])) {
+                // Update existing
+                $table = $existingTablesById[$incomingId];
+            } else {
+                // Create new
+                $table = new EventTable();
+                $table->setEvent($event);
+                $this->em->persist($table);
+            }
+
+            $table->setTableName($td['tableName'] ?? 'Stůl');
+            $table->setRoom($td['room'] ?? 'cely_areal');
+            $table->setCapacity($td['capacity'] ?? 4);
+            $table->setPositionX(isset($td['positionX']) ? (float)$td['positionX'] : null);
+            $table->setPositionY(isset($td['positionY']) ? (float)$td['positionY'] : null);
+            $table->setShape($td['shape'] ?? 'round');
+            $table->setWidthPx(isset($td['widthPx']) ? (float)$td['widthPx'] : null);
+            $table->setHeightPx(isset($td['heightPx']) ? (float)$td['heightPx'] : null);
+            $table->setRotation((float)($td['rotation'] ?? 0));
+            $table->setTableNumber(isset($td['tableNumber']) ? (int)$td['tableNumber'] : null);
+            $table->setColor($td['color'] ?? null);
+            $table->setIsLocked($td['isLocked'] ?? false);
+            $table->setSortOrder((int)($td['sortOrder'] ?? 0));
+
+            // Per-table room FK
+            $tableRoomId = $td['roomId'] ?? null;
+            $table->setRoomEntity($tableRoomId ? $roomRepo->find($tableRoomId) : null);
+
+            // Track temp ID → table entity mapping for guest assignments
+            $tempId = $td['tempId'] ?? null;
+            if ($tempId) {
+                $tempIdToTable[$tempId] = $table;
+            }
+            if ($incomingId) {
+                $tempIdToTable[$incomingId] = $table;
+            }
+
+            if ($table->getId()) {
+                $processedIds[] = $table->getId();
+            }
+        }
+
+        // Flush tables first so new tables get real IDs
+        $this->em->flush();
+
+        // Delete tables not in incoming data
+        foreach ($existingTablesById as $existId => $existTable) {
+            if (!in_array($existId, $processedIds)) {
+                $this->em->remove($existTable);
+            }
+        }
+
+        // ── Sync floor plan elements ──
+        $incomingElements = $data['elements'] ?? [];
+        $existingElementsById = [];
+        foreach ($event->getFloorPlanElements() as $el) {
+            $existingElementsById[$el->getId()] = $el;
+        }
+
+        $processedElIds = [];
+        foreach ($incomingElements as $ed) {
+            if (!empty($ed['id']) && isset($existingElementsById[$ed['id']])) {
+                $element = $existingElementsById[$ed['id']];
+            } else {
+                $element = new FloorPlanElement();
+                $element->setEvent($event);
+                $this->em->persist($element);
+            }
+
+            $element->setElementType($ed['elementType'] ?? 'custom');
+            $element->setLabel($ed['label'] ?? null);
+            $element->setPositionX((float)($ed['positionX'] ?? 0));
+            $element->setPositionY((float)($ed['positionY'] ?? 0));
+            $element->setWidthPx((float)($ed['widthPx'] ?? 100));
+            $element->setHeightPx((float)($ed['heightPx'] ?? 100));
+            $element->setRotation((float)($ed['rotation'] ?? 0));
+            $element->setShape($ed['shape'] ?? 'rectangle');
+            $element->setShapeData($ed['shapeData'] ?? null);
+            $element->setColor($ed['color'] ?? null);
+            $element->setIsLocked($ed['isLocked'] ?? false);
+            $element->setSortOrder((int)($ed['sortOrder'] ?? 0));
+
+            // Per-element room FK
+            $elRoomId = $ed['roomId'] ?? null;
+            $element->setRoom($elRoomId ? $roomRepo->find($elRoomId) : null);
+
+            if ($element->getId()) {
+                $processedElIds[] = $element->getId();
+            }
+        }
+
+        foreach ($existingElementsById as $existId => $existEl) {
+            if (!in_array($existId, $processedElIds)) {
+                $this->em->remove($existEl);
+            }
+        }
+
+        // ── Sync guest assignments ──
+        // First, unassign all guests from tables for this event
+        $allGuests = $this->em->getRepository(EventGuest::class)->findBy(['event' => $event]);
+        foreach ($allGuests as $g) {
+            $g->setEventTable(null);
+        }
+
+        $assignments = $data['assignments'] ?? [];
+        if (!empty($assignments)) {
+            foreach ($assignments as $a) {
+                $guest = $this->em->getRepository(EventGuest::class)->find($a['guestId'] ?? 0);
+                if ($guest && $guest->getEvent()->getId() === $id) {
+                    $tableId = $a['tableId'] ?? null;
+                    $table = null;
+
+                    if ($tableId) {
+                        // Try temp ID mapping first (for newly created tables)
+                        if (isset($tempIdToTable[$tableId])) {
+                            $table = $tempIdToTable[$tableId];
+                        } else {
+                            // Try real ID
+                            $table = $this->em->getRepository(EventTable::class)->find($tableId);
+                        }
+                    }
+
+                    $guest->setEventTable($table);
+                }
+            }
+        }
+
+        $this->em->flush();
+
+        return $this->json(['ok' => true, 'message' => 'Floor plan saved']);
+    }
+
+    #[Route('/{id}/floor-plan/from-template/{templateId}', name: 'event_floor_plan_from_template', methods: ['POST'])]
+    #[IsGranted('events.update')]
+    public function applyTemplate(int $id, int $templateId, Request $request, EventRepository $eventRepository): JsonResponse
+    {
+        $event = $eventRepository->find($id);
+        if (!$event) {
+            return $this->json(['error' => 'Event not found'], 404);
+        }
+
+        $template = $this->em->getRepository(FloorPlanTemplate::class)->find($templateId);
+        if (!$template) {
+            return $this->json(['error' => 'Template not found'], 404);
+        }
+
+        $layoutData = $template->getLayoutData();
+
+        // Determine target room: from request body, template, or null
+        $body = json_decode($request->getContent(), true) ?? [];
+        $targetRoomId = $body['roomId'] ?? null;
+        $roomRepo = $this->em->getRepository(Room::class);
+        $targetRoom = $targetRoomId ? $roomRepo->find($targetRoomId) : $template->getRoom();
+
+        // Remove existing tables and elements ONLY in target room (not other rooms)
+        foreach ($event->getTables() as $existingTable) {
+            $tableRoomId = $existingTable->getRoomEntity()?->getId();
+            if ($targetRoom && $tableRoomId !== $targetRoom->getId()) {
+                continue; // keep tables from other rooms
+            }
+            if (!$targetRoom && $tableRoomId !== null) {
+                continue; // if no target room, only remove unassigned tables
+            }
+            $assignedGuests = $this->em->getRepository(EventGuest::class)->findBy(['eventTable' => $existingTable->getId()]);
+            foreach ($assignedGuests as $guest) {
+                $guest->setEventTable(null);
+            }
+            $this->em->remove($existingTable);
+        }
+        foreach ($event->getFloorPlanElements() as $existingElement) {
+            $elRoomId = $existingElement->getRoom()?->getId();
+            if ($targetRoom && $elRoomId !== $targetRoom->getId()) {
+                continue;
+            }
+            if (!$targetRoom && $elRoomId !== null) {
+                continue;
+            }
+            $this->em->remove($existingElement);
+        }
+        $this->em->flush();
+
+        // Create tables from template — assign to target room
+        foreach ($layoutData['tables'] ?? [] as $td) {
+            $table = new EventTable();
+            $table->setEvent($event);
+            $table->setTableName($td['tableName'] ?? 'Stůl');
+            $table->setRoom($targetRoom ? $targetRoom->getSlug() : 'cely_areal');
+            $table->setRoomEntity($targetRoom);
+            $table->setCapacity($td['capacity'] ?? 4);
+            $table->setPositionX((float)($td['positionX'] ?? 0));
+            $table->setPositionY((float)($td['positionY'] ?? 0));
+            $table->setShape($td['shape'] ?? 'round');
+            $table->setWidthPx(isset($td['widthPx']) ? (float)$td['widthPx'] : null);
+            $table->setHeightPx(isset($td['heightPx']) ? (float)$td['heightPx'] : null);
+            $table->setRotation((float)($td['rotation'] ?? 0));
+            $table->setTableNumber(isset($td['tableNumber']) ? (int)$td['tableNumber'] : null);
+            $table->setColor($td['color'] ?? null);
+            $table->setIsLocked($td['isLocked'] ?? false);
+            $table->setSortOrder((int)($td['sortOrder'] ?? 0));
+            $this->em->persist($table);
+        }
+
+        // Create elements from template — assign to target room
+        foreach ($layoutData['elements'] ?? [] as $ed) {
+            $element = new FloorPlanElement();
+            $element->setEvent($event);
+            $element->setRoom($targetRoom);
+            $element->setElementType($ed['elementType'] ?? 'custom');
+            $element->setLabel($ed['label'] ?? null);
+            $element->setPositionX((float)($ed['positionX'] ?? 0));
+            $element->setPositionY((float)($ed['positionY'] ?? 0));
+            $element->setWidthPx((float)($ed['widthPx'] ?? 100));
+            $element->setHeightPx((float)($ed['heightPx'] ?? 100));
+            $element->setRotation((float)($ed['rotation'] ?? 0));
+            $element->setShape($ed['shape'] ?? 'rectangle');
+            $element->setShapeData($ed['shapeData'] ?? null);
+            $element->setColor($ed['color'] ?? null);
+            $element->setIsLocked($ed['isLocked'] ?? false);
+            $element->setSortOrder((int)($ed['sortOrder'] ?? 0));
+            $this->em->persist($element);
+        }
+
+        $this->em->flush();
+
+        return $this->json(['ok' => true, 'message' => 'Template applied']);
+    }
+
+    #[Route('/{id}/floor-plan/copy-from/{sourceId}', name: 'event_floor_plan_copy', methods: ['POST'])]
+    #[IsGranted('events.update')]
+    public function copyFloorPlan(int $id, int $sourceId, EventRepository $eventRepository): JsonResponse
+    {
+        $event = $eventRepository->find($id);
+        $source = $eventRepository->find($sourceId);
+        if (!$event || !$source) {
+            return $this->json(['error' => 'Event not found'], 404);
+        }
+
+        // Copy tables
+        foreach ($source->getTables() as $srcTable) {
+            $table = new EventTable();
+            $table->setEvent($event);
+            $table->setTableName($srcTable->getTableName());
+            $table->setRoom($srcTable->getRoom());
+            $table->setRoomEntity($srcTable->getRoomEntity());
+            $table->setCapacity($srcTable->getCapacity());
+            $table->setPositionX($srcTable->getPositionX());
+            $table->setPositionY($srcTable->getPositionY());
+            $table->setShape($srcTable->getShape());
+            $table->setWidthPx($srcTable->getWidthPx());
+            $table->setHeightPx($srcTable->getHeightPx());
+            $table->setRotation($srcTable->getRotation());
+            $table->setTableNumber($srcTable->getTableNumber());
+            $table->setColor($srcTable->getColor());
+            $table->setIsLocked($srcTable->isLocked());
+            $table->setSortOrder($srcTable->getSortOrder());
+            $this->em->persist($table);
+        }
+
+        // Copy elements
+        foreach ($source->getFloorPlanElements() as $srcEl) {
+            $element = new FloorPlanElement();
+            $element->setEvent($event);
+            $element->setRoom($srcEl->getRoom());
+            $element->setElementType($srcEl->getElementType());
+            $element->setLabel($srcEl->getLabel());
+            $element->setPositionX($srcEl->getPositionX());
+            $element->setPositionY($srcEl->getPositionY());
+            $element->setWidthPx($srcEl->getWidthPx());
+            $element->setHeightPx($srcEl->getHeightPx());
+            $element->setRotation($srcEl->getRotation());
+            $element->setShape($srcEl->getShape());
+            $element->setColor($srcEl->getColor());
+            $element->setIsLocked($srcEl->isLocked());
+            $element->setSortOrder($srcEl->getSortOrder());
+            $this->em->persist($element);
+        }
+
+        $this->em->flush();
+
+        return $this->json(['ok' => true, 'message' => 'Floor plan copied']);
+    }
+
+    #[Route('/{id}/floor-plan/save-as-template', name: 'event_floor_plan_save_template', methods: ['POST'])]
+    #[IsGranted('events.update')]
+    public function saveAsTemplate(int $id, Request $request, EventRepository $eventRepository): JsonResponse
+    {
+        $event = $eventRepository->find($id);
+        if (!$event) {
+            return $this->json(['error' => 'Event not found'], 404);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+
+        // Filter by room if specified
+        $roomRepo = $this->em->getRepository(Room::class);
+        $filterRoomId = $data['roomId'] ?? null;
+        $filterRoom = $filterRoomId ? $roomRepo->find($filterRoomId) : null;
+
+        $tables = [];
+        foreach ($event->getTables() as $t) {
+            // Only include tables from specified room
+            if ($filterRoom && $t->getRoomEntity()?->getId() !== $filterRoom->getId()) {
+                continue;
+            }
+            $tables[] = [
+                'tableName' => $t->getTableName(),
+                'capacity' => $t->getCapacity(),
+                'shape' => $t->getShape(),
+                'positionX' => $t->getPositionX(),
+                'positionY' => $t->getPositionY(),
+                'widthPx' => $t->getWidthPx(),
+                'heightPx' => $t->getHeightPx(),
+                'rotation' => $t->getRotation(),
+                'tableNumber' => $t->getTableNumber(),
+                'color' => $t->getColor(),
+                'isLocked' => $t->isLocked(),
+                'sortOrder' => $t->getSortOrder(),
+            ];
+        }
+
+        $elements = [];
+        foreach ($event->getFloorPlanElements() as $el) {
+            if ($filterRoom && $el->getRoom()?->getId() !== $filterRoom->getId()) {
+                continue;
+            }
+            $elements[] = [
+                'elementType' => $el->getElementType(),
+                'label' => $el->getLabel(),
+                'positionX' => $el->getPositionX(),
+                'positionY' => $el->getPositionY(),
+                'widthPx' => $el->getWidthPx(),
+                'heightPx' => $el->getHeightPx(),
+                'rotation' => $el->getRotation(),
+                'shape' => $el->getShape(),
+                'shapeData' => $el->getShapeData(),
+                'color' => $el->getColor(),
+                'isLocked' => $el->isLocked(),
+                'sortOrder' => $el->getSortOrder(),
+            ];
+        }
+
+        $template = new FloorPlanTemplate();
+        $templateName = $data['name'] ?? $event->getName() . ' - šablona';
+        if ($filterRoom) {
+            $templateName .= ' (' . $filterRoom->getName() . ')';
+        }
+        $template->setName($templateName);
+        $template->setDescription($data['description'] ?? null);
+        $template->setLayoutData(['tables' => $tables, 'elements' => $elements]);
+        $template->setRoom($filterRoom);
+
+        $user = $this->getUser();
+        if ($user) {
+            $template->setCreatedBy($user);
+        }
+
+        $this->em->persist($template);
+        $this->em->flush();
+
+        return $this->json([
+            'id' => $template->getId(),
+            'name' => $template->getName(),
+        ], 201);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TABLE EXPENSES (POS)
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Route('/{eventId}/tables/{tableId}/expenses', name: 'table_expenses_list', methods: ['GET'])]
+    #[IsGranted('events.read')]
+    public function listTableExpenses(int $eventId, int $tableId): JsonResponse
+    {
+        $expenses = $this->em->getRepository(TableExpense::class)
+            ->findBy(['eventTable' => $tableId, 'event' => $eventId], ['createdAt' => 'DESC']);
+
+        return $this->json(array_map(fn(TableExpense $e) => $this->serializeExpense($e), $expenses));
+    }
+
+    #[Route('/{eventId}/tables/{tableId}/expenses', name: 'table_expense_create', methods: ['POST'])]
+    #[IsGranted('events.update')]
+    public function createTableExpense(int $eventId, int $tableId, Request $request, EventRepository $eventRepository): JsonResponse
+    {
+        $event = $eventRepository->find($eventId);
+        $table = $this->em->getRepository(EventTable::class)->find($tableId);
+        if (!$event || !$table || $table->getEvent()->getId() !== $eventId) {
+            return $this->json(['error' => 'Not found'], 404);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+
+        $expense = new TableExpense();
+        $expense->setEventTable($table);
+        $expense->setEvent($event);
+        $expense->setDescription($data['description'] ?? '');
+        $expense->setCategory($data['category'] ?? 'other');
+        $expense->setQuantity((int)($data['quantity'] ?? 1));
+        $expense->setUnitPrice((string)($data['unitPrice'] ?? '0.00'));
+        if (isset($data['currency'])) $expense->setCurrency($data['currency']);
+
+        $user = $this->getUser();
+        if ($user) {
+            $expense->setCreatedBy($user);
+        }
+
+        $this->em->persist($expense);
+        $this->em->flush();
+
+        return $this->json($this->serializeExpense($expense), 201);
+    }
+
+    #[Route('/{eventId}/expenses/{expenseId}', name: 'table_expense_update', methods: ['PUT'])]
+    #[IsGranted('events.update')]
+    public function updateTableExpense(int $eventId, int $expenseId, Request $request): JsonResponse
+    {
+        $expense = $this->em->getRepository(TableExpense::class)->find($expenseId);
+        if (!$expense || $expense->getEvent()->getId() !== $eventId) {
+            return $this->json(['error' => 'Not found'], 404);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+
+        if (isset($data['description'])) $expense->setDescription($data['description']);
+        if (isset($data['category'])) $expense->setCategory($data['category']);
+        if (isset($data['quantity'])) $expense->setQuantity((int)$data['quantity']);
+        if (isset($data['unitPrice'])) $expense->setUnitPrice((string)$data['unitPrice']);
+        if (isset($data['isPaid'])) {
+            $expense->setIsPaid($data['isPaid']);
+            if ($data['isPaid']) {
+                $expense->setPaidAt(new \DateTime());
+            }
+        }
+
+        $this->em->flush();
+
+        return $this->json($this->serializeExpense($expense));
+    }
+
+    #[Route('/{eventId}/expenses/{expenseId}', name: 'table_expense_delete', methods: ['DELETE'])]
+    #[IsGranted('events.update')]
+    public function deleteTableExpense(int $eventId, int $expenseId): JsonResponse
+    {
+        $expense = $this->em->getRepository(TableExpense::class)->find($expenseId);
+        if (!$expense || $expense->getEvent()->getId() !== $eventId) {
+            return $this->json(['error' => 'Not found'], 404);
+        }
+
+        $this->em->remove($expense);
+        $this->em->flush();
+
+        return $this->json(['ok' => true]);
+    }
+
+    #[Route('/{eventId}/tables/{tableId}/expenses/settle', name: 'table_expenses_settle', methods: ['POST'])]
+    #[IsGranted('events.update')]
+    public function settleTableExpenses(int $eventId, int $tableId): JsonResponse
+    {
+        $expenses = $this->em->getRepository(TableExpense::class)
+            ->findBy(['eventTable' => $tableId, 'event' => $eventId, 'isPaid' => false]);
+
+        $now = new \DateTime();
+        foreach ($expenses as $expense) {
+            $expense->setIsPaid(true);
+            $expense->setPaidAt($now);
+        }
+
+        $this->em->flush();
+
+        return $this->json(['ok' => true, 'settled' => count($expenses)]);
+    }
+
+    #[Route('/{eventId}/expenses/summary', name: 'table_expenses_summary', methods: ['GET'])]
+    #[IsGranted('events.read')]
+    public function expensesSummary(int $eventId): JsonResponse
+    {
+        $summary = $this->em->getRepository(TableExpense::class)->getExpenseSummaryByEvent($eventId);
+        return $this->json($summary);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // SERIALIZERS
+    // ═══════════════════════════════════════════════════════════════════
+
+    private function serializeTable(EventTable $t): array
+    {
+        return [
+            'id' => $t->getId(),
+            'eventId' => $t->getEvent()?->getId(),
+            'tableName' => $t->getTableName(),
+            'room' => $t->getRoom(),
+            'roomId' => $t->getRoomEntity()?->getId(),
+            'capacity' => $t->getCapacity(),
+            'positionX' => $t->getPositionX(),
+            'positionY' => $t->getPositionY(),
+            'shape' => $t->getShape(),
+            'widthPx' => $t->getWidthPx(),
+            'heightPx' => $t->getHeightPx(),
+            'rotation' => $t->getRotation(),
+            'tableNumber' => $t->getTableNumber(),
+            'color' => $t->getColor(),
+            'isLocked' => $t->isLocked(),
+            'sortOrder' => $t->getSortOrder(),
+            'createdAt' => $t->getCreatedAt()->format('c'),
+            'updatedAt' => $t->getUpdatedAt()->format('c'),
+        ];
+    }
+
+    private function serializeFloorPlanElement(FloorPlanElement $el): array
+    {
+        return [
+            'id' => $el->getId(),
+            'eventId' => $el->getEvent()?->getId(),
+            'roomId' => $el->getRoom()?->getId(),
+            'elementType' => $el->getElementType(),
+            'label' => $el->getLabel(),
+            'positionX' => $el->getPositionX(),
+            'positionY' => $el->getPositionY(),
+            'widthPx' => $el->getWidthPx(),
+            'heightPx' => $el->getHeightPx(),
+            'rotation' => $el->getRotation(),
+            'shape' => $el->getShape(),
+            'shapeData' => $el->getShapeData(),
+            'color' => $el->getColor(),
+            'isLocked' => $el->isLocked(),
+            'sortOrder' => $el->getSortOrder(),
+            'createdAt' => $el->getCreatedAt()->format('c'),
+        ];
+    }
+
+    private function serializeExpense(TableExpense $e): array
+    {
+        return [
+            'id' => $e->getId(),
+            'eventTableId' => $e->getEventTable()?->getId(),
+            'eventId' => $e->getEvent()?->getId(),
+            'description' => $e->getDescription(),
+            'category' => $e->getCategory(),
+            'quantity' => $e->getQuantity(),
+            'unitPrice' => (float)$e->getUnitPrice(),
+            'totalPrice' => (float)$e->getTotalPrice(),
+            'currency' => $e->getCurrency(),
+            'isPaid' => $e->isPaid(),
+            'paidAt' => $e->getPaidAt()?->format('c'),
+            'createdBy' => $e->getCreatedBy()?->getId(),
+            'createdAt' => $e->getCreatedAt()->format('c'),
+            'updatedAt' => $e->getUpdatedAt()->format('c'),
+        ];
     }
 }

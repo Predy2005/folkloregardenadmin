@@ -14,7 +14,10 @@ export const staffSchema = z.object({
   fixedRate: z.string().optional(),
   position: z.string().min(1, "Vyberte roli"),
   hourlyRate: z.number().optional(),
+  isGroup: z.boolean().default(false),
+  groupSize: z.number().nullable().optional(),
   isActive: z.boolean().default(true),
+  notes: z.string().optional(),
 });
 
 export type StaffForm = z.infer<typeof staffSchema>;
@@ -23,9 +26,10 @@ export type StaffForm = z.infer<typeof staffSchema>;
 
 export const attendanceSchema = z.object({
   staffMemberId: z.number().min(1, "Vyberte člena personálu"),
-  date: z.string().min(1, "Zadejte datum"),
+  attendanceDate: z.string().min(1, "Zadejte datum"),
   hoursWorked: z.number().min(0.1, "Počet hodin musí být větší než 0"),
-  note: z.string().optional(),
+  notes: z.string().optional(),
+  eventId: z.number().nullable().optional(),
 });
 
 export type AttendanceForm = z.infer<typeof attendanceSchema>;

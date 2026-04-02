@@ -111,6 +111,18 @@ export const PERMISSIONS = {
   CASHBOX_CLOSE: 'cashbox.close',
   CASHBOX_REOPEN: 'cashbox.reopen',
 
+  // Transport
+  TRANSPORT_READ: 'transport.read',
+  TRANSPORT_CREATE: 'transport.create',
+  TRANSPORT_UPDATE: 'transport.update',
+  TRANSPORT_DELETE: 'transport.delete',
+
+  // Drinks
+  DRINKS_READ: 'drinks.read',
+  DRINKS_CREATE: 'drinks.create',
+  DRINKS_UPDATE: 'drinks.update',
+  DRINKS_DELETE: 'drinks.delete',
+
   // Disabled Dates
   DISABLED_DATES_READ: 'disabled_dates.read',
   DISABLED_DATES_CREATE: 'disabled_dates.create',

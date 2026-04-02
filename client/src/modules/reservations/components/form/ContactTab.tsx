@@ -2,6 +2,7 @@ import { useFormContext } from 'react-hook-form';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/shared/components/ui/form';
 import { Input } from '@/shared/components/ui/input';
 import { Textarea } from '@/shared/components/ui/textarea';
+import { NationalityInput } from '@/shared/components/NationalityInput';
 
 export function ContactTab() {
   const form = useFormContext();
@@ -57,7 +58,10 @@ export function ContactTab() {
             <FormItem>
               <FormLabel>Národnost</FormLabel>
               <FormControl>
-                <Input {...field} data-testid="input-contact-nationality" />
+                <NationalityInput
+                  value={field.value}
+                  onChange={field.onChange}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>

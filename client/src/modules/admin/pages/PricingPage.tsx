@@ -8,7 +8,7 @@ import { Input } from '@/shared/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/shared/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/shared/components/ui/form';
-import { Plus, Edit, Trash2, DollarSign, Calendar, Users, Baby, User } from 'lucide-react';
+import { Plus, Edit, Trash2, DollarSign, Calendar, Users, Baby, User, Loader2 } from 'lucide-react';
 import { Checkbox } from '@/shared/components/ui/checkbox';
 import type { PricingDefault, PricingDateOverride } from '@shared/types';
 import { useForm } from 'react-hook-form';
@@ -21,6 +21,7 @@ import { useCrudMutations } from '@/shared/hooks/useCrudMutations';
 import dayjs from 'dayjs';
 import { Badge } from '@/shared/components/ui/badge';
 import { PageHeader } from "@/shared/components/PageHeader";
+import { useAuth } from "@/modules/auth/contexts/AuthContext";
 
 const defaultPriceSchema = z.object({
   adultPrice: z.number().min(0, 'Cena musí být kladné číslo'),
@@ -42,8 +43,11 @@ type DefaultPriceForm = z.infer<typeof defaultPriceSchema>;
 type DateOverrideForm = z.infer<typeof dateOverrideSchema>;
 
 export default function Pricing() {
+  const { isSuperAdmin } = useAuth();
   const dialog = useFormDialog<PricingDateOverride>();
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedOverrideIds, setSelectedOverrideIds] = useState<Set<number>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   // Fetch default prices
   const { data: defaultPrices, isLoading: isLoadingDefaults } = useQuery({
@@ -141,6 +145,43 @@ export default function Pricing() {
       updateOverrideMutation.mutate({ id: dialog.editingItem.id, data });
     } else {
       createOverrideMutation.mutate(data);
+    }
+  };
+
+  // Bulk delete mutation for overrides
+  const bulkDeleteOverrideMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      return await api.delete('/api/pricing/date-overrides/bulk-delete', { data: { ids } });
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/pricing/date-overrides'] });
+      setSelectedOverrideIds(new Set());
+      setBulkDeleteOpen(false);
+      successToast(`Smazáno ${data?.count ?? ''} cenových přepisů`);
+    },
+    onError: (error: Error) => {
+      errorToast(error);
+    },
+  });
+
+  // Selection helpers for overrides
+  const toggleOverrideSelection = (id: number) => {
+    setSelectedOverrideIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllOverrides = (overrides: PricingDateOverride[]) => {
+    if (selectedOverrideIds.size === overrides.length) {
+      setSelectedOverrideIds(new Set());
+    } else {
+      setSelectedOverrideIds(new Set(overrides.map((o) => o.id)));
     }
   };
 
@@ -286,7 +327,7 @@ export default function Pricing() {
                   <Button
                     type="submit"
                     disabled={updateDefaultMutation.isPending}
-                    className="bg-gradient-to-r from-primary to-purple-600"
+                    className="bg-primary hover:bg-primary/90"
                     data-testid="button-save-defaults"
                   >
                     {updateDefaultMutation.isPending ? 'Ukládání...' : 'Uložit výchozí ceny'}
@@ -308,7 +349,7 @@ export default function Pricing() {
             </CardTitle>
             <Button
               onClick={handleCreateOverride}
-              className="bg-gradient-to-r from-primary to-purple-600"
+              className="bg-primary hover:bg-primary/90"
               data-testid="button-create-override"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -326,6 +367,27 @@ export default function Pricing() {
             />
           </div>
 
+          {isSuperAdmin && selectedOverrideIds.size > 0 && (
+            <div className="mb-4 flex items-center gap-2 p-3 bg-muted rounded-lg">
+              <Badge variant="secondary">{selectedOverrideIds.size} vybráno</Badge>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => setBulkDeleteOpen(true)}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Smazat vybrané
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setSelectedOverrideIds(new Set())}
+              >
+                Zrušit výběr
+              </Button>
+            </div>
+          )}
+
           {isLoadingOverrides ? (
             <div className="text-center py-8 text-muted-foreground">Načítání...</div>
           ) : filteredOverrides && filteredOverrides.length > 0 ? (
@@ -333,6 +395,14 @@ export default function Pricing() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    {isSuperAdmin && (
+                      <TableHead className="w-12">
+                        <Checkbox
+                          checked={filteredOverrides!.length > 0 && selectedOverrideIds.size === filteredOverrides!.length}
+                          onCheckedChange={() => toggleAllOverrides(filteredOverrides!)}
+                        />
+                      </TableHead>
+                    )}
                     <TableHead>Datum</TableHead>
                     <TableHead>Důvod</TableHead>
                     <TableHead className="text-right">Dospělí</TableHead>
@@ -349,6 +419,14 @@ export default function Pricing() {
                     const isToday = dayjs(override.date).isSame(dayjs(), 'day');
                     return (
                       <TableRow key={override.id} data-testid={`row-override-${override.id}`}>
+                        {isSuperAdmin && (
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedOverrideIds.has(override.id)}
+                              onCheckedChange={() => toggleOverrideSelection(override.id)}
+                            />
+                          </TableCell>
+                        )}
                         <TableCell className="font-mono">
                           {dayjs(override.date).format('DD.MM.YYYY')}
                         </TableCell>
@@ -576,7 +654,7 @@ export default function Pricing() {
                 <Button
                   type="submit"
                   disabled={createOverrideMutation.isPending || updateOverrideMutation.isPending}
-                  className="bg-gradient-to-r from-primary to-purple-600"
+                  className="bg-primary hover:bg-primary/90"
                   data-testid="button-submit-override"
                 >
                   {createOverrideMutation.isPending || updateOverrideMutation.isPending
@@ -588,6 +666,34 @@ export default function Pricing() {
               </DialogFooter>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <Dialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Smazat vybrané cenové přepisy</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Opravdu chcete smazat {selectedOverrideIds.size} vybraných cenových přepisů? Tuto akci nelze vrátit zpět.
+          </p>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setBulkDeleteOpen(false)}
+            >
+              Zrušit
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => bulkDeleteOverrideMutation.mutate(Array.from(selectedOverrideIds))}
+              disabled={bulkDeleteOverrideMutation.isPending}
+            >
+              {bulkDeleteOverrideMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Smazat
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

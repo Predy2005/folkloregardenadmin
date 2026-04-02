@@ -4,6 +4,7 @@ import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { queryClient } from "@/shared/lib/queryClient";
 import { api } from "@/shared/lib/api";
 import { GUEST_TYPE_LABELS } from "./constants";
+import { NationalityInput } from "@/shared/components/NationalityInput";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import {
@@ -144,9 +145,9 @@ export default function BulkActionDialog({
             {actionType === "nationality" && (
               <div>
                 <Label>Národnost</Label>
-                <Input
+                <NationalityInput
                   value={value}
-                  onChange={(e) => setValue(e.target.value)}
+                  onChange={setValue}
                   placeholder="např. CZ"
                   className="mt-1"
                 />

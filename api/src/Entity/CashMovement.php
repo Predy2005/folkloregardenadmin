@@ -60,6 +60,9 @@ class CashMovement
     #[ORM\Column(name: 'created_at', type: Types::DATETIME_MUTABLE)]
     private \DateTimeInterface $createdAt;
 
+    #[ORM\Column(name: 'updated_at', type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTimeInterface $updatedAt = null;
+
     public function __construct()
     {
         $this->createdAt = new \DateTime();
@@ -104,4 +107,7 @@ class CashMovement
     public function setEventStaffAssignmentId(?int $v): self { $this->eventStaffAssignmentId = $v; return $this; }
 
     public function getCreatedAt(): \DateTimeInterface { return $this->createdAt; }
+
+    public function getUpdatedAt(): ?\DateTimeInterface { return $this->updatedAt; }
+    public function setUpdatedAt(?\DateTimeInterface $updatedAt): self { $this->updatedAt = $updatedAt; return $this; }
 }

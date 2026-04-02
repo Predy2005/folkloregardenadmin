@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { api } from "@/shared/lib/api";
 import type { Voucher, Partner } from "@shared/types";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -74,7 +75,8 @@ export default function Vouchers() {
   });
 
   const { data: partners } = useQuery<Partner[]>({
-    queryKey: ["/api/partners"],
+    queryKey: ["/api/partner"],
+    queryFn: () => api.get<Partner[]>("/api/partner"),
   });
 
   const form = useForm<VoucherForm>({
@@ -133,7 +135,7 @@ export default function Vouchers() {
       <PageHeader title="Vouchery" description="Správa slevových kódů a QR voucherů">
         <Button
           onClick={() => { dialog.openCreate(); form.reset(); }}
-          className="bg-gradient-to-r from-primary to-purple-600"
+          className="bg-primary hover:bg-primary/90"
           data-testid="button-create-voucher"
         >
           <Plus className="w-4 h-4 mr-2" />
@@ -417,7 +419,7 @@ export default function Vouchers() {
                 <Button
                   type="submit"
                   disabled={isPending}
-                  className="bg-gradient-to-r from-primary to-purple-600"
+                  className="bg-primary hover:bg-primary/90"
                 >
                   {isPending ? "Ukládání..." : dialog.isEditing ? "Uložit" : "Vytvořit"}
                 </Button>

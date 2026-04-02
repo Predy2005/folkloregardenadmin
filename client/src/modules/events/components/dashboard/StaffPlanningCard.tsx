@@ -67,10 +67,38 @@ export function StaffPlanningCard({ staffing, eventId }: StaffPlanningCardProps)
     return true;
   });
 
-  // Filter available staff for adding (exclude already assigned)
+  // Filter available staff for adding (exclude already assigned, filter by role)
   const assignedStaffIds = new Set(staffing.assignments.map(a => a.staffMember?.id).filter(Boolean));
   const filteredAvailableStaff = (availableStaff || []).filter(staff => {
     if (assignedStaffIds.has(staff.id)) return false;
+
+    // Filter by selected role category
+    if (roleFilter !== "all" && selectedRoleLabel) {
+      const req = staffing.required.find(r => String(r.roleId) === roleFilter);
+      if (req) {
+        const categoryBase = req.category.replace(/_[A-Z_]+$/, '').toLowerCase();
+        const categoryMap: Record<string, string[]> = {
+          waiter: ['WAITER', 'HEAD_WAITER'],
+          chef: ['CHEF', 'HEAD_CHEF', 'SOUS_CHEF', 'PREP_COOK'],
+          coordinator: ['COORDINATOR'],
+          bartender: ['BARTENDER'],
+          hostess: ['HOSTESS'],
+          security: ['SECURITY'],
+          musician: ['MUSICIAN'],
+          dancer: ['DANCER'],
+          photographer: ['PHOTOGRAPHER'],
+          sound_tech: ['SOUND_TECH'],
+          cleaner: ['CLEANER'],
+          driver: ['DRIVER'],
+          manager: ['MANAGER'],
+        };
+        const allowedPositions = categoryMap[categoryBase] || [];
+        if (allowedPositions.length > 0 && staff.position) {
+          if (!allowedPositions.includes(staff.position.toUpperCase())) return false;
+        }
+      }
+    }
+
     if (!staffSearch) return true;
     const search = staffSearch.toLowerCase();
     const name = `${staff.firstName} ${staff.lastName}`.toLowerCase();

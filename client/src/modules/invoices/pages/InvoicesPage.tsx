@@ -29,6 +29,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/shared/components/ui/dialog";
@@ -49,14 +50,19 @@ import {
   Loader2,
   Plus,
   Pencil,
+  Download,
+  Trash2,
+  FileX,
 } from "lucide-react";
 import { StatusBadge } from "@/shared/components/StatusBadge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/components/ui/tooltip";
-import { successToast } from "@/shared/lib/toast-helpers";
+import { Checkbox } from "@/shared/components/ui/checkbox";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import type { Invoice, InvoiceStatus, InvoiceType } from "@shared/types";
 import { INVOICE_TYPE_LABELS } from "@shared/types";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
+import { useAuth } from "@/modules/auth/contexts/AuthContext";
 
 const STATUS_OPTIONS = [
   { value: "all", label: "Všechny statusy" },
@@ -71,10 +77,12 @@ const TYPE_OPTIONS = [
   { value: "DEPOSIT", label: "Zálohové faktury" },
   { value: "FINAL", label: "Ostré faktury" },
   { value: "PARTIAL", label: "Částečné faktury" },
+  { value: "CREDIT_NOTE", label: "Dobropisy" },
 ] as const;
 
 export default function Invoices() {
   const [, navigate] = useLocation();
+  const { isSuperAdmin } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -82,6 +90,10 @@ export default function Invoices() {
   const [dateTo, setDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkActionOpen, setBulkActionOpen] = useState(false);
+  const [bulkActionType, setBulkActionType] = useState<'status' | 'delete' | null>(null);
+  const [bulkStatus, setBulkStatus] = useState("");
 
   // Fetch invoices
   const { data: invoices, isLoading } = useQuery({
@@ -113,6 +125,78 @@ export default function Invoices() {
       successToast("Faktura byla stornována");
     },
   });
+
+  // Bulk mutations
+  const bulkUpdateMutation = useMutation({
+    mutationFn: (data: { ids: number[]; updates: Record<string, any> }) =>
+      api.put('/api/invoices/bulk-update', data),
+    onSuccess: (data: any) => {
+      invalidateInvoiceQueries();
+      setBulkActionOpen(false);
+      clearSelection();
+      successToast(`Aktualizováno ${data.count} faktur`);
+    },
+    onError: (error: Error) => errorToast(error),
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) =>
+      api.delete('/api/invoices/bulk-delete', { data: { ids } }),
+    onSuccess: (data: any) => {
+      invalidateInvoiceQueries();
+      setBulkActionOpen(false);
+      clearSelection();
+      successToast(`Smazáno ${data.count} faktur`);
+    },
+    onError: (error: Error) => errorToast(error),
+  });
+
+  // Credit note mutation
+  const createCreditNoteMutation = useMutation({
+    mutationFn: (id: number) => api.post(`/api/invoices/${id}/credit-note`),
+    onSuccess: () => {
+      invalidateInvoiceQueries();
+      successToast("Dobropis vytvořen");
+    },
+    onError: (error: Error) => errorToast(error),
+  });
+
+  // PDF export
+  const handleExportPdf = async (invoiceId: number, invoiceNumber: string) => {
+    try {
+      const response = await api.get(`/api/invoices/${invoiceId}/pdf`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `faktura-${invoiceNumber}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      errorToast('Chyba při stahování PDF');
+    }
+  };
+
+  const handleBulkExportPdf = async () => {
+    const ids = Array.from(selectedIds);
+    try {
+      const response = await api.post('/api/invoices/bulk-pdf', { ids }, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'faktury-export.zip';
+      a.click();
+      URL.revokeObjectURL(url);
+      successToast(`Exportováno ${ids.length} faktur`);
+    } catch {
+      errorToast('Chyba při exportu faktur');
+    }
+  };
 
   // Filter invoices
   const filtered = useMemo(() => {
@@ -160,6 +244,25 @@ export default function Invoices() {
   // Pagination
   const { page, pageSize, setPage, setPageSize, paginatedData, totalPages, totalItems } = usePagination(filtered);
 
+  // Selection helpers
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = () => {
+    const allIds = paginatedData.map(i => i.id);
+    if (allIds.every(id => selectedIds.has(id))) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allIds));
+    }
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
   const hasActiveFilters = statusFilter !== "all" || typeFilter !== "all" || dateFrom || dateTo;
 
   const clearFilters = () => {
@@ -176,12 +279,55 @@ export default function Invoices() {
       <PageHeader title="Faktury" description="Správa a přehled vystavených faktur">
         <Button
           onClick={() => navigate("/invoices/new")}
-          className="bg-gradient-to-r from-primary to-purple-600"
+          className="bg-primary hover:bg-primary/90"
         >
           <Plus className="w-4 h-4 mr-2" />
           Nová faktura
         </Button>
       </PageHeader>
+
+      {invoices && invoices.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Celkem nezaplaceno</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">
+                {invoices.filter(i => i.status === 'SENT').reduce((sum, i) => sum + parseFloat(i.total), 0).toLocaleString('cs-CZ')} Kč
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Po splatnosti</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-destructive">
+                {invoices.filter(i => i.status === 'SENT' && dayjs(i.dueDate).isBefore(dayjs())).length} faktur
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Zaplaceno tento měsíc</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">
+                {invoices.filter(i => i.status === 'PAID' && dayjs(i.paidAt).isAfter(dayjs().startOf('month'))).reduce((sum, i) => sum + parseFloat(i.total), 0).toLocaleString('cs-CZ')} Kč
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Koncepty</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{invoices.filter(i => i.status === 'DRAFT').length}</div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <Card>
         <CardHeader>
@@ -312,6 +458,27 @@ export default function Invoices() {
             )}
           </div>
 
+          {/* Bulk action bar */}
+          {isSuperAdmin && selectedIds.size > 0 && (
+            <div className="flex items-center gap-2 p-3 bg-primary/5 border rounded-lg mb-4">
+              <Badge variant="secondary">{selectedIds.size} vybráno</Badge>
+              <Button size="sm" variant="outline" onClick={() => { setBulkActionType('status'); setBulkStatus(''); setBulkActionOpen(true); }}>
+                Změnit status
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleBulkExportPdf}>
+                <Download className="w-4 h-4 mr-1" />
+                Export PDF
+              </Button>
+              <Button size="sm" variant="destructive" onClick={() => { setBulkActionType('delete'); setBulkActionOpen(true); }}>
+                <Trash2 className="w-4 h-4 mr-1" />
+                Smazat
+              </Button>
+              <Button size="sm" variant="ghost" onClick={clearSelection}>
+                Zrušit výběr
+              </Button>
+            </div>
+          )}
+
           {/* Table */}
           {isLoading ? (
             <div className="flex justify-center py-8">
@@ -323,6 +490,14 @@ export default function Invoices() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      {isSuperAdmin && (
+                        <TableHead className="w-[40px]">
+                          <Checkbox
+                            checked={paginatedData.length > 0 && paginatedData.every(i => selectedIds.has(i.id))}
+                            onCheckedChange={toggleSelectAll}
+                          />
+                        </TableHead>
+                      )}
                       <TableHead>Číslo faktury</TableHead>
                       <TableHead>Typ</TableHead>
                       <TableHead>Odběratel</TableHead>
@@ -336,13 +511,21 @@ export default function Invoices() {
                   <TableBody>
                     {paginatedData.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={isSuperAdmin ? 9 : 8} className="text-center py-8 text-muted-foreground">
                           Žádné faktury
                         </TableCell>
                       </TableRow>
                     ) : (
                       paginatedData.map((invoice) => (
-                        <TableRow key={invoice.id}>
+                        <TableRow key={invoice.id} className={selectedIds.has(invoice.id) ? 'bg-primary/5' : ''}>
+                          {isSuperAdmin && (
+                            <TableCell className="w-[40px]">
+                              <Checkbox
+                                checked={selectedIds.has(invoice.id)}
+                                onCheckedChange={() => toggleSelect(invoice.id)}
+                              />
+                            </TableCell>
+                          )}
                           <TableCell className="font-mono font-medium">
                             {invoice.invoiceNumber}
                           </TableCell>
@@ -354,10 +537,12 @@ export default function Invoices() {
                                   ? "border-blue-500/50 bg-blue-500/10 text-blue-700 dark:text-blue-400"
                                   : invoice.invoiceType === "FINAL"
                                   ? "border-purple-500/50 bg-purple-500/10 text-purple-700 dark:text-purple-400"
+                                  : invoice.invoiceType === "CREDIT_NOTE"
+                                  ? "border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-400"
                                   : "border-orange-500/50 bg-orange-500/10 text-orange-700 dark:text-orange-400"
                               }
                             >
-                              {invoice.invoiceType === "DEPOSIT" ? "Záloha" : invoice.invoiceType === "FINAL" ? "Ostrá" : "Částečná"}
+                              {invoice.invoiceType === "DEPOSIT" ? "Záloha" : invoice.invoiceType === "FINAL" ? "Ostrá" : invoice.invoiceType === "CREDIT_NOTE" ? "Dobropis" : "Částečná"}
                             </Badge>
                           </TableCell>
                           <TableCell>
@@ -409,7 +594,20 @@ export default function Invoices() {
                                 </TooltipTrigger>
                                 <TooltipContent>Zobrazit detail</TooltipContent>
                               </Tooltip>
-                              {invoice.status !== "CANCELLED" && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => handleExportPdf(invoice.id, invoice.invoiceNumber)}
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Stáhnout PDF</TooltipContent>
+                              </Tooltip>
+                              {invoice.status === "DRAFT" && (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button
@@ -422,6 +620,19 @@ export default function Invoices() {
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>Upravit</TooltipContent>
+                                </Tooltip>
+                              )}
+                              {(invoice.status === "SENT" || invoice.status === "PAID") && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-orange-600"
+                                      onClick={() => createCreditNoteMutation.mutate(invoice.id)}
+                                      disabled={createCreditNoteMutation.isPending}
+                                    >
+                                      <FileX className="w-4 h-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Vystavit dobropis</TooltipContent>
                                 </Tooltip>
                               )}
                               {(invoice.status === "DRAFT" || invoice.status === "SENT" || invoice.status === "PAID") && (
@@ -550,6 +761,8 @@ export default function Invoices() {
                       ? "border-blue-500/50 bg-blue-500/10 text-blue-700 dark:text-blue-400"
                       : selectedInvoice.invoiceType === "FINAL"
                       ? "border-purple-500/50 bg-purple-500/10 text-purple-700 dark:text-purple-400"
+                      : selectedInvoice.invoiceType === "CREDIT_NOTE"
+                      ? "border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-400"
                       : "border-orange-500/50 bg-orange-500/10 text-orange-700 dark:text-orange-400"
                   }
                 >
@@ -587,6 +800,12 @@ export default function Invoices() {
                     type="invoice"
                   />
                 </div>
+                {selectedInvoice.originalInvoiceId && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Dobropis k faktuře</p>
+                    <p className="font-mono font-medium">#{selectedInvoice.originalInvoiceId}</p>
+                  </div>
+                )}
               </div>
 
               <Separator />
@@ -735,6 +954,53 @@ export default function Invoices() {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Action Dialog */}
+      <Dialog open={bulkActionOpen} onOpenChange={(open) => { setBulkActionOpen(open); if (!open) setBulkStatus(''); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {bulkActionType === 'delete' ? `Smazat ${selectedIds.size} faktur?` : `Hromadná změna (${selectedIds.size} faktur)`}
+            </DialogTitle>
+            <DialogDescription>
+              {bulkActionType === 'delete' ? 'Tato akce je nevratná.' : 'Vyberte nový status pro všechny označené faktury.'}
+            </DialogDescription>
+          </DialogHeader>
+          {bulkActionType === 'status' && (
+            <div className="py-4">
+              <Label>Nový status</Label>
+              <Select value={bulkStatus} onValueChange={setBulkStatus}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Vyberte status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.filter(o => o.value !== 'all').map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkActionOpen(false)}>Zrušit</Button>
+            <Button
+              variant={bulkActionType === 'delete' ? 'destructive' : 'default'}
+              onClick={() => {
+                const ids = Array.from(selectedIds);
+                if (bulkActionType === 'delete') {
+                  bulkDeleteMutation.mutate(ids);
+                } else if (bulkActionType === 'status' && bulkStatus) {
+                  bulkUpdateMutation.mutate({ ids, updates: { status: bulkStatus } });
+                }
+              }}
+              disabled={bulkUpdateMutation.isPending || bulkDeleteMutation.isPending || (bulkActionType === 'status' && !bulkStatus)}
+            >
+              {(bulkUpdateMutation.isPending || bulkDeleteMutation.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {bulkActionType === 'delete' ? 'Smazat' : 'Aplikovat'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

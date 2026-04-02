@@ -24,6 +24,11 @@ class EventSpace
     #[ORM\Column(name: 'space_name', type: Types::STRING, length: 50)]
     private string $spaceName; // 'roubenka', 'terasa', 'stodolka', 'cely_areal'
 
+    // New: FK to Room entity (nullable for backward compatibility)
+    #[ORM\ManyToOne(targetEntity: Room::class)]
+    #[ORM\JoinColumn(name: 'room_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?Room $roomEntity = null;
+
     #[ORM\Column(type: Types::DATETIME_MUTABLE)]
     private \DateTimeInterface $createdAt;
 
@@ -38,6 +43,9 @@ class EventSpace
 
     public function getSpaceName(): string { return $this->spaceName; }
     public function setSpaceName(string $v): self { $this->spaceName = $v; return $this; }
+
+    public function getRoomEntity(): ?Room { return $this->roomEntity; }
+    public function setRoomEntity(?Room $v): self { $this->roomEntity = $v; return $this; }
 
     public function getCreatedAt(): \DateTimeInterface { return $this->createdAt; }
 }

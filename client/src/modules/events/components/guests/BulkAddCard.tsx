@@ -4,6 +4,7 @@ import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { queryClient } from "@/shared/lib/queryClient";
 import { api } from "@/shared/lib/api";
 import { GUEST_TYPE_LABELS } from "./constants";
+import { NationalityInput } from "@/shared/components/NationalityInput";
 import { Button } from "@/shared/components/ui/button";
 import {
   Card,
@@ -107,9 +108,9 @@ export default function BulkAddCard({ eventId }: BulkAddCardProps) {
           </div>
           <div>
             <Label className="text-xs">Národnost</Label>
-            <Input
+            <NationalityInput
               value={bulkNationality}
-              onChange={(e) => setBulkNationality(e.target.value)}
+              onChange={setBulkNationality}
               placeholder="např. CZ"
               className="mt-1"
             />

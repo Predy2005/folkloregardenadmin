@@ -21,18 +21,36 @@ export interface UserLoginLog {
   userAgent?: string;
 }
 
+export type DrinkOption = "none" | "welcome" | "allin";
+
+export const DRINK_OPTION_LABELS: Record<DrinkOption, string> = {
+  none: "Bez nápoje",
+  welcome: "Welcome drink",
+  allin: "All inclusive",
+};
+
 export interface ReservationPerson {
   id: number;
   type: "adult" | "child" | "infant" | "driver" | "guide";
   menu: string;
-  price: number;
+  price: number | string;
   nationality?: string;
+  drinkOption?: DrinkOption;
+  drinkName?: string;
+  drinkPrice?: number | string;
+  drinkItemId?: number;
 }
 
 export interface ReservationTransfer {
   id?: number;
   personCount: number;
   address: string;
+  transportCompanyId?: number | null;
+  transportCompanyName?: string;
+  transportVehicleId?: number | null;
+  transportVehiclePlate?: string;
+  transportDriverId?: number | null;
+  transportDriverName?: string;
 }
 
 export interface Payment {
@@ -147,6 +165,7 @@ export interface AuthResponse {
 export interface LoginRequest {
   username: string;
   password: string;
+  rememberMe?: boolean;
 }
 
 export interface RegisterRequest {
@@ -377,13 +396,14 @@ export interface AggregatedStockRequirements {
 export interface StockMovement {
   id: number;
   stockItemId: number;
+  stockItemName?: string;
   movementType: "IN" | "OUT" | "ADJUSTMENT";
   quantity: number;
   reason?: string;
-  reservationId?: number;
-  userId?: number;
+  reservationId?: number | null;
+  userId?: number | null;
+  userName?: string | null;
   createdAt: string;
-  stockItem?: StockItem;
 }
 
 export const STOCK_MOVEMENT_TYPE_LABELS: Record<
@@ -420,15 +440,50 @@ export interface Voucher {
   partner?: Partner;
 }
 
+export type PartnerType = "HOTEL" | "RECEPTION" | "DISTRIBUTOR" | "OTHER";
+export type PricingModel = "DEFAULT" | "CUSTOM" | "FLAT";
+export type BillingPeriod = "PER_RESERVATION" | "MONTHLY" | "QUARTERLY";
+
+export interface PartnerCustomMenuPrice {
+  menuId: number;
+  menuName?: string;
+  systemPrice?: number;
+  partnerPrice: number | null;
+}
+
 export interface Partner {
   id: number;
   name: string;
-  contactEmail: string;
-  contactPhone?: string;
-  commissionPercent: number;
-  active: boolean;
-  totalRevenue: number;
-  totalCommission: number;
+  partnerType: string;
+  contactPerson?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  commissionRate: string;
+  commissionAmount: string;
+  paymentMethod?: string;
+  bankAccount?: string;
+  ic?: string;
+  dic?: string;
+  isActive: boolean;
+  notes?: string;
+  // Pricing
+  pricingModel: 'DEFAULT' | 'CUSTOM' | 'FLAT';
+  flatPriceAdult?: string | null;
+  flatPriceChild?: string | null;
+  flatPriceInfant?: string | null;
+  customMenuPrices?: Record<string, number> | null;
+  // Billing
+  billingPeriod: 'PER_RESERVATION' | 'MONTHLY' | 'QUARTERLY';
+  billingEmail?: string;
+  invoiceCompany?: string;
+  invoiceStreet?: string;
+  invoiceCity?: string;
+  invoiceZipcode?: string;
+  // Detection
+  detectionEmails?: string[] | null;
+  detectionKeywords?: string[] | null;
+  // Timestamps
   createdAt: string;
   updatedAt: string;
   vouchers?: Voucher[];
@@ -470,6 +525,8 @@ export interface StaffMember {
   position?: string | null;
   hourlyRate?: number | string;
   fixedRate?: number | string;
+  isGroup?: boolean;
+  groupSize?: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -480,15 +537,42 @@ export interface StaffMember {
 export interface StaffAttendance {
   id: number;
   staffMemberId: number;
-  eventId?: number;
-  reservationId?: number;
-  date: string;
-  hoursWorked: number;
-  note?: string;
+  staffMemberName?: string;
+  eventId?: number | null;
+  reservationId?: number | null;
+  attendanceDate: string;
+  hoursWorked: number | string;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
+  notes?: string;
   isPaid: boolean;
-  paidAt?: string;
+  paidAt?: string | null;
+  paymentAmount?: string | null;
+  paymentNote?: string | null;
   createdAt: string;
   staffMember?: StaffMember;
+}
+
+export interface StaffHistoryResponse {
+  assignments: Array<{
+    id: number;
+    eventId: number;
+    eventName: string;
+    eventDate: string;
+    role: string;
+    hoursWorked: number;
+    paymentAmount: string | null;
+    paymentStatus: string;
+    attendanceStatus: string;
+    notes: string | null;
+  }>;
+  attendanceRecords: Array<StaffAttendance>;
+  summary: {
+    totalEvents: number;
+    totalHours: number;
+    totalEarned: string;
+    totalUnpaid: string;
+  };
 }
 
 export const STAFF_ROLE_LABELS: Record<string, string> = {
@@ -530,8 +614,140 @@ export const CASHBOX_CATEGORY_LABELS: Record<string, string> = {
   other: "Ostatní",
 };
 
+// ─── Venue / Building / Room ─────────────────────────────────────────
+export interface Building {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string;
+  sortOrder: number;
+  isActive: boolean;
+  rooms?: Room[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Room {
+  id: number;
+  buildingId: number;
+  name: string;
+  slug: string;
+  widthCm: number;
+  heightCm: number;
+  capacityLimit?: number | null;
+  shapeData?: { points: number[] } | null;
+  color?: string;
+  sortOrder: number;
+  isActive: boolean;
+  building?: Building;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface FloorPlanTemplate {
+  id: number;
+  name: string;
+  description?: string;
+  roomId?: number;
+  layoutData: FloorPlanLayoutData;
+  isDefault: boolean;
+  room?: Room;
+  createdBy?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface FloorPlanLayoutData {
+  tables: FloorPlanTableData[];
+  elements: FloorPlanElementData[];
+}
+
+export interface FloorPlanTableData {
+  id?: number;
+  tableName: string;
+  room?: EventSpaceName;
+  roomId?: number;
+  capacity: number;
+  shape: TableShape;
+  positionX: number;
+  positionY: number;
+  widthPx?: number;
+  heightPx?: number;
+  rotation: number;
+  tableNumber?: number;
+  color?: string;
+  isLocked?: boolean;
+  sortOrder?: number;
+}
+
+export interface FloorPlanElementData {
+  id?: number;
+  elementType: FloorPlanElementType;
+  label?: string;
+  roomId?: number;
+  positionX: number;
+  positionY: number;
+  widthPx: number;
+  heightPx: number;
+  rotation: number;
+  shape: string;
+  shapeData?: { points?: number[] } | null;
+  color?: string;
+  isLocked?: boolean;
+  sortOrder?: number;
+}
+
+export type TableShape = "round" | "rectangle" | "oval" | "square";
+export type FloorPlanElementType = "stage" | "dance_floor" | "bar" | "buffet" | "entrance" | "wall" | "decoration" | "custom";
+
+export interface FloorPlanElement {
+  id: number;
+  eventId: number;
+  roomId?: number;
+  elementType: FloorPlanElementType;
+  label?: string;
+  positionX: number;
+  positionY: number;
+  widthPx: number;
+  heightPx: number;
+  rotation: number;
+  shape: string;
+  shapeData?: { points?: number[] } | null;
+  color?: string;
+  isLocked: boolean;
+  sortOrder: number;
+  createdAt?: string;
+}
+
+export type TableExpenseCategory = "food" | "drink" | "service" | "other";
+
+export interface TableExpense {
+  id: number;
+  eventTableId: number;
+  eventId: number;
+  description: string;
+  category: TableExpenseCategory;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  currency: string;
+  isPaid: boolean;
+  paidAt?: string;
+  createdBy?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // Events types
-export type EventSpace = "roubenka" | "terasa" | "stodolka" | "cely_areal";
+export type EventSpaceName = string;
+export interface EventSpace {
+  id?: number;
+  spaceName: string;
+  roomId?: number;
+  roomName?: string;
+  buildingName?: string;
+  room?: Room;
+}
 export type EventType = "folklorni_show" | "svatba" | "event" | "privat";
 export type EventSubcategory = "obedy" | "vecere" | "privat" | "show" | "firemni" | "other";
 export type CateringType = "vlastni" | "ventura" | "folkloregarden";
@@ -568,6 +784,9 @@ export interface Event {
   organizerPerson?: string;
   organizerEmail?: string;
   organizerPhone?: string;
+
+  // Venue
+  venue?: string;
 
   // Jazyk
   language: string;
@@ -624,6 +843,7 @@ export interface Event {
   staffAssignments?: EventStaffAssignment[];
   schedule?: EventScheduleItem[];
   tables?: EventTable[];
+  floorPlanElements?: FloorPlanElement[];
   vouchers?: EventVoucher[];
   reservation?: Reservation;
   eventInvoices?: EventInvoiceLink[];
@@ -644,6 +864,7 @@ export interface EventGuest {
   isPresent: boolean;
   menuItemId?: number;
   notes?: string;
+  roomId?: number; // FK to Room entity
   createdAt?: string;
 }
 
@@ -711,13 +932,23 @@ export interface EventTable {
   id: number;
   eventId: number;
   tableName: string;
-  room: EventSpace;
+  room: EventSpaceName; // legacy
+  roomId?: number; // FK to Room entity
   capacity: number;
   positionX?: number;
   positionY?: number;
+  shape: TableShape;
+  widthPx?: number;
+  heightPx?: number;
+  rotation: number;
+  tableNumber?: number;
+  color?: string;
+  isLocked: boolean;
+  sortOrder: number;
   createdAt?: string;
   updatedAt?: string;
   guests?: EventGuest[];
+  expenses?: TableExpense[];
 }
 
 // Event Voucher
@@ -741,7 +972,7 @@ export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   privat: "Soukromá akce",
 };
 
-export const EVENT_SPACE_LABELS: Record<EventSpace, string> = {
+export const EVENT_SPACE_LABELS: Record<string, string> = {
   roubenka: "Roubenka",
   terasa: "Terasa",
   stodolka: "Stodolka",
@@ -964,7 +1195,7 @@ export const PERMISSION_ACTION_LABELS: Record<string, string> = {
 
 // Invoice types
 export type InvoiceStatus = "DRAFT" | "SENT" | "PAID" | "CANCELLED";
-export type InvoiceType = "DEPOSIT" | "FINAL" | "PARTIAL";
+export type InvoiceType = "DEPOSIT" | "FINAL" | "PARTIAL" | "CREDIT_NOTE";
 
 export interface InvoiceSupplier {
   name: string;
@@ -1021,6 +1252,7 @@ export interface Invoice {
   variableSymbol: string;
   qrPaymentData?: string;
   note?: string;
+  originalInvoiceId?: number | null;
   reservationId?: number;
   createdById?: number;
   createdAt: string;
@@ -1038,7 +1270,151 @@ export const INVOICE_TYPE_LABELS: Record<InvoiceType, string> = {
   DEPOSIT: "Zálohová faktura",
   FINAL: "Ostrá faktura",
   PARTIAL: "Částečná faktura",
+  CREDIT_NOTE: "Dobropis",
 };
+
+// Drinks
+export type DrinkCategory = 'BEER' | 'WINE' | 'SPIRIT' | 'SOFT' | 'COCKTAIL' | 'OTHER';
+
+export const DRINK_CATEGORY_LABELS: Record<DrinkCategory, string> = {
+  BEER: 'Pivo',
+  WINE: 'Víno',
+  SPIRIT: 'Destiláty',
+  SOFT: 'Nealkoholické',
+  COCKTAIL: 'Koktejly',
+  OTHER: 'Ostatní',
+};
+
+export interface DrinkItem {
+  id: number;
+  name: string;
+  category: DrinkCategory;
+  price: string;
+  isAlcoholic: boolean;
+  isActive: boolean;
+  description?: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FoodDrinkPairing {
+  id: number;
+  foodId: number;
+  foodName: string;
+  drinkId: number;
+  drinkName: string;
+  drinkCategory: string;
+  drinkPrice: string;
+  isDefault: boolean;
+  isIncludedInPrice: boolean;
+  surcharge: string;
+}
+
+// Transport
+export type VehicleType = 'BUS' | 'MINIBUS' | 'VAN' | 'CAR' | 'OTHER';
+export type TransportType = 'ARRIVAL' | 'DEPARTURE' | 'BOTH' | 'SHUTTLE';
+export type TransportPaymentStatus = 'PENDING' | 'INVOICED' | 'PAID';
+
+export const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
+  BUS: 'Autobus',
+  MINIBUS: 'Minibus',
+  VAN: 'Dodávka',
+  CAR: 'Auto',
+  OTHER: 'Jiné',
+};
+
+export const TRANSPORT_TYPE_LABELS: Record<TransportType, string> = {
+  ARRIVAL: 'Příjezd',
+  DEPARTURE: 'Odjezd',
+  BOTH: 'Příjezd i odjezd',
+  SHUTTLE: 'Shuttle',
+};
+
+export const TRANSPORT_PAYMENT_STATUS_LABELS: Record<TransportPaymentStatus, string> = {
+  PENDING: 'Nezaplaceno',
+  INVOICED: 'Fakturováno',
+  PAID: 'Zaplaceno',
+};
+
+export interface TransportCompany {
+  id: number;
+  name: string;
+  contactPerson?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  ic?: string;
+  dic?: string;
+  bankAccount?: string;
+  isActive: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  vehicleCount?: number;
+  driverCount?: number;
+  eventCount?: number;
+  totalRevenue?: number;
+  vehicles?: TransportVehicle[];
+  drivers?: TransportDriver[];
+}
+
+export interface TransportVehicle {
+  id: number;
+  companyId: number;
+  companyName?: string;
+  licensePlate: string;
+  vehicleType: VehicleType;
+  brand?: string;
+  model?: string;
+  capacity: number;
+  color?: string;
+  yearOfManufacture?: number;
+  isActive: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TransportDriver {
+  id: number;
+  companyId: number;
+  companyName?: string;
+  firstName: string;
+  lastName: string;
+  phone?: string;
+  email?: string;
+  licenseNumber?: string;
+  licenseCategories?: string;
+  isActive: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EventTransport {
+  id: number;
+  eventId: number;
+  eventName?: string;
+  eventDate?: string;
+  companyId: number;
+  companyName?: string;
+  vehicleId?: number;
+  vehicleLicensePlate?: string;
+  driverId?: number;
+  driverName?: string;
+  transportType?: TransportType;
+  scheduledTime?: string;
+  pickupLocation?: string;
+  dropoffLocation?: string;
+  passengerCount?: number;
+  price?: number;
+  paymentStatus: TransportPaymentStatus;
+  invoiceNumber?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 // Payment Summary (from /api/reservations/{id}/payment-summary)
 export interface PaymentSummary {
@@ -1291,6 +1667,7 @@ export interface StaffRequirement {
   shortfall: number;
   operationalShortfall: number;
   isManualOverride: boolean;
+  assignmentIds?: number[];
 }
 
 export interface StaffAssignmentWithContact {
@@ -1317,6 +1694,7 @@ export interface TransportSummary {
   reservationsWithTaxi: TaxiReservation[];
   totalPassengers: number;
   totalReservations: number;
+  eventTransports?: DashboardEventTransport[];
 }
 
 export interface TaxiReservation {
@@ -1327,6 +1705,37 @@ export interface TaxiReservation {
   pickupAddress: string | null;
   passengerCount: number;
   hasTaxi: boolean;
+  transfers?: TaxiTransferDetail[];
+}
+
+export interface TaxiTransferDetail {
+  address: string;
+  personCount: number;
+  transportCompanyId?: number | null;
+  transportCompanyName?: string;
+  transportVehicleId?: number | null;
+  transportVehiclePlate?: string;
+  transportDriverId?: number | null;
+  transportDriverName?: string;
+}
+
+export interface DashboardEventTransport {
+  id: number;
+  companyId?: number;
+  companyName?: string;
+  vehicleId?: number;
+  vehiclePlate?: string;
+  driverId?: number;
+  driverName?: string;
+  transportType?: string;
+  scheduledTime?: string;
+  pickupLocation?: string;
+  dropoffLocation?: string;
+  passengerCount?: number;
+  price?: string;
+  paymentStatus?: string;
+  invoiceNumber?: string;
+  notes?: string;
 }
 
 export interface DashboardVoucherSummary {
@@ -1457,6 +1866,7 @@ export interface CashMovementItem {
   reservationId?: number | null;
   userId?: number | null;
   createdAt: string;
+  updatedAt?: string | null;
 }
 
 export interface CashboxClosureItem {
@@ -1491,6 +1901,7 @@ export interface ExpenseCategory {
 }
 
 export interface ExpenseItem {
+  id: number;
   description: string | null;
   amount: number;
   paidTo: string | null;
@@ -1506,6 +1917,7 @@ export interface IncomeCategory {
 }
 
 export interface IncomeItem {
+  id: number;
   description: string | null;
   amount: number;
   source: string | null;
@@ -1742,12 +2154,26 @@ export interface CashboxTransfer {
   amount: string;
   currency: string;
   description?: string | null;
-  status: 'PENDING' | 'CONFIRMED' | 'REJECTED';
+  status: 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED';
   eventId: number;
   eventName: string;
   initiatedByName: string;
   confirmedByName?: string | null;
   initiatedAt: string;
   confirmedAt?: string | null;
+}
+
+export interface CashboxAuditLogEntry {
+  id: number;
+  cashboxId?: number | null;
+  userId?: number | null;
+  userName?: string | null;
+  action: string;
+  entityType: string;
+  entityId?: number | null;
+  changeData?: Record<string, any> | null;
+  description?: string | null;
+  ipAddress?: string | null;
+  createdAt: string;
 }
 

@@ -36,9 +36,9 @@ const basicInfoSchema = z.object({
   guestsPaid: z.number().min(0, "Počet musí být alespoň 0"),
   guestsFree: z.number().min(0, "Počet musí být alespoň 0"),
 
-  // Prostory
+  // Prostory (dynamic from buildings/rooms)
   spaces: z
-    .array(z.enum(["roubenka", "terasa", "stodolka", "cely_areal"]))
+    .array(z.string())
     .min(1, "Vyberte alespoň jeden prostor"),
 
   // Organizátor
@@ -102,7 +102,7 @@ export default function BasicInfoTab({ event, eventId }: BasicInfoTabProps) {
       status: event.status,
       guestsPaid: event.guestsPaid,
       guestsFree: event.guestsFree,
-      spaces: event.spaces,
+      spaces: event.spaces?.map((s: any) => typeof s === 'string' ? s : s.spaceName) ?? [],
       organizerCompany: event.organizerCompany || "",
       organizerPerson: event.organizerPerson || "",
       organizerEmail: event.organizerEmail || "",

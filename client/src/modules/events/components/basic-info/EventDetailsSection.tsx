@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { UseFormReturn } from "react-hook-form";
 import {
   EVENT_SPACE_LABELS,
@@ -6,7 +7,9 @@ import {
   EVENT_TYPE_LABELS,
   EVENT_SUBCATEGORY_LABELS,
   type EventTag,
+  type Building,
 } from "@shared/types";
+import { api } from "@/shared/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
@@ -32,6 +35,32 @@ export default function EventDetailsSection({ form, existingTags, eventId }: Eve
   const watchedTags = form.watch("eventTags") || [];
   const guestsTotal = (form.watch("guestsPaid") || 0) + (form.watch("guestsFree") || 0);
   const isFolklorniShow = watchedEventType === "folklorni_show";
+
+  // Fetch buildings/rooms for dynamic space selection
+  const { data: buildings = [] } = useQuery<Building[]>({
+    queryKey: ["buildings"],
+    queryFn: () => api.get("/api/venue/buildings"),
+  });
+
+  // Build space options from buildings/rooms
+  const roomOptions = useMemo(() => {
+    const options: { value: string; label: string }[] = [];
+    buildings.forEach((b) => {
+      (b.rooms ?? []).filter(r => r.isActive).forEach((r) => {
+        options.push({ value: r.slug, label: `${b.name} — ${r.name}` });
+      });
+    });
+    // Always include "cely_areal" fallback
+    if (!options.some(o => o.value === "cely_areal")) {
+      options.push({ value: "cely_areal", label: "Celý areál" });
+    }
+    return options;
+  }, [buildings]);
+
+  // If no buildings configured, fall back to legacy hardcoded spaces
+  const spaceOptions = roomOptions.length > 1
+    ? roomOptions
+    : Object.entries(EVENT_SPACE_LABELS).map(([value, label]) => ({ value, label }));
 
   // Fetch computed guest data from reservations
   const { data: guestSummary } = useGuestSummary(eventId ?? 0);
@@ -385,15 +414,14 @@ export default function EventDetailsSection({ form, existingTags, eventId }: Eve
             <FormItem>
               <FormLabel>Prostory *</FormLabel>
               <div className="grid grid-cols-2 gap-2">
-                {Object.entries(EVENT_SPACE_LABELS).map(([value, label]) => (
+                {spaceOptions.map(({ value, label }) => (
                   <label key={value} className="flex items-center space-x-2 cursor-pointer">
                     <Checkbox
                       checked={field.value?.includes(value as any)}
                       onCheckedChange={(checked) => {
-                        const v = value as keyof typeof EVENT_SPACE_LABELS;
                         const current = new Set(field.value || []);
-                        if (checked) current.add(v as any);
-                        else current.delete(v as any);
+                        if (checked) current.add(value as any);
+                        else current.delete(value as any);
                         field.onChange(Array.from(current));
                       }}
                     />

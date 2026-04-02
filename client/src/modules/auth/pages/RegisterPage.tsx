@@ -49,12 +49,10 @@ export default function Register() {
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
       {/* Levá strana - Hero s purple gradient */}
-      <div className="hidden lg:flex flex-col justify-between bg-gradient-to-br from-primary via-purple-600 to-pink-500 p-12 text-white relative overflow-hidden">
+      <div className="hidden lg:flex flex-col justify-between bg-primary p-12 text-white relative overflow-hidden">
         <div className="absolute inset-0 bg-black/20"></div>
         <div className="relative z-10">
-          <div className="w-12 h-12 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center mb-4">
-            <span className="text-2xl font-bold">FG</span>
-          </div>
+          <img src="/logo.svg" alt="Folklore Garden" className="h-10 mb-4" />
         </div>
         
         <div className="relative z-10">
@@ -79,9 +77,7 @@ export default function Register() {
         <div className="w-full max-w-md space-y-6">
           <div className="text-right mb-6">
             <div className="inline-flex items-center gap-2 text-sm">
-              <div className="w-8 h-8 rounded-md bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center text-white font-bold">
-                FG
-              </div>
+              <img src="/logo.svg" alt="Folklore Garden" className="h-8 w-auto" />
               <span className="font-semibold">Folklore Garden</span>
             </div>
           </div>
@@ -155,7 +151,7 @@ export default function Register() {
 
                   <Button
                     type="submit"
-                    className="w-full bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90"
+                    className="w-full bg-primary hover:bg-primary/90"
                     disabled={isLoading}
                     data-testid="button-register"
                   >

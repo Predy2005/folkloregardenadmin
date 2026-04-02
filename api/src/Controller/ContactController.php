@@ -33,6 +33,70 @@ class ContactController extends AbstractController
         ]);
     }
 
+    #[Route('/bulk-update', methods: ['PUT', 'PATCH'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function bulkUpdate(Request $request, ContactRepository $repo, EntityManagerInterface $em): JsonResponse
+    {
+        $data = json_decode($request->getContent(), true) ?? [];
+        $ids = $data['ids'] ?? [];
+        $updates = $data['updates'] ?? [];
+
+        if (!is_array($ids) || empty($ids) || !is_array($updates) || empty($updates)) {
+            return $this->json(['error' => 'Invalid payload: ids and updates are required'], 400);
+        }
+
+        $allowedFields = ['clientComeFrom', 'company', 'billingCountry'];
+        $setterMap = [
+            'clientComeFrom' => 'setClientComeFrom',
+            'company' => 'setCompany',
+            'billingCountry' => 'setBillingCountry',
+        ];
+
+        $filteredUpdates = array_intersect_key($updates, array_flip($allowedFields));
+        if (empty($filteredUpdates)) {
+            return $this->json(['error' => 'No supported update fields provided'], 400);
+        }
+
+        $contacts = $repo->findBy(['id' => $ids]);
+        $count = 0;
+
+        foreach ($contacts as $contact) {
+            foreach ($filteredUpdates as $field => $value) {
+                $contact->{$setterMap[$field]}($value !== '' ? $value : null);
+            }
+            $contact->setUpdatedAt(new \DateTime());
+            $count++;
+        }
+
+        $em->flush();
+
+        return $this->json(['status' => 'updated', 'count' => $count]);
+    }
+
+    #[Route('/bulk-delete', methods: ['DELETE'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function bulkDelete(Request $request, ContactRepository $repo, EntityManagerInterface $em): JsonResponse
+    {
+        $data = json_decode($request->getContent(), true) ?? [];
+        $ids = $data['ids'] ?? [];
+
+        if (!is_array($ids) || empty($ids)) {
+            return $this->json(['error' => 'Invalid payload: ids are required'], 400);
+        }
+
+        $contacts = $repo->findBy(['id' => $ids]);
+        $count = 0;
+
+        foreach ($contacts as $contact) {
+            $em->remove($contact);
+            $count++;
+        }
+
+        $em->flush();
+
+        return $this->json(['status' => 'deleted', 'count' => $count]);
+    }
+
     #[Route('/{id}', methods: ['GET'], requirements: ['id' => '\d+'])]
     #[IsGranted('contacts.read')]
     public function show(int $id, ContactRepository $repo): JsonResponse

@@ -20,7 +20,7 @@ export function StaffHeader({search, onSearchChange, staffCount, onCreateClick}:
       </div>
       <Button
         onClick={onCreateClick}
-        className="bg-gradient-to-r from-primary to-purple-600"
+        className="bg-primary hover:bg-primary/90"
         data-testid="button-create-staff"
       >
         <Plus className="w-4 h-4 mr-2"/>

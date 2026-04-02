@@ -1,5 +1,6 @@
 // Staff module
 export { default as StaffMembersPage } from './pages/StaffMembersPage';
+export { default as StaffEditPage } from './pages/StaffEditPage';
 export { default as StaffAttendancePage } from './pages/StaffAttendancePage';
 export { default as StaffingFormulasPage } from './pages/StaffingFormulasPage';
 

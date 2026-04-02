@@ -39,6 +39,21 @@ class StaffAttendance
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $notes = null;
 
+    #[ORM\Column(type: Types::BOOLEAN, options: ['default' => false])]
+    private bool $isPaid = false;
+
+    #[ORM\Column(type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTimeInterface $paidAt = null;
+
+    #[ORM\Column(type: Types::INTEGER, nullable: true)]
+    private ?int $eventId = null;
+
+    #[ORM\Column(type: Types::DECIMAL, precision: 15, scale: 2, nullable: true)]
+    private ?string $paymentAmount = null;
+
+    #[ORM\Column(type: Types::STRING, length: 255, nullable: true)]
+    private ?string $paymentNote = null;
+
     #[ORM\Column(type: Types::DATETIME_MUTABLE)]
     private \DateTimeInterface $createdAt;
 
@@ -64,4 +79,19 @@ class StaffAttendance
     public function getNotes(): ?string { return $this->notes; }
     public function setNotes(?string $n): self { $this->notes = $n; return $this; }
     public function getCreatedAt(): \DateTimeInterface { return $this->createdAt; }
+
+    public function isPaid(): bool { return $this->isPaid; }
+    public function setIsPaid(bool $v): self { $this->isPaid = $v; return $this; }
+
+    public function getPaidAt(): ?\DateTimeInterface { return $this->paidAt; }
+    public function setPaidAt(?\DateTimeInterface $dt): self { $this->paidAt = $dt; return $this; }
+
+    public function getEventId(): ?int { return $this->eventId; }
+    public function setEventId(?int $v): self { $this->eventId = $v; return $this; }
+
+    public function getPaymentAmount(): ?string { return $this->paymentAmount; }
+    public function setPaymentAmount(?string $v): self { $this->paymentAmount = $v; return $this; }
+
+    public function getPaymentNote(): ?string { return $this->paymentNote; }
+    public function setPaymentNote(?string $v): self { $this->paymentNote = $v; return $this; }
 }

@@ -10,9 +10,6 @@ security:
         property: username # Identifikátor je username
 
   firewalls:
-    public:
-      pattern: ^/auth/register
-      security: false # Registrace nevyžaduje autentizaci
     auth:
       pattern: ^/auth
       stateless: true
@@ -35,7 +32,7 @@ security:
 
   access_control:
     - { path: ^/auth/login, roles: IS_AUTHENTICATED_ANONYMOUSLY }
-    - { path: ^/auth/register, roles: IS_AUTHENTICATED_ANONYMOUSLY }
+    - { path: ^/auth/register, roles: ROLE_ADMIN }
     - { path: ^/auth/logout, roles: IS_AUTHENTICATED_ANONYMOUSLY }
     - { path: ^/auth/forgot-password, roles: IS_AUTHENTICATED_ANONYMOUSLY }
     - { path: ^/auth/reset-password, roles: IS_AUTHENTICATED_ANONYMOUSLY }
@@ -44,3 +41,10 @@ security:
     - { path: ^/user-api, roles: IS_AUTHENTICATED_FULLY }
     - { path: ^/admin-api, roles: ROLE_ADMIN }
     - { path: ^/public-api, roles: IS_AUTHENTICATED_ANONYMOUSLY }
+    - { path: ^/api/test/, roles: ROLE_ADMIN }
+    - { path: ^/api/payment/test, roles: ROLE_ADMIN }
+    - { path: ^/api/, roles: IS_AUTHENTICATED_FULLY }
+    - { path: ^/smart-drive/, roles: IS_AUTHENTICATED_FULLY }
+    - { path: ^/payment/notify, roles: IS_AUTHENTICATED_ANONYMOUSLY }
+    - { path: ^/payment/result, roles: IS_AUTHENTICATED_ANONYMOUSLY }
+    - { path: ^/payment/status, roles: IS_AUTHENTICATED_ANONYMOUSLY }

@@ -2,10 +2,30 @@ import axios, { AxiosInstance } from 'axios';
 import { z } from 'zod';
 import type { ReservationFood } from '@shared/types';
 
-// Base URL for AI service
-const AI_BASE_URL = import.meta.env.VITE_AI_BASE_URL as string | undefined;
-console.log(AI_BASE_URL)
-export const isAiConfigured = () => Boolean(AI_BASE_URL);
+// AI server configuration with priority-based failover
+interface AiServer {
+  endpoint: string;
+  apiKey: string;
+  model: string;
+  priority: number;
+}
+
+const AI_SERVERS: AiServer[] = [
+  {
+    endpoint: 'https://ai1.ai-servis.online',
+    apiKey: 'sk-lm-y4kZpbN3:mQJmOGnRCFFxPGlMiZNF',
+    model: 'google/gemma-3-4b',
+    priority: 1,
+  },
+  {
+    endpoint: 'https://ai2.ai-servis.online',
+    apiKey: 'sk-lm-RWjTUYjr:6SG1lQK5XJYzN1wgAPyD',
+    model: 'openai/gpt-oss-20b-lora',
+    priority: 2,
+  },
+].sort((a, b) => a.priority - b.priority);
+
+export const isAiConfigured = () => AI_SERVERS.length > 0;
 
 // Zod schema for AI parsed reservation payload
 export const AiMenuItemSchema = z.object({
@@ -86,19 +106,49 @@ export function buildReservationSystemPrompt(foods: ReservationFood[]): string {
   ].join('\n');
 }
 
-// AI API client
-let aiClient: AxiosInstance | null = null;
-function getAiClient(): AxiosInstance {
-  if (!AI_BASE_URL) {
-    throw new Error('VITE_AI_BASE_URL není nastaveno');
-  }
-  if (!aiClient) {
-    aiClient = axios.create({
-      baseURL: AI_BASE_URL,
-      headers: { 'Content-Type': 'application/json' },
+// AI API clients - one per server, cached
+const aiClients = new Map<string, AxiosInstance>();
+
+function getClientForServer(server: AiServer): AxiosInstance {
+  let client = aiClients.get(server.endpoint);
+  if (!client) {
+    client = axios.create({
+      baseURL: server.endpoint,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${server.apiKey}`,
+      },
+      timeout: 30_000,
     });
+    aiClients.set(server.endpoint, client);
   }
-  return aiClient;
+  return client;
+}
+
+// Send a chat completion request, trying servers in priority order
+async function aiChatCompletion(systemPrompt: string, userMessage: string): Promise<string> {
+  if (AI_SERVERS.length === 0) throw new Error('Žádné AI servery nejsou nakonfigurované');
+
+  let lastError: unknown;
+  for (const server of AI_SERVERS) {
+    try {
+      const client = getClientForServer(server);
+      const res = await client.post('/v1/chat/completions', {
+        model: server.model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        temperature: 0,
+      });
+      const content = res.data?.choices?.[0]?.message?.content ?? '';
+      if (!content) throw new Error('Prázdná odpověď z AI serveru');
+      return content;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
 }
 
 // Utility: try extract JSON object from possibly wrapped content
@@ -123,44 +173,10 @@ export async function parseReservationWithAI(params: {
   foods: ReservationFood[];
 }): Promise<AiParsedReservation> {
   const { text, foods } = params;
-  if (!AI_BASE_URL) throw new Error('VITE_AI_BASE_URL není nastaveno');
-
   const systemPrompt = buildReservationSystemPrompt(foods);
-
-  // We try a generic contract: POST /parse with body { systemPrompt, input }
-  // If backend is OpenAI-compatible, we also try /v1/chat/completions shape as fallback.
-  const client = getAiClient();
-
-  // Primary attempt
-  try {
-    const res = await client.post('/v1/chat/completions', { systemPrompt, input: text });
-    const payload = typeof res.data === 'string' ? extractFirstJsonObject(res.data) : res.data;
-    return AiParsedReservationSchema.parse(payload);
-  } catch (e1) {
-    // Fallback: OpenAI-like
-    try {
-      const res = await client.post('/v1/chat/completions', {
-        model: 'openai/gpt-oss-20b-lora',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: text },
-        ],
-        temperature: 0,
-      });
-      const content = res.data?.choices?.[0]?.message?.content ?? '';
-      const payload = extractFirstJsonObject(content);
-      return AiParsedReservationSchema.parse(payload);
-    } catch (e2) {
-      // As a last resort, try base POST expecting plain string JSON
-      try {
-        const res = await client.post('/', { systemPrompt, input: text });
-        const payload = typeof res.data === 'string' ? extractFirstJsonObject(res.data) : res.data;
-        return AiParsedReservationSchema.parse(payload);
-      } catch (e3) {
-        throw e2;
-      }
-    }
-  }
+  const content = await aiChatCompletion(systemPrompt, text);
+  const payload = extractFirstJsonObject(content);
+  return AiParsedReservationSchema.parse(payload);
 }
 
 // Helper: map AI menus onto known foods by name
@@ -189,10 +205,10 @@ export const AiMultiReservationEntrySchema = z.object({
   infants: z.number().int().nonnegative().default(0),
   freeTourLeaders: z.number().int().nonnegative().default(0),
   freeDrivers: z.number().int().nonnegative().default(0),
-  menu: z.string().optional(), // Menu type for this group (e.g., "Chicken Menu halal", "Traditional")
-  groupCode: z.string().optional(), // Group identifier (e.g., "BC 5313")
-  pricePerPerson: z.number().nonnegative().optional(), // Price per adult in CZK (e.g., 995)
-  notes: z.string().optional(),
+  menu: z.string().nullable().optional(), // Menu type for this group (e.g., "Chicken Menu halal", "Traditional")
+  groupCode: z.string().nullable().optional(), // Group identifier (e.g., "BC 5313")
+  pricePerPerson: z.number().nonnegative().nullable().optional(), // Price per adult in CZK (e.g., 995)
+  notes: z.string().nullable().optional(),
 });
 
 // Schema for shared contact info across all reservations
@@ -300,39 +316,8 @@ export async function parseMultiReservationWithAI(params: {
   text: string;
 }): Promise<AiParsedMultiReservation> {
   const { text } = params;
-  if (!AI_BASE_URL) throw new Error('VITE_AI_BASE_URL není nastaveno');
-
   const systemPrompt = buildMultiReservationSystemPrompt();
-  const client = getAiClient();
-
-  // Primary attempt
-  try {
-    const res = await client.post('/v1/chat/completions', { systemPrompt, input: text });
-    const payload = typeof res.data === 'string' ? extractFirstJsonObject(res.data) : res.data;
-    return AiParsedMultiReservationSchema.parse(payload);
-  } catch (e1) {
-    // Fallback: OpenAI-like
-    try {
-      const res = await client.post('/v1/chat/completions', {
-        model: 'openai/gpt-oss-20b-lora',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: text },
-        ],
-        temperature: 0,
-      });
-      const content = res.data?.choices?.[0]?.message?.content ?? '';
-      const payload = extractFirstJsonObject(content);
-      return AiParsedMultiReservationSchema.parse(payload);
-    } catch (e2) {
-      // As a last resort, try base POST
-      try {
-        const res = await client.post('/', { systemPrompt, input: text });
-        const payload = typeof res.data === 'string' ? extractFirstJsonObject(res.data) : res.data;
-        return AiParsedMultiReservationSchema.parse(payload);
-      } catch (e3) {
-        throw e2;
-      }
-    }
-  }
+  const content = await aiChatCompletion(systemPrompt, text);
+  const payload = extractFirstJsonObject(content);
+  return AiParsedMultiReservationSchema.parse(payload);
 }

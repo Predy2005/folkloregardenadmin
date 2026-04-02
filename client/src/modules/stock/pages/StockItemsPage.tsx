@@ -1,10 +1,14 @@
 import { useState, useMemo, useRef, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import type { StockItem, Recipe } from "@shared/types";
 import { STOCK_UNIT_LABELS } from "@shared/types";
 import { api } from "@/shared/lib/api";
+import { queryClient } from "@/shared/lib/queryClient";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
+import { Checkbox } from "@/shared/components/ui/checkbox";
+import { useAuth } from "@/modules/auth/contexts/AuthContext";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import {
   Table,
   TableBody,
@@ -46,7 +50,8 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Pencil, Trash2, Search, Package, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, AlertTriangle, Loader2, ClipboardList } from "lucide-react";
+import { useLocation } from "wouter";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
 import { cn } from "@/shared/lib/utils";
@@ -151,7 +156,13 @@ const stockItemSchema = z.object({
 type StockItemForm = z.infer<typeof stockItemSchema>;
 
 export default function StockItems() {
+  const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
+  const { isSuperAdmin } = useAuth();
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkActionOpen, setBulkActionOpen] = useState(false);
+  const [bulkActionType, setBulkActionType] = useState<'supplier' | 'delete' | null>(null);
+  const [bulkSupplierValue, setBulkSupplierValue] = useState("");
   const dialog = useFormDialog<StockItem>();
 
   const { data: stockItems, isLoading } = useQuery<StockItem[]>({
@@ -261,6 +272,62 @@ export default function StockItems() {
     item.name.toLowerCase().includes(search.toLowerCase())
   );
 
+  // Selection helpers
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = () => {
+    const allIds = (filteredItems || []).map(i => i.id);
+    if (allIds.every(id => selectedIds.has(id))) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allIds));
+    }
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // Bulk mutations
+  const bulkUpdateMutation = useMutation({
+    mutationFn: async (data: { ids: number[]; updates: Record<string, any> }) => {
+      return await api.put('/api/stock-items/bulk-update', data);
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/stock-items"] });
+      setBulkActionOpen(false);
+      clearSelection();
+      setBulkSupplierValue("");
+      successToast(`Aktualizováno ${data.count} položek`);
+    },
+    onError: (error: Error) => errorToast(error),
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      return await api.delete('/api/stock-items/bulk-delete', { data: { ids } });
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/stock-items"] });
+      setBulkActionOpen(false);
+      clearSelection();
+      successToast(`Smazáno ${data.count} položek`);
+    },
+    onError: (error: Error) => errorToast(error),
+  });
+
+  const executeBulkAction = () => {
+    const ids = Array.from(selectedIds);
+    if (bulkActionType === 'delete') {
+      bulkDeleteMutation.mutate(ids);
+    } else if (bulkActionType === 'supplier') {
+      bulkUpdateMutation.mutate({ ids, updates: { supplier: bulkSupplierValue } });
+    }
+  };
+
   const handleEdit = (item: StockItem) => {
     dialog.openEdit(item);
     form.reset({
@@ -287,9 +354,13 @@ export default function StockItems() {
   return (
     <div className="p-6 space-y-6">
       <PageHeader title="Sklad" description="Správa skladových položek a surovin">
+        <Button variant="outline" onClick={() => navigate("/stock/receive")}>
+          <ClipboardList className="w-4 h-4 mr-2" />
+          Příjem zboží
+        </Button>
         <Button
           onClick={() => { dialog.openCreate(); form.reset(); }}
-          className="bg-gradient-to-r from-primary to-purple-600"
+          className="bg-primary hover:bg-primary/90"
           data-testid="button-create-stock-item"
         >
           <Plus className="w-4 h-4 mr-2" />
@@ -354,6 +425,20 @@ export default function StockItems() {
               </div>
             </div>
           </div>
+          {isSuperAdmin && selectedIds.size > 0 && (
+            <div className="flex items-center gap-2 p-3 mt-4 bg-primary/5 border rounded-lg">
+              <Badge variant="secondary">{selectedIds.size} vybráno</Badge>
+              <Button size="sm" variant="outline" onClick={() => { setBulkActionType('supplier'); setBulkSupplierValue(''); setBulkActionOpen(true); }}>
+                Změnit dodavatele
+              </Button>
+              <Button size="sm" variant="destructive" onClick={() => { setBulkActionType('delete'); setBulkActionOpen(true); }}>
+                Smazat
+              </Button>
+              <Button size="sm" variant="ghost" onClick={clearSelection}>
+                Zrušit výběr
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -362,6 +447,14 @@ export default function StockItems() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {isSuperAdmin && (
+                    <TableHead className="w-[40px]">
+                      <Checkbox
+                        checked={(filteredItems?.length ?? 0) > 0 && (filteredItems ?? []).every(i => selectedIds.has(i.id))}
+                        onCheckedChange={toggleSelectAll}
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>Název</TableHead>
                   <TableHead>Skladem</TableHead>
                   <TableHead>Minimum</TableHead>
@@ -372,7 +465,15 @@ export default function StockItems() {
               </TableHeader>
               <TableBody>
                 {filteredItems.map((item) => (
-                  <TableRow key={item.id} data-testid={`row-stock-item-${item.id}`}>
+                  <TableRow key={item.id} data-testid={`row-stock-item-${item.id}`} className={selectedIds.has(item.id) ? 'bg-primary/5' : ''}>
+                    {isSuperAdmin && (
+                      <TableCell className="w-[40px]">
+                        <Checkbox
+                          checked={selectedIds.has(item.id)}
+                          onCheckedChange={() => toggleSelect(item.id)}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell>
                       <div>
                         <p className="font-medium">{item.name}</p>
@@ -430,6 +531,46 @@ export default function StockItems() {
           )}
         </CardContent>
       </Card>
+
+      {/* Bulk Action Dialog */}
+      <Dialog open={bulkActionOpen} onOpenChange={(open) => { setBulkActionOpen(open); if (!open) setBulkSupplierValue(''); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {bulkActionType === 'delete'
+                ? `Smazat ${selectedIds.size} položek?`
+                : `Změnit dodavatele (${selectedIds.size} položek)`}
+            </DialogTitle>
+            <DialogDescription>
+              {bulkActionType === 'delete'
+                ? 'Tato akce je nevratná.'
+                : 'Zadejte nového dodavatele pro všechny označené položky.'}
+            </DialogDescription>
+          </DialogHeader>
+          {bulkActionType === 'supplier' && (
+            <div className="py-4">
+              <Input
+                placeholder="Název dodavatele"
+                value={bulkSupplierValue}
+                onChange={(e) => setBulkSupplierValue(e.target.value)}
+              />
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setBulkActionOpen(false); setBulkSupplierValue(''); }}>Zrušit</Button>
+            <Button
+              variant={bulkActionType === 'delete' ? 'destructive' : 'default'}
+              onClick={executeBulkAction}
+              disabled={bulkUpdateMutation.isPending || bulkDeleteMutation.isPending || (bulkActionType === 'supplier' && !bulkSupplierValue)}
+            >
+              {(bulkUpdateMutation.isPending || bulkDeleteMutation.isPending) && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              {bulkActionType === 'delete' ? 'Smazat' : 'Aplikovat'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialog.isOpen} onOpenChange={(open) => { if (!open) dialog.close(); }}>
@@ -601,7 +742,7 @@ export default function StockItems() {
                 <Button
                   type="submit"
                   disabled={isPending}
-                  className="bg-gradient-to-r from-primary to-purple-600"
+                  className="bg-primary hover:bg-primary/90"
                 >
                   {dialog.isEditing
                     ? (isPending ? "Ukládání..." : "Uložit")

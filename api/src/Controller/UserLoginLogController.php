@@ -3,18 +3,20 @@
 namespace App\Controller;
 
 use App\Entity\UserLoginLog;
+use App\Repository\UserLoginLogRepository;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
+#[IsGranted('ROLE_ADMIN')]
 class UserLoginLogController extends AbstractController
 {
     #[Route('/api/user-login-logs', name: 'api_user_login_logs', methods: ['GET'])]
-    public function list(): JsonResponse
+    public function list(UserLoginLogRepository $repo): JsonResponse
     {
-        $logs = $this->getDoctrine()->getRepository(UserLoginLog::class)->findAll();
+        $logs = $repo->findAll();
         $data = array_map(function (UserLoginLog $log) {
-            // Předpokládáme, že getUser() vrací instanci User se získaným id přes getId()
             return [
                 'id' => $log->getId(),
                 'userId' => $log->getUser() ? $log->getUser()->getId() : null,
@@ -25,6 +27,4 @@ class UserLoginLogController extends AbstractController
         }, $logs);
         return $this->json($data);
     }
-
-    // V budoucnu lze vytvořit endpoint pro zaznamenání nového logu přihlášení.
 }

@@ -1,6 +1,7 @@
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { NationalityInput } from "@/shared/components/NationalityInput";
 import {
   Select,
   SelectContent,
@@ -10,14 +11,15 @@ import {
 } from "@/shared/components/ui/select";
 import { Trash2 } from "lucide-react";
 import { formatCurrency } from "@/shared/lib/formatting";
-import type { ReservationFood } from "@shared/types";
-import { PERSON_TYPE_LABELS } from "@shared/types";
+import type { ReservationFood, DrinkItem } from "@shared/types";
+import { PERSON_TYPE_LABELS, DRINK_OPTION_LABELS } from "@shared/types";
 import type { PersonEntry, ReservationEntry } from "@modules/reservations/types";
 
 export interface ReservationPersonsSectionProps {
   currentReservation: ReservationEntry;
   activeTabIndex: number;
   foods: ReservationFood[] | undefined;
+  drinks?: DrinkItem[];
   currentTotalPrice: number;
   // Bulk add persons state
   bulkCount: number;
@@ -35,11 +37,14 @@ export interface ReservationPersonsSectionProps {
   setBulkPriceChange: (value: number | "") => void;
   bulkMenuChange: string;
   setBulkMenuChange: (value: string) => void;
+  bulkDrinkChange: string;
+  setBulkDrinkChange: (value: string) => void;
   // Handlers
   addPerson: (resIndex: number, type: PersonEntry["type"]) => void;
   addBulkPersons: (resIndex: number) => void;
   applyBulkPriceChange: (resIndex: number) => void;
   applyBulkMenuChange: (resIndex: number) => void;
+  applyBulkDrinkChange: (resIndex: number) => void;
   handleTypeChange: (resIndex: number, personIndex: number, newType: PersonEntry["type"]) => void;
   handleMenuChange: (resIndex: number, personIndex: number, newMenuValue: string) => void;
   updatePerson: (resIndex: number, personIndex: number, updates: Partial<PersonEntry>) => void;
@@ -50,6 +55,7 @@ export function ReservationPersonsSection({
   currentReservation,
   activeTabIndex,
   foods,
+  drinks,
   currentTotalPrice,
   bulkCount,
   setBulkCount,
@@ -65,10 +71,13 @@ export function ReservationPersonsSection({
   setBulkPriceChange,
   bulkMenuChange,
   setBulkMenuChange,
+  bulkDrinkChange,
+  setBulkDrinkChange,
   addPerson,
   addBulkPersons,
   applyBulkPriceChange,
   applyBulkMenuChange,
+  applyBulkDrinkChange,
   handleTypeChange,
   handleMenuChange,
   updatePerson,
@@ -155,10 +164,9 @@ export function ReservationPersonsSection({
           </div>
           <div className="md:col-span-2">
             <Label className="text-xs">Národnost</Label>
-            <Input
-              type="text"
+            <NationalityInput
               value={bulkNationality}
-              onChange={(e) => setBulkNationality(e.target.value)}
+              onChange={setBulkNationality}
               placeholder="např. CZ, DE, US"
               className="mt-1"
             />
@@ -259,6 +267,34 @@ export function ReservationPersonsSection({
                 bulkPriceChange === "" ||
                 currentReservation.persons.length === 0
               }
+            >
+              Aplikovat
+            </Button>
+          </div>
+          {/* Bulk drink change */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Label className="text-xs whitespace-nowrap">
+              Změnit nápoj všem:
+            </Label>
+            <Select
+              value={bulkDrinkChange}
+              onValueChange={setBulkDrinkChange}
+            >
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="Nápoj" />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(DRINK_OPTION_LABELS).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>{v}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => applyBulkDrinkChange(activeTabIndex)}
+              disabled={!bulkDrinkChange || currentReservation.persons.length === 0}
             >
               Aplikovat
             </Button>
@@ -394,15 +430,13 @@ export function ReservationPersonsSection({
                 </Select>
               </div>
               <div className="md:col-span-2">
-                <Input
-                  type="text"
+                <NationalityInput
                   value={person.nationality}
-                  onChange={(e) =>
+                  onChange={(val) =>
                     updatePerson(activeTabIndex, pIndex, {
-                      nationality: e.target.value,
+                      nationality: val,
                     })
                   }
-                  placeholder="Národnost"
                 />
               </div>
               <div className="md:col-span-2">
@@ -420,7 +454,64 @@ export function ReservationPersonsSection({
                   }
                 />
               </div>
-              <div className="md:col-span-2 flex justify-end">
+              <div className="md:col-span-2">
+                <Select
+                  value={person.drinkOption || "none"}
+                  onValueChange={(v) =>
+                    updatePerson(activeTabIndex, pIndex, {
+                      drinkOption: v,
+                    })
+                  }
+                  disabled={person.type === "infant"}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(DRINK_OPTION_LABELS).map(([k, v]) => (
+                      <SelectItem key={k} value={k}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {drinks && drinks.length > 0 && (person.drinkOption === "welcome" || person.drinkOption === "allin") && (
+                <div className="md:col-span-2">
+                  <Select
+                    value={person.drinkItemId?.toString() ?? "none"}
+                    onValueChange={(v) => {
+                      if (v === "none") {
+                        updatePerson(activeTabIndex, pIndex, {
+                          drinkItemId: null,
+                          drinkName: "",
+                          drinkPrice: 0,
+                        });
+                      } else {
+                        const selectedDrink = drinks.find((d) => d.id === Number(v));
+                        if (selectedDrink) {
+                          updatePerson(activeTabIndex, pIndex, {
+                            drinkItemId: selectedDrink.id,
+                            drinkName: selectedDrink.name,
+                            drinkPrice: Number(selectedDrink.price) || 0,
+                          });
+                        }
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Vyberte napoj" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Bez napoje</SelectItem>
+                      {drinks.filter((d) => d.isActive).map((d) => (
+                        <SelectItem key={d.id} value={d.id.toString()}>
+                          {d.name} ({d.price} Kc)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div className="md:col-span-1 flex justify-end">
                 <Button
                   type="button"
                   variant="ghost"

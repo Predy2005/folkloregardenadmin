@@ -4,8 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiClient } from "@/shared/lib/api";
 import type { Recipe, MenuRecipe } from "@shared/types";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
+import { useAuth } from "@modules/auth";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
+import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -41,6 +43,30 @@ export default function Recipes() {
   const [viewingRecipe, setViewingRecipe] = useState<Recipe | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+  const { isSuperAdmin } = useAuth();
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkActionOpen, setBulkActionOpen] = useState(false);
+  const [bulkActionType, setBulkActionType] = useState<"delete" | null>(null);
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (!filteredRecipes) return;
+    if (selectedIds.size === filteredRecipes.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredRecipes.map((r) => r.id)));
+    }
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
 
   const { data: recipes, isLoading } = useQuery<Recipe[]>({
     queryKey: ["/api/recipes"],
@@ -95,6 +121,18 @@ export default function Recipes() {
     },
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) =>
+      api.delete("/api/recipes/bulk-delete", { data: { ids } }),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
+      successToast(`Smazáno ${data.count} receptur`);
+      clearSelection();
+      setBulkActionOpen(false);
+    },
+    onError: (err: any) => errorToast(err?.response?.data?.error || err.message),
+  });
+
   const handleImport = () => {
     fileInputRef.current?.click();
   };
@@ -147,13 +185,33 @@ export default function Recipes() {
         </Button>
         <Button
           onClick={() => navigate("/recipes/new")}
-          className="bg-gradient-to-r from-primary to-purple-600"
+          className="bg-primary hover:bg-primary/90"
           data-testid="button-create-recipe"
         >
           <Plus className="w-4 h-4 mr-2" />
           Nová receptura
         </Button>
       </PageHeader>
+
+      {isSuperAdmin && selectedIds.size > 0 && (
+        <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+          <Badge variant="secondary">{selectedIds.size} vybráno</Badge>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => {
+              setBulkActionType("delete");
+              setBulkActionOpen(true);
+            }}
+          >
+            <Trash2 className="w-4 h-4 mr-1" />
+            Smazat
+          </Button>
+          <Button variant="ghost" size="sm" onClick={clearSelection}>
+            Zrušit výběr
+          </Button>
+        </div>
+      )}
 
       <Card>
         <CardHeader>
@@ -188,6 +246,14 @@ export default function Recipes() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {isSuperAdmin && (
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={filteredRecipes!.length > 0 && selectedIds.size === filteredRecipes!.length}
+                        onCheckedChange={toggleSelectAll}
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>Název</TableHead>
                   <TableHead>Popis</TableHead>
                   <TableHead>Počet porcí</TableHead>
@@ -200,6 +266,14 @@ export default function Recipes() {
               <TableBody>
                 {filteredRecipes.map((recipe) => (
                   <TableRow key={recipe.id} data-testid={`row-recipe-${recipe.id}`}>
+                    {isSuperAdmin && (
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedIds.has(recipe.id)}
+                          onCheckedChange={() => toggleSelect(recipe.id)}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell className="font-medium">{recipe.name}</TableCell>
                     <TableCell>
                       <p className="text-sm text-muted-foreground max-w-xs truncate">
@@ -284,6 +358,31 @@ export default function Recipes() {
           )}
         </CardContent>
       </Card>
+
+      {/* Bulk Delete Dialog */}
+      <Dialog open={bulkActionOpen && bulkActionType === "delete"} onOpenChange={setBulkActionOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Hromadné smazání receptur</DialogTitle>
+            <DialogDescription>
+              Opravdu chcete smazat {selectedIds.size} vybraných receptur? Tato akce je nevratná.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkActionOpen(false)}>
+              Zrušit
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
+              disabled={bulkDeleteMutation.isPending}
+            >
+              {bulkDeleteMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Smazat
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* View Dialog */}
       <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>

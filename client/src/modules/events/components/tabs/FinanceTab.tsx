@@ -3,8 +3,9 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/shared/lib/queryClient";
 import { api } from "@/shared/lib/api";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
-import type { EventPaymentOverview, ReservationPaymentSummary } from "@shared/types";
+import type { EventPaymentOverview, ReservationPaymentSummary, ManagerDashboardData } from "@shared/types";
 import { Skeleton } from "@/shared/components/ui/skeleton";
+import { Separator } from "@/shared/components/ui/separator";
 import {
   FinanceSummaryCards,
   ReservationPaymentsTable,
@@ -12,6 +13,7 @@ import {
   NoteDialog,
   RecordPaymentDialog,
 } from "./finance";
+import { ExpenseTrackerCard, SettlementCard } from "../dashboard";
 
 export interface FinanceTabProps {
   eventId: number;
@@ -28,6 +30,11 @@ export default function FinanceTab({ eventId }: FinanceTabProps) {
   const { data: payments, isLoading } = useQuery<EventPaymentOverview>({
     queryKey: ["/api/events", eventId, "payments"],
     queryFn: () => api.get(`/api/events/${eventId}/payments`),
+  });
+
+  const { data: dashboardData } = useQuery<ManagerDashboardData>({
+    queryKey: ["/api/events", eventId, "manager-dashboard"],
+    queryFn: () => api.get(`/api/events/${eventId}/manager-dashboard`),
   });
 
   const updateNoteMutation = useMutation({
@@ -132,6 +139,27 @@ export default function FinanceTab({ eventId }: FinanceTabProps) {
       />
 
       <InvoicesTable invoices={invoices} />
+
+      {/* Cashbox - Expenses & Settlement (same as dashboard) */}
+      {dashboardData && (
+        <>
+          <Separator className="my-6" />
+          <h3 className="text-lg font-semibold mb-4">Kasa eventu - Výdaje a příjmy</h3>
+          <ExpenseTrackerCard
+            financials={dashboardData.financials}
+            eventId={eventId}
+            pendingTransfers={dashboardData.pendingTransfers}
+          />
+
+          <Separator className="my-6" />
+          <h3 className="text-lg font-semibold mb-4">Vyúčtování</h3>
+          <SettlementCard
+            settlement={dashboardData.financials.settlement}
+            cashbox={dashboardData.financials.cashbox}
+            eventId={eventId}
+          />
+        </>
+      )}
 
       <NoteDialog
         open={noteDialogOpen}

@@ -243,7 +243,7 @@ export default function Profile() {
                   type="submit"
                   disabled={updateMutation.isPending}
                   data-testid="button-save-profile"
-                  className="bg-gradient-to-r from-primary to-purple-600"
+                  className="bg-primary hover:bg-primary/90"
                 >
                   {updateMutation.isPending ? 'Ukládání...' : 'Uložit změny'}
                 </Button>

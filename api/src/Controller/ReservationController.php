@@ -108,6 +108,9 @@ class ReservationController extends AbstractController
                     'menuName' => $foodNameMap[$menuCode] ?? $this->getFoodNameByExternalId($menuCode) ?? 'Neznámé jídlo',
                     'price' => $person->getPrice(),
                     'nationality' => $person->getNationality(),
+                'drinkOption' => $person->getDrinkOption(),
+                'drinkName' => $person->getDrinkName(),
+                'drinkPrice' => $person->getDrinkPrice(),
                 ];
             }
 
@@ -127,6 +130,12 @@ class ReservationController extends AbstractController
                     'id' => $transfer->getId(),
                     'personCount' => $transfer->getPersonCount(),
                     'address' => $transfer->getAddress(),
+                    'transportCompanyId' => $transfer->getTransportCompany()?->getId(),
+                    'transportCompanyName' => $transfer->getTransportCompany()?->getName(),
+                    'transportVehicleId' => $transfer->getTransportVehicle()?->getId(),
+                    'transportVehiclePlate' => $transfer->getTransportVehicle()?->getLicensePlate(),
+                    'transportDriverId' => $transfer->getTransportDriver()?->getId(),
+                    'transportDriverName' => $transfer->getTransportDriver()?->getFullName(),
                 ];
             }
 
@@ -202,6 +211,9 @@ class ReservationController extends AbstractController
                 'menuName' => $foodNameMap[$menuCode] ?? $food?->getName() ?? 'Neznámé jídlo',
                 'price' => $person->getPrice(),
                 'nationality' => $person->getNationality(),
+                'drinkOption' => $person->getDrinkOption(),
+                'drinkName' => $person->getDrinkName(),
+                'drinkPrice' => $person->getDrinkPrice(),
                 'food' => $food ? [
                     'id' => $food->getId(),
                     'name' => $food->getName(),
@@ -235,6 +247,12 @@ class ReservationController extends AbstractController
                 'id' => $transfer->getId(),
                 'personCount' => $transfer->getPersonCount(),
                 'address' => $transfer->getAddress(),
+                'transportCompanyId' => $transfer->getTransportCompany()?->getId(),
+                'transportCompanyName' => $transfer->getTransportCompany()?->getName(),
+                'transportVehicleId' => $transfer->getTransportVehicle()?->getId(),
+                'transportVehiclePlate' => $transfer->getTransportVehicle()?->getLicensePlate(),
+                'transportDriverId' => $transfer->getTransportDriver()?->getId(),
+                'transportDriverName' => $transfer->getTransportDriver()?->getFullName(),
             ];
         }
 
@@ -427,6 +445,9 @@ class ReservationController extends AbstractController
 
                 $person->setMenu($menuCode);
                 $person->setNationality($personData['nationality'] ?? null);
+                $person->setDrinkOption($personData['drinkOption'] ?? 'none');
+                $person->setDrinkName($personData['drinkName'] ?? null);
+                $person->setDrinkPrice(isset($personData['drinkPrice']) ? (string)$personData['drinkPrice'] : null);
 
                 // Compute base price by type, ignore client provided price
                 $basePrice = SpecialDateRules::getBasePrice($type, $reservation->getDate());
@@ -453,6 +474,35 @@ class ReservationController extends AbstractController
         $em = $doctrine->getManager();
         $em->persist($reservation);
         $em->flush();
+
+        // Create transfer entities if provided
+        if (isset($data['transfers']) && is_array($data['transfers'])) {
+            $transportCompanyRepo = $em->getRepository(\App\Entity\TransportCompany::class);
+            $transportVehicleRepo = $em->getRepository(\App\Entity\TransportVehicle::class);
+            $transportDriverRepo = $em->getRepository(\App\Entity\TransportDriver::class);
+
+            foreach ($data['transfers'] as $transferData) {
+                $transfer = new \App\Entity\ReservationTransfer();
+                $transfer->setReservation($reservation);
+                $transfer->setPersonCount((int)($transferData['personCount'] ?? 1));
+                $transfer->setAddress($transferData['address'] ?? '');
+
+                if (!empty($transferData['transportCompanyId'])) {
+                    $transfer->setTransportCompany($transportCompanyRepo->find($transferData['transportCompanyId']));
+                }
+                if (!empty($transferData['transportVehicleId'])) {
+                    $transfer->setTransportVehicle($transportVehicleRepo->find($transferData['transportVehicleId']));
+                }
+                if (!empty($transferData['transportDriverId'])) {
+                    $transfer->setTransportDriver($transportDriverRepo->find($transferData['transportDriverId']));
+                }
+
+                $em->persist($transfer);
+            }
+
+            $reservation->setTransferSelected(true);
+            $em->flush();
+        }
 
         // Auto-create/sync event for this reservation date
         try {
@@ -711,6 +761,146 @@ class ReservationController extends AbstractController
         HTML;
     }
 
+    #[Route('/api/reservations/bulk-update', name: 'api_reservations_bulk_update', methods: ['PUT', 'PATCH'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function bulkUpdate(Request $request, ReservationRepository $reservationRepository): JsonResponse
+    {
+        $data = json_decode($request->getContent(), true) ?? [];
+        $ids = $data['ids'] ?? [];
+        $updates = $data['updates'] ?? [];
+
+        if (empty($ids) || !is_array($ids)) {
+            return $this->json(['error' => 'Missing or invalid "ids" array'], 400);
+        }
+        if (empty($updates) || !is_array($updates)) {
+            return $this->json(['error' => 'Missing or invalid "updates" object'], 400);
+        }
+
+        $allowedStatuses = ['RECEIVED', 'WAITING_PAYMENT', 'PAID', 'CANCELLED', 'AUTHORIZED', 'CONFIRMED'];
+        $count = 0;
+
+        foreach ($ids as $id) {
+            $reservation = $reservationRepository->find($id);
+            if (!$reservation) {
+                continue;
+            }
+
+            if (isset($updates['status'])) {
+                $status = (string)$updates['status'];
+                if (!in_array($status, $allowedStatuses, true)) {
+                    return $this->json(['error' => 'Invalid status value: ' . $status . '. Allowed: ' . implode(', ', $allowedStatuses)], 400);
+                }
+                $reservation->setStatus($status);
+            }
+
+            if (isset($updates['reservationTypeId'])) {
+                $reservationType = $this->reservationTypeRepository->find((int)$updates['reservationTypeId']);
+                if (!$reservationType) {
+                    return $this->json(['error' => 'ReservationType not found: ' . $updates['reservationTypeId']], 404);
+                }
+                $reservation->setReservationType($reservationType);
+            }
+
+            $count++;
+        }
+
+        $this->entityManager->flush();
+
+        return $this->json(['status' => 'updated', 'count' => $count]);
+    }
+
+    #[Route('/api/reservations/bulk-check', name: 'api_reservations_bulk_check', methods: ['POST'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function bulkCheck(Request $request, ReservationRepository $reservationRepository): JsonResponse
+    {
+        $data = json_decode($request->getContent(), true) ?? [];
+        $ids = $data['ids'] ?? [];
+
+        if (empty($ids) || !is_array($ids)) {
+            return $this->json(['error' => 'Missing or invalid "ids" array'], 400);
+        }
+
+        $allWarnings = [];
+        foreach ($ids as $id) {
+            $reservation = $reservationRepository->find($id);
+            if (!$reservation) {
+                continue;
+            }
+            $warnings = $this->getReservationDeletionInfo($reservation);
+            if (!empty($warnings)) {
+                $allWarnings[] = [
+                    'reservationId' => $reservation->getId(),
+                    'contactName' => $reservation->getContactName(),
+                    'date' => $reservation->getDate()->format('d.m.Y'),
+                    'warnings' => $warnings,
+                ];
+            }
+        }
+
+        return $this->json([
+            'reservations' => $allWarnings,
+            'totalWithWarnings' => count($allWarnings),
+        ]);
+    }
+
+    #[Route('/api/reservations/bulk-delete', name: 'api_reservations_bulk_delete', methods: ['DELETE'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function bulkDelete(Request $request, ReservationRepository $reservationRepository): JsonResponse
+    {
+        $data = json_decode($request->getContent(), true) ?? [];
+        $ids = $data['ids'] ?? [];
+
+        if (empty($ids) || !is_array($ids)) {
+            return $this->json(['error' => 'Missing or invalid "ids" array'], 400);
+        }
+
+        // Collect dates and linked events before deleting
+        $dates = [];
+        $reservations = [];
+        $affectedEvents = [];
+        foreach ($ids as $id) {
+            $reservation = $reservationRepository->find($id);
+            if ($reservation) {
+                $dates[] = $reservation->getDate();
+                $reservations[] = $reservation;
+                $event = $this->findEventByReservationDate($reservation);
+                if ($event && !isset($affectedEvents[$event->getId()])) {
+                    $affectedEvents[$event->getId()] = $event->getName();
+                }
+            }
+        }
+
+        $count = 0;
+        foreach ($reservations as $reservation) {
+            $this->entityManager->remove($reservation);
+            $count++;
+        }
+
+        $this->entityManager->flush();
+
+        // Re-sync events for affected dates
+        $uniqueDates = [];
+        foreach ($dates as $date) {
+            $key = $date->format('Y-m-d');
+            if (!isset($uniqueDates[$key])) {
+                $uniqueDates[$key] = $date;
+            }
+        }
+        foreach ($uniqueDates as $date) {
+            try {
+                $this->autoEventService->handleReservationDeleted($date);
+            } catch (\Exception $e) {
+                error_log('AutoEvent sync on bulk delete failed: ' . $e->getMessage());
+            }
+        }
+
+        return $this->json([
+            'status' => 'deleted',
+            'count' => $count,
+            'affectedEvents' => array_values($affectedEvents),
+        ]);
+    }
+
     #[Route('/api/reservations/{id}', name: 'api_reservations_get', methods: ['GET'])]
     #[IsGranted('reservations.read')]
     public function get(int $id, ReservationRepository $reservationRepository): JsonResponse
@@ -732,6 +922,9 @@ class ReservationController extends AbstractController
                 'menuName' => $foodNameMap[$menuCode] ?? $this->getFoodNameByExternalId($menuCode) ?? 'Neznámé jídlo',
                 'price' => $person->getPrice(),
                 'nationality' => $person->getNationality(),
+                'drinkOption' => $person->getDrinkOption(),
+                'drinkName' => $person->getDrinkName(),
+                'drinkPrice' => $person->getDrinkPrice(),
             ];
         }
 
@@ -743,6 +936,21 @@ class ReservationController extends AbstractController
                 'status' => $payment->getStatus(),
                 'amount' => $payment->getAmount(),
                 'createdAt' => $payment->getCreatedAt()?->format('Y-m-d H:i:s'),
+            ];
+        }
+
+        $transfersData = [];
+        foreach ($reservation->getTransfers() as $transfer) {
+            $transfersData[] = [
+                'id' => $transfer->getId(),
+                'personCount' => $transfer->getPersonCount(),
+                'address' => $transfer->getAddress(),
+                'transportCompanyId' => $transfer->getTransportCompany()?->getId(),
+                'transportCompanyName' => $transfer->getTransportCompany()?->getName(),
+                'transportVehicleId' => $transfer->getTransportVehicle()?->getId(),
+                'transportVehiclePlate' => $transfer->getTransportVehicle()?->getLicensePlate(),
+                'transportDriverId' => $transfer->getTransportDriver()?->getId(),
+                'transportDriverName' => $transfer->getTransportDriver()?->getFullName(),
             ];
         }
 
@@ -765,6 +973,7 @@ class ReservationController extends AbstractController
             'transferSelected' => $reservation->isTransferSelected(),
             'transferCount' => $reservation->getTransferCount(),
             'transferAddress' => $reservation->getTransferAddress(),
+            'transfers' => $transfersData,
             'agreement' => $reservation->isAgreement(),
             'createdAt' => $reservation->getCreatedAt()?->format('Y-m-d H:i:s'),
             'updatedAt' => $reservation->getUpdatedAt()?->format('Y-m-d H:i:s'),
@@ -924,9 +1133,13 @@ class ReservationController extends AbstractController
                 $person->setType($personData['type'] ?? 'adult');
                 $person->setMenu($personData['menu'] ?? '');
                 $person->setNationality($personData['nationality'] ?? null);
+                $person->setDrinkOption($personData['drinkOption'] ?? 'none');
+                $person->setDrinkName($personData['drinkName'] ?? null);
+                $person->setDrinkPrice(isset($personData['drinkPrice']) ? (string)$personData['drinkPrice'] : null);
                 $personPrice = (float) ($personData['price'] ?? 0);
+                $drinkPrice = (float) ($personData['drinkPrice'] ?? 0);
                 $person->setPrice((string) $personPrice);
-                $totalPrice += $personPrice;
+                $totalPrice += $personPrice + $drinkPrice;
 
                 $this->entityManager->persist($person);
                 $reservation->addPerson($person);
@@ -945,11 +1158,25 @@ class ReservationController extends AbstractController
             $reservation->getTransfers()->clear();
 
             // Add new transfers
+            $transportCompanyRepo = $this->entityManager->getRepository(\App\Entity\TransportCompany::class);
+            $transportVehicleRepo = $this->entityManager->getRepository(\App\Entity\TransportVehicle::class);
+            $transportDriverRepo = $this->entityManager->getRepository(\App\Entity\TransportDriver::class);
+
             foreach ($data['transfers'] as $transferData) {
                 $transfer = new \App\Entity\ReservationTransfer();
                 $transfer->setReservation($reservation);
                 $transfer->setPersonCount((int) ($transferData['personCount'] ?? 1));
                 $transfer->setAddress($transferData['address'] ?? '');
+
+                if (!empty($transferData['transportCompanyId'])) {
+                    $transfer->setTransportCompany($transportCompanyRepo->find($transferData['transportCompanyId']));
+                }
+                if (!empty($transferData['transportVehicleId'])) {
+                    $transfer->setTransportVehicle($transportVehicleRepo->find($transferData['transportVehicleId']));
+                }
+                if (!empty($transferData['transportDriverId'])) {
+                    $transfer->setTransportDriver($transportDriverRepo->find($transferData['transportDriverId']));
+                }
 
                 $this->entityManager->persist($transfer);
                 $reservation->addTransfer($transfer);
@@ -986,6 +1213,56 @@ class ReservationController extends AbstractController
             'id' => $reservation->getId(),
             'message' => 'Reservation updated successfully',
         ]);
+    }
+
+    /**
+     * Get warnings/info about what will be affected by deleting a reservation.
+     * Returns array of warnings (non-blocking) and blockers (blocking).
+     */
+    private function getReservationDeletionInfo(Reservation $reservation): array
+    {
+        $warnings = [];
+        $event = $this->findEventByReservationDate($reservation);
+
+        if ($event) {
+            // Count guests linked to this reservation in the event
+            $guestCount = (int) $this->entityManager->createQuery(
+                'SELECT COUNT(g.id) FROM App\Entity\EventGuest g WHERE g.event = :eventId AND g.reservation = :resId'
+            )->setParameter('eventId', $event->getId())
+             ->setParameter('resId', $reservation->getId())
+             ->getSingleScalarResult();
+
+            $warnings[] = [
+                'type' => 'linked_event',
+                'message' => "Rezervace je propojena s akcí \"{$event->getName()}\" ({$event->getEventDate()->format('d.m.Y')})"
+                    . ($guestCount > 0 ? ". {$guestCount} hostů bude odpojeno z akce." : "."),
+                'eventId' => $event->getId(),
+                'eventName' => $event->getName(),
+            ];
+        }
+
+        // Check if reservation has payments
+        $paymentCount = $reservation->getPayments()->count();
+        if ($paymentCount > 0) {
+            $warnings[] = [
+                'type' => 'has_payments',
+                'message' => "Rezervace má {$paymentCount} plateb(ní záznamy). Smazáním se tyto záznamy odstraní.",
+            ];
+        }
+
+        // Check if reservation has invoices
+        $invoiceCount = (int) $this->entityManager->createQuery(
+            'SELECT COUNT(i.id) FROM App\Entity\Invoice i WHERE i.reservation = :resId'
+        )->setParameter('resId', $reservation->getId())->getSingleScalarResult();
+
+        if ($invoiceCount > 0) {
+            $warnings[] = [
+                'type' => 'has_invoices',
+                'message' => "Rezervace má {$invoiceCount} faktur. Faktury zůstanou v systému, ale nebudou přiřazeny k žádné rezervaci.",
+            ];
+        }
+
+        return $warnings;
     }
 
     #[Route('/api/reservations/{id}', name: 'api_reservations_delete', methods: ['DELETE'])]

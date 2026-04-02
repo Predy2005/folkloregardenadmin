@@ -4,12 +4,17 @@ import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/components/ui/table';
 import { TooltipProvider } from '@/shared/components/ui/tooltip';
+import { Checkbox } from '@/shared/components/ui/checkbox';
+import { Button } from '@/shared/components/ui/button';
+import { Badge } from '@/shared/components/ui/badge';
 import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import type { Reservation } from '@shared/types';
 import { usePagination } from '@/shared/hooks/usePagination';
 import type { SortColumn, SortDirection } from '@modules/reservations/types';
 import { ReservationFilters, ReservationRow, PaginationControls } from './table';
 import type { FilterState } from './table';
+import { BulkActionDialog, type BulkActionType } from './BulkActionDialog';
+import { useAuth } from '@/modules/auth/contexts/AuthContext';
 
 dayjs.extend(isSameOrAfter);
 dayjs.extend(isSameOrBefore);
@@ -33,6 +38,14 @@ export function ReservationTable({
   onDelete,
   onSendPayment,
 }: Props) {
+  // Super admin check
+  const { isSuperAdmin } = useAuth();
+
+  // Selection state
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkActionOpen, setBulkActionOpen] = useState(false);
+  const [bulkActionType, setBulkActionType] = useState<BulkActionType>('status');
+
   // Sorting state
   const [sortColumn, setSortColumn] = useState<SortColumn>('id');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -171,6 +184,37 @@ export function ReservationTable({
       : <ArrowDown className="w-4 h-4 ml-1" />;
   };
 
+  // Selection handlers
+  const toggleSelect = useCallback((id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds(prev => {
+      if (prev.size === paginatedData.length && paginatedData.every(r => prev.has(r.id))) {
+        return new Set();
+      }
+      return new Set(paginatedData.map(r => r.id));
+    });
+  }, [paginatedData]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  const allOnPageSelected = paginatedData.length > 0 && paginatedData.every(r => selectedIds.has(r.id));
+  const someOnPageSelected = paginatedData.some(r => selectedIds.has(r.id)) && !allOnPageSelected;
+
+  const openBulkAction = useCallback((type: BulkActionType) => {
+    setBulkActionType(type);
+    setBulkActionOpen(true);
+  }, []);
+
   return (
     <TooltipProvider>
     <div className="space-y-4">
@@ -187,11 +231,38 @@ export function ReservationTable({
         onPageSizeChange={handlePageSizeChange}
       />
 
+      {/* Bulk action bar - only for super admins */}
+      {isSuperAdmin && selectedIds.size > 0 && (
+        <div className="flex items-center gap-2 p-3 bg-primary/5 border rounded-lg">
+          <Badge variant="secondary">{selectedIds.size} vybrano</Badge>
+          <Button size="sm" variant="outline" onClick={() => openBulkAction('status')}>
+            Zmenit status
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => openBulkAction('reservationType')}>
+            Zmenit typ
+          </Button>
+          <Button size="sm" variant="destructive" onClick={() => openBulkAction('delete')}>
+            Smazat
+          </Button>
+          <Button size="sm" variant="ghost" onClick={clearSelection}>
+            Zrusit vyber
+          </Button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
+              {isSuperAdmin && (
+                <TableHead className="w-[40px]">
+                  <Checkbox
+                    checked={allOnPageSelected ? true : someOnPageSelected ? 'indeterminate' : false}
+                    onCheckedChange={toggleSelectAll}
+                  />
+                </TableHead>
+              )}
               <TableHead
                 className="w-[70px] cursor-pointer hover:bg-muted/50 select-none"
                 onClick={() => handleSort('id')}
@@ -221,7 +292,7 @@ export function ReservationTable({
           <TableBody>
             {paginatedData.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={isSuperAdmin ? 9 : 8} className="text-center py-8 text-muted-foreground">
                   Žádné rezervace
                 </TableCell>
               </TableRow>
@@ -234,6 +305,9 @@ export function ReservationTable({
                   onEdit={onEdit}
                   onDelete={onDelete}
                   onSendPayment={onSendPayment}
+                  showCheckbox={isSuperAdmin}
+                  isSelected={selectedIds.has(reservation.id)}
+                  onToggleSelect={toggleSelect}
                 />
               ))
             )}
@@ -247,6 +321,14 @@ export function ReservationTable({
         totalPages={totalPages}
         totalItems={totalItems}
         onPageChange={setPage}
+      />
+
+      <BulkActionDialog
+        open={bulkActionOpen}
+        onOpenChange={setBulkActionOpen}
+        actionType={bulkActionType}
+        selectedIds={selectedIds}
+        onSuccess={clearSelection}
       />
     </div>
     </TooltipProvider>

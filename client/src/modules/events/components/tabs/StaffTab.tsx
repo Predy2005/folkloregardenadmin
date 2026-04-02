@@ -36,9 +36,10 @@ export interface StaffTabProps {
   staffAssignments: EventStaffAssignment[];
   staffMembers: StaffMember[];
   isLoading: boolean;
+  eventDurationMinutes?: number;
 }
 
-export default function StaffTab({ eventId, staffAssignments, staffMembers, isLoading }: StaffTabProps) {
+export default function StaffTab({ eventId, staffAssignments, staffMembers, isLoading, eventDurationMinutes }: StaffTabProps) {
   const [addStaffCategory, setAddStaffCategory] = useState<string | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState<EventStaffAssignment | null>(null);
@@ -319,6 +320,7 @@ export default function StaffTab({ eventId, staffAssignments, staffMembers, isLo
         assignment={selectedAssignment}
         eventId={eventId}
         staffMember={staffMembers.find(m => m.id === selectedAssignment?.staffMemberId)}
+        eventDurationMinutes={eventDurationMinutes}
       />
     </div>
   );

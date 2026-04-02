@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/shared/lib/queryClient";
 import { api } from "@/shared/lib/api";
-import type { StaffMember, EventSpace } from "@shared/types";
+import type { StaffMember, Building } from "@shared/types";
 import { EVENT_TYPE_LABELS, EVENT_SPACE_LABELS } from "@shared/types";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -60,7 +60,7 @@ const eventSchema = z.object({
   }),
   name: z.string().min(1, "Zadejte název akce"),
   date: z.string().min(1, "Zadejte datum"),
-  spaces: z.array(z.enum(["roubenka", "terasa", "stodolka", "cely_areal"])).min(1, "Vyberte alespoň jeden prostor"),
+  spaces: z.array(z.string()).min(1, "Vyberte alespoň jeden prostor"),
   organizerName: z.string().min(1, "Zadejte jméno organizátora"),
   contactPerson: z.string().optional(),
   coordinator: z.string().optional(),
@@ -106,6 +106,20 @@ export default function EventCreate() {
       cateringNotes: "",
     },
   });
+
+  const { data: buildings = [] } = useQuery<Building[]>({
+    queryKey: ["buildings"],
+    queryFn: () => api.get("/api/venue/buildings"),
+  });
+
+  const spaceOptions = buildings.length > 0
+    ? buildings.flatMap((b) =>
+        (b.rooms ?? []).filter(r => r.isActive).map((r) => ({
+          value: r.slug,
+          label: `${b.name} — ${r.name}`,
+        }))
+      )
+    : Object.entries(EVENT_SPACE_LABELS).map(([value, label]) => ({ value, label }));
 
   const watchedType = form.watch("type");
   const watchedDate = form.watch("date");
@@ -236,12 +250,7 @@ export default function EventCreate() {
                   <FormItem>
                     <FormLabel>Prostory * (více možností)</FormLabel>
                     <div className="space-y-2">
-                      {[
-                        { value: "roubenka" as EventSpace, label: "Roubenka" },
-                        { value: "terasa" as EventSpace, label: "Terasa" },
-                        { value: "stodolka" as EventSpace, label: "Stodolka" },
-                        { value: "cely_areal" as EventSpace, label: "Celý areál" },
-                      ].map((space) => (
+                      {spaceOptions.map((space) => (
                         <div key={space.value} className="flex items-center space-x-2">
                           <Checkbox
                             checked={field.value?.includes(space.value)}

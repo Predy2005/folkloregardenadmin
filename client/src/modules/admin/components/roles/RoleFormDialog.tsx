@@ -265,7 +265,7 @@ export function RoleFormDialog({ isOpen, setIsOpen, editingRole, onClose }: Role
               <Button
                 type="submit"
                 disabled={createMutation.isPending || updateMutation.isPending}
-                className="bg-gradient-to-r from-primary to-purple-600"
+                className="bg-primary hover:bg-primary/90"
               >
                 {createMutation.isPending || updateMutation.isPending
                   ? 'Ukládání...'

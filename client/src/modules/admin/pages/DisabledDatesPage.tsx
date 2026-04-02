@@ -257,7 +257,7 @@ export default function DisabledDates() {
               <Button
                 onClick={handleAddDateRange}
                 disabled={createMutation.isPending}
-                className="w-full bg-gradient-to-r from-primary to-purple-600"
+                className="w-full bg-primary hover:bg-primary/90"
                 data-testid="button-quick-add"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -487,7 +487,7 @@ export default function DisabledDates() {
                   type="submit"
                   disabled={createMutation.isPending || updateMutation.isPending}
                   data-testid="button-save-disabled-date"
-                  className="bg-gradient-to-r from-primary to-purple-600"
+                  className="bg-primary hover:bg-primary/90"
                 >
                   {createMutation.isPending || updateMutation.isPending
                     ? 'Ukládání...'

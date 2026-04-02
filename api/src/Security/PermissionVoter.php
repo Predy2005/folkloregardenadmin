@@ -18,10 +18,14 @@ use Symfony\Component\Security\Core\Authorization\Voter\Voter;
  */
 class PermissionVoter extends Voter
 {
-    private const PERMISSION_PATTERN = '/^[a-z_]+\.(read|create|update|delete|export|send_email|redeem|close)$/';
+    private const PERMISSION_PATTERN = '/^[a-z_]+\.[a-z_]+$/';
 
     protected function supports(string $attribute, mixed $subject): bool
     {
+        // Support both granular permissions (module.action) and ROLE_SUPER_ADMIN
+        if ($attribute === 'ROLE_SUPER_ADMIN') {
+            return true;
+        }
         return preg_match(self::PERMISSION_PATTERN, $attribute) === 1;
     }
 
@@ -36,6 +40,11 @@ class PermissionVoter extends Voter
         // Super admin has all permissions
         if ($user->isSuperAdmin()) {
             return true;
+        }
+
+        // ROLE_SUPER_ADMIN requires super admin status
+        if ($attribute === 'ROLE_SUPER_ADMIN') {
+            return false;
         }
 
         // Check if user has the permission

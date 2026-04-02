@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { api } from "@/shared/lib/api";
 import type { Partner } from "@shared/types";
-import { useFormDialog } from "@/shared/hooks/useFormDialog";
 import { useCrudMutations } from "@/shared/hooks/useCrudMutations";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
+import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -21,84 +23,74 @@ import {
   CardTitle,
 } from "@/shared/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/shared/components/ui/form";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/shared/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/components/ui/tooltip";
-import { Plus, Pencil, Trash2, Search, Users2, Eye } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Users2, ChevronDown, Power, PowerOff } from "lucide-react";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
-import { Switch } from "@/shared/components/ui/switch";
+import { useToast } from "@/shared/hooks/use-toast";
 
-const partnerSchema = z.object({
-  name: z.string().min(1, "Zadejte jméno partnera"),
-  contactEmail: z.string().email("Zadejte platný email"),
-  contactPhone: z.string().optional(),
-  commissionPercent: z.number().min(0).max(100, "Provize musí být 0-100%"),
-  active: z.boolean().default(true),
-});
+const PARTNER_TYPE_LABELS: Record<string, string> = {
+  HOTEL: "Hotel",
+  RECEPTION: "Recepce",
+  DISTRIBUTOR: "Distributor",
+  OTHER: "Ostatni",
+};
 
-type PartnerForm = z.infer<typeof partnerSchema>;
+const PRICING_MODEL_LABELS: Record<string, string> = {
+  DEFAULT: "Systemove ceny",
+  CUSTOM: "Vlastni ceny",
+  FLAT: "Jednotna cena",
+};
+
+const BILLING_PERIOD_LABELS: Record<string, string> = {
+  PER_RESERVATION: "Za rezervaci",
+  MONTHLY: "Mesicne",
+  QUARTERLY: "Ctvrtletne",
+};
 
 export default function Partners() {
   const [search, setSearch] = useState("");
-  const [isViewOpen, setIsViewOpen] = useState(false);
-  const [viewingPartner, setViewingPartner] = useState<Partner | null>(null);
-  const dialog = useFormDialog<Partner>();
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const qc = useQueryClient();
 
   const { data: partners, isLoading } = useQuery<Partner[]>({
-    queryKey: ["/api/partners"],
+    queryKey: ["/api/partner"],
+    queryFn: () => api.get<Partner[]>("/api/partner"),
   });
 
-  const form = useForm<PartnerForm>({
-    resolver: zodResolver(partnerSchema),
-    defaultValues: {
-      name: "",
-      contactEmail: "",
-      contactPhone: "",
-      commissionPercent: 10,
-      active: true,
-    },
-  });
-
-  const { createMutation, updateMutation, deleteMutation, isPending } = useCrudMutations<PartnerForm>({
-    endpoint: "/api/partners",
-    queryKey: ["/api/partners"],
+  const { deleteMutation } = useCrudMutations<any>({
+    endpoint: "/api/partner",
+    queryKey: ["/api/partner"],
     entityName: "Partner",
-    onCreateSuccess: () => { dialog.close(); form.reset(); },
-    onUpdateSuccess: () => dialog.close(),
+  });
+
+  const bulkMutation = useMutation({
+    mutationFn: (data: { ids: number[]; action: string }) =>
+      api.post("/api/partner/bulk", data),
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: ["/api/partner"] });
+      setSelected(new Set());
+      const labels: Record<string, string> = {
+        activate: "aktivovano",
+        deactivate: "deaktivovano",
+        delete: "smazano",
+      };
+      toast({ title: `Hromadna akce: ${variables.ids.length} partneru ${labels[variables.action]}` });
+    },
   });
 
   const filteredPartners = partners?.filter((partner) =>
     partner.name.toLowerCase().includes(search.toLowerCase()) ||
-    partner.contactEmail.toLowerCase().includes(search.toLowerCase())
+    (partner.email || "").toLowerCase().includes(search.toLowerCase()) ||
+    (partner.contactPerson || "").toLowerCase().includes(search.toLowerCase())
   );
-
-  const handleEdit = (partner: Partner) => {
-    dialog.openEdit(partner);
-    form.reset({
-      name: partner.name,
-      contactEmail: partner.contactEmail,
-      contactPhone: partner.contactPhone || "",
-      commissionPercent: partner.commissionPercent,
-      active: partner.active,
-    });
-  };
 
   const handleDelete = (id: number) => {
     if (confirm("Opravdu chcete smazat tohoto partnera?")) {
@@ -106,21 +98,48 @@ export default function Partners() {
     }
   };
 
-  const handleView = (partner: Partner) => {
-    setViewingPartner(partner);
-    setIsViewOpen(true);
+  const toggleSelect = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (!filteredPartners) return;
+    if (selected.size === filteredPartners.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(filteredPartners.map((p) => p.id)));
+    }
+  };
+
+  const handleBulkAction = (action: string) => {
+    if (selected.size === 0) return;
+    if (action === "delete" && !confirm(`Opravdu smazat ${selected.size} partneru?`)) return;
+    bulkMutation.mutate({ ids: Array.from(selected), action });
+  };
+
+  const pricingModelBadgeVariant = (model?: string) => {
+    switch (model) {
+      case "CUSTOM": return "default" as const;
+      case "FLAT": return "secondary" as const;
+      default: return "outline" as const;
+    }
   };
 
   return (
     <div className="p-6 space-y-6">
-      <PageHeader title="Partneři" description="Správa affiliate partnerů a provizí">
+      <PageHeader title="Partneri" description="Sprava affiliate partneru, cen a provizi">
         <Button
-          onClick={() => { dialog.openCreate(); form.reset(); }}
-          className="bg-gradient-to-r from-primary to-purple-600"
+          onClick={() => navigate("/partners/new")}
+          className="bg-primary hover:bg-primary/90"
           data-testid="button-create-partner"
         >
           <Plus className="w-4 h-4 mr-2" />
-          Nový partner
+          Novy partner
         </Button>
       </PageHeader>
 
@@ -130,13 +149,41 @@ export default function Partners() {
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Users2 className="w-5 h-5" />
-                Partneři
+                Partneri
               </CardTitle>
               <CardDescription>
-                Celkem: {partners?.length || 0} partnerů
+                Celkem: {partners?.length || 0} partneru
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
+              {/* Bulk actions */}
+              {selected.size > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      Hromadne ({selected.size})
+                      <ChevronDown className="w-4 h-4 ml-1" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => handleBulkAction("activate")}>
+                      <Power className="w-4 h-4 mr-2" />
+                      Aktivovat
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleBulkAction("deactivate")}>
+                      <PowerOff className="w-4 h-4 mr-2" />
+                      Deaktivovat
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => handleBulkAction("delete")}
+                      className="text-destructive"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Smazat
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
@@ -152,66 +199,84 @@ export default function Partners() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Načítání...</div>
+            <div className="text-center py-8 text-muted-foreground">Nacitani...</div>
           ) : filteredPartners && filteredPartners.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Jméno</TableHead>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={filteredPartners.length > 0 && selected.size === filteredPartners.length}
+                      onCheckedChange={toggleSelectAll}
+                    />
+                  </TableHead>
+                  <TableHead>Nazev</TableHead>
+                  <TableHead>Typ</TableHead>
                   <TableHead>Kontakt</TableHead>
+                  <TableHead>Cenovy model</TableHead>
+                  <TableHead>Fakturace</TableHead>
                   <TableHead>Provize</TableHead>
-                  <TableHead>Příjmy celkem</TableHead>
-                  <TableHead>Provize celkem</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Stav</TableHead>
                   <TableHead className="text-right">Akce</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredPartners.map((partner) => (
-                  <TableRow key={partner.id} data-testid={`row-partner-${partner.id}`}>
+                  <TableRow
+                    key={partner.id}
+                    data-testid={`row-partner-${partner.id}`}
+                    className="cursor-pointer"
+                    onClick={() => navigate(`/partners/${partner.id}/edit`)}
+                  >
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selected.has(partner.id)}
+                        onCheckedChange={() => toggleSelect(partner.id)}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">{partner.name}</TableCell>
                     <TableCell>
+                      <Badge variant="outline">
+                        {PARTNER_TYPE_LABELS[partner.partnerType] || partner.partnerType}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
                       <div className="text-sm">
-                        <div>{partner.contactEmail}</div>
-                        {partner.contactPhone && (
-                          <div className="text-muted-foreground">{partner.contactPhone}</div>
+                        {partner.contactPerson && (
+                          <div className="font-medium">{partner.contactPerson}</div>
                         )}
+                        <div className="text-muted-foreground">{partner.email}</div>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{partner.commissionPercent}%</Badge>
-                    </TableCell>
-                    <TableCell>{partner.totalRevenue.toLocaleString()} Kč</TableCell>
-                    <TableCell className="font-medium text-primary">
-                      {partner.totalCommission.toLocaleString()} Kč
+                      <Badge variant={pricingModelBadgeVariant(partner.pricingModel)}>
+                        {PRICING_MODEL_LABELS[partner.pricingModel] || "Systemove ceny"}
+                      </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={partner.active ? "default" : "secondary"}>
-                        {partner.active ? "Aktivní" : "Neaktivní"}
+                      <span className="text-sm">
+                        {BILLING_PERIOD_LABELS[partner.billingPeriod] || "Za rezervaci"}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">
+                        {partner.commissionRate}%
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={partner.isActive ? "default" : "secondary"}>
+                        {partner.isActive ? "Aktivni" : "Neaktivni"}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <TooltipProvider>
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => handleView(partner)}
-                              data-testid={`button-view-${partner.id}`}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Zobrazit detail</TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleEdit(partner)}
+                              onClick={() => navigate(`/partners/${partner.id}/edit`)}
                               data-testid={`button-edit-${partner.id}`}
                             >
                               <Pencil className="w-4 h-4" />
@@ -241,169 +306,11 @@ export default function Partners() {
             </Table>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
-              {search ? "Žádní partneři nenalezeni" : "Zatím žádní partneři"}
+              {search ? "Zadni partneri nenalezeni" : "Zatim zadni partneri"}
             </div>
           )}
         </CardContent>
       </Card>
-
-      {/* Create/Edit Dialog */}
-      <Dialog open={dialog.isOpen} onOpenChange={(open) => { if (!open) dialog.close(); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{dialog.isEditing ? "Upravit partnera" : "Nový partner"}</DialogTitle>
-            <DialogDescription>{dialog.isEditing ? "Upravte údaje partnera" : "Vytvořte nového affiliate partnera"}</DialogDescription>
-          </DialogHeader>
-          <Form {...form}>
-            <form
-              onSubmit={form.handleSubmit((data) =>
-                dialog.isEditing && dialog.editingItem
-                  ? updateMutation.mutate({ id: dialog.editingItem.id, data })
-                  : createMutation.mutate(data)
-              )}
-              className="space-y-4"
-            >
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Jméno *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Jméno partnera" data-testid="input-name" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="contactEmail"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email *</FormLabel>
-                    <FormControl>
-                      <Input type="email" placeholder="email@example.com" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="contactPhone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Telefon</FormLabel>
-                    <FormControl>
-                      <Input placeholder="+420..." {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="commissionPercent"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Provize (%) *</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.1"
-                        {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="active"
-                render={({ field }) => (
-                  <FormItem className="flex items-center justify-between">
-                    <FormLabel>Aktivní</FormLabel>
-                    <FormControl>
-                      <Switch checked={field.value} onCheckedChange={field.onChange} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => dialog.close()}>
-                  Zrušit
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={isPending}
-                  className="bg-gradient-to-r from-primary to-purple-600"
-                >
-                  {isPending ? "Ukládání..." : dialog.isEditing ? "Uložit" : "Vytvořit"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
-      {/* View Dialog */}
-      <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Detail partnera</DialogTitle>
-            <DialogDescription>Informace o partnerovi a provizích</DialogDescription>
-          </DialogHeader>
-          {viewingPartner && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <h3 className="font-semibold mb-1">Jméno</h3>
-                  <p className="text-muted-foreground">{viewingPartner.name}</p>
-                </div>
-                <div>
-                  <h3 className="font-semibold mb-1">Status</h3>
-                  <Badge variant={viewingPartner.active ? "default" : "secondary"}>
-                    {viewingPartner.active ? "Aktivní" : "Neaktivní"}
-                  </Badge>
-                </div>
-                <div>
-                  <h3 className="font-semibold mb-1">Email</h3>
-                  <p className="text-muted-foreground">{viewingPartner.contactEmail}</p>
-                </div>
-                <div>
-                  <h3 className="font-semibold mb-1">Telefon</h3>
-                  <p className="text-muted-foreground">{viewingPartner.contactPhone || "-"}</p>
-                </div>
-                <div>
-                  <h3 className="font-semibold mb-1">Provize</h3>
-                  <Badge variant="secondary">{viewingPartner.commissionPercent}%</Badge>
-                </div>
-                <div>
-                  <h3 className="font-semibold mb-1">Celkové příjmy</h3>
-                  <p className="text-muted-foreground">{viewingPartner.totalRevenue.toLocaleString()} Kč</p>
-                </div>
-                <div>
-                  <h3 className="font-semibold mb-1">Provize celkem</h3>
-                  <p className="font-medium text-primary">{viewingPartner.totalCommission.toLocaleString()} Kč</p>
-                </div>
-                <div>
-                  <h3 className="font-semibold mb-1">Vouchery</h3>
-                  <p className="text-muted-foreground">{viewingPartner.vouchers?.length || 0} ks</p>
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button onClick={() => setIsViewOpen(false)}>Zavřít</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

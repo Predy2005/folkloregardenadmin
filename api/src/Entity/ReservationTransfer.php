@@ -25,6 +25,18 @@ class ReservationTransfer
     #[ORM\Column(type: Types::STRING, length: 500)]
     private string $address = '';
 
+    #[ORM\ManyToOne(targetEntity: TransportCompany::class)]
+    #[ORM\JoinColumn(name: 'transport_company_id', nullable: true, onDelete: 'SET NULL')]
+    private ?TransportCompany $transportCompany = null;
+
+    #[ORM\ManyToOne(targetEntity: TransportVehicle::class)]
+    #[ORM\JoinColumn(name: 'transport_vehicle_id', nullable: true, onDelete: 'SET NULL')]
+    private ?TransportVehicle $transportVehicle = null;
+
+    #[ORM\ManyToOne(targetEntity: TransportDriver::class)]
+    #[ORM\JoinColumn(name: 'transport_driver_id', nullable: true, onDelete: 'SET NULL')]
+    private ?TransportDriver $transportDriver = null;
+
     public function getId(): ?int
     {
         return $this->id;
@@ -62,4 +74,13 @@ class ReservationTransfer
         $this->address = $address;
         return $this;
     }
+
+    public function getTransportCompany(): ?TransportCompany { return $this->transportCompany; }
+    public function setTransportCompany(?TransportCompany $v): static { $this->transportCompany = $v; return $this; }
+
+    public function getTransportVehicle(): ?TransportVehicle { return $this->transportVehicle; }
+    public function setTransportVehicle(?TransportVehicle $v): static { $this->transportVehicle = $v; return $this; }
+
+    public function getTransportDriver(): ?TransportDriver { return $this->transportDriver; }
+    public function setTransportDriver(?TransportDriver $v): static { $this->transportDriver = $v; return $this; }
 }

@@ -1,16 +1,16 @@
 import { type User, type InsertUser } from "@shared/schema";
-import type { Event, EventTable, EventGuest, EventMenuItem, EventStaffAssignment, StaffMember } from "@shared/types";
+import type { Event, EventTable, EventGuest, EventMenu, EventStaffAssignment, StaffMember } from "@shared/types";
 import { randomUUID } from "crypto";
 
 // modify the interface with any CRUD methods
 // you might need
 
-type InsertEvent = Omit<Event, "id" | "createdAt" | "updatedAt" | "staffAssignments" | "menuItems" | "tables" | "reservation">;
+type InsertEvent = Omit<Event, "id" | "createdAt" | "updatedAt" | "staffAssignments" | "menu" | "tables" | "reservation">;
 type UpdateEvent = Partial<InsertEvent>;
 type InsertStaffMember = Omit<StaffMember, "id" | "createdAt" | "updatedAt" | "attendances">;
 type InsertEventTable = Omit<EventTable, "id" | "guests">;
 type InsertEventGuest = Omit<EventGuest, "id">;
-type InsertEventMenuItem = Omit<EventMenuItem, "id" | "recipe">;
+type InsertEventMenu = Omit<EventMenu, "id">;
 type InsertEventStaffAssignment = Omit<EventStaffAssignment, "id" | "staffMember">;
 
 export interface IStorage {
@@ -43,11 +43,11 @@ export interface IStorage {
   updateEventGuest(id: number, guest: Partial<InsertEventGuest>): Promise<EventGuest | undefined>;
   deleteEventGuest(id: number): Promise<boolean>;
   
-  // EventMenuItem methods
-  getEventMenuItems(eventId: number): Promise<EventMenuItem[]>;
-  createEventMenuItem(item: InsertEventMenuItem): Promise<EventMenuItem>;
-  updateEventMenuItem(id: number, item: Partial<InsertEventMenuItem>): Promise<EventMenuItem | undefined>;
-  deleteEventMenuItem(id: number): Promise<boolean>;
+  // EventMenu methods
+  getEventMenus(eventId: number): Promise<EventMenu[]>;
+  createEventMenu(item: InsertEventMenu): Promise<EventMenu>;
+  updateEventMenu(id: number, item: Partial<InsertEventMenu>): Promise<EventMenu | undefined>;
+  deleteEventMenu(id: number): Promise<boolean>;
   
   // EventStaffAssignment methods
   getEventStaffAssignments(eventId: number): Promise<EventStaffAssignment[]>;
@@ -61,7 +61,7 @@ export class MemStorage implements IStorage {
   private staffMembers: Map<number, StaffMember>;
   private eventTables: Map<number, EventTable>;
   private eventGuests: Map<number, EventGuest>;
-  private eventMenuItems: Map<number, EventMenuItem>;
+  private eventMenuItems: Map<number, EventMenu>;
   private eventStaffAssignments: Map<number, EventStaffAssignment>;
   private nextEventId: number = 1;
   private nextStaffMemberId: number = 1;
@@ -88,29 +88,32 @@ export class MemStorage implements IStorage {
       {
         firstName: "Jana",
         lastName: "Nováková",
+        dateOfBirth: "1990-01-15",
         email: "jana.novakova@folkloregarden.cz",
         phone: "+420 123 456 789",
-        role: "manager",
+        position: "manager",
         hourlyRate: 300,
-        active: true,
+        isActive: true,
       },
       {
         firstName: "Petr",
         lastName: "Svoboda",
+        dateOfBirth: "1985-06-20",
         email: "petr.svoboda@folkloregarden.cz",
         phone: "+420 234 567 890",
-        role: "waiter",
+        position: "waiter",
         hourlyRate: 150,
-        active: true,
+        isActive: true,
       },
       {
         firstName: "Marie",
         lastName: "Dvořáková",
+        dateOfBirth: "1992-03-10",
         email: "marie.dvorakova@folkloregarden.cz",
         phone: "+420 345 678 901",
-        role: "chef",
+        position: "chef",
         hourlyRate: 250,
-        active: true,
+        isActive: true,
       },
     ];
     
@@ -141,7 +144,7 @@ export class MemStorage implements IStorage {
     return Promise.all(events.map(async (event) => ({
       ...event,
       tables: await this.getEventTables(event.id),
-      menuItems: await this.getEventMenuItems(event.id),
+      menu: await this.getEventMenus(event.id),
       staffAssignments: await this.getEventStaffAssignments(event.id),
     })));
   }
@@ -153,7 +156,7 @@ export class MemStorage implements IStorage {
     return {
       ...event,
       tables: await this.getEventTables(id),
-      menuItems: await this.getEventMenuItems(id),
+      menu: await this.getEventMenus(id),
       staffAssignments: await this.getEventStaffAssignments(id),
     };
   }
@@ -287,16 +290,16 @@ export class MemStorage implements IStorage {
     return this.eventGuests.delete(id);
   }
 
-  // EventMenuItem methods
-  async getEventMenuItems(eventId: number): Promise<EventMenuItem[]> {
+  // EventMenu methods
+  async getEventMenus(eventId: number): Promise<EventMenu[]> {
     return Array.from(this.eventMenuItems.values()).filter(
       (item) => item.eventId === eventId
     );
   }
 
-  async createEventMenuItem(insertItem: InsertEventMenuItem): Promise<EventMenuItem> {
+  async createEventMenu(insertItem: InsertEventMenu): Promise<EventMenu> {
     const id = this.nextMenuItemId++;
-    const item: EventMenuItem = {
+    const item: EventMenu = {
       ...insertItem,
       id,
     };
@@ -304,11 +307,11 @@ export class MemStorage implements IStorage {
     return item;
   }
 
-  async updateEventMenuItem(id: number, updateItem: Partial<InsertEventMenuItem>): Promise<EventMenuItem | undefined> {
+  async updateEventMenu(id: number, updateItem: Partial<InsertEventMenu>): Promise<EventMenu | undefined> {
     const item = this.eventMenuItems.get(id);
     if (!item) return undefined;
 
-    const updated: EventMenuItem = {
+    const updated: EventMenu = {
       ...item,
       ...updateItem,
     };
@@ -316,7 +319,7 @@ export class MemStorage implements IStorage {
     return updated;
   }
 
-  async deleteEventMenuItem(id: number): Promise<boolean> {
+  async deleteEventMenu(id: number): Promise<boolean> {
     return this.eventMenuItems.delete(id);
   }
 

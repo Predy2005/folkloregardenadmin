@@ -28,6 +28,9 @@ import type {
   PricingDefault,
   Invoice,
   PaymentSummary,
+  Partner,
+  TransportCompany,
+  DrinkItem,
 } from "@shared/types";
 import dayjs from "dayjs";
 import { Bot, Plus, Trash2 } from "lucide-react";
@@ -38,7 +41,7 @@ import {
   type AiMultiReservationEntry,
 } from "@modules/reservations/utils/ai";
 import {
-  searchCompanies,
+  smartCompanySearch,
   parseCompanyData,
   type CompanySearchResult,
 } from "@modules/contacts/utils/companySearch";
@@ -114,8 +117,9 @@ export default function ReservationEdit() {
   // Bulk price change state
   const [bulkPriceChange, setBulkPriceChange] = useState<number | "">("");
 
-  // Bulk menu change state
+  // Bulk menu/drink change state
   const [bulkMenuChange, setBulkMenuChange] = useState<string>("");
+  const [bulkDrinkChange, setBulkDrinkChange] = useState<string>("");
 
   // Submit state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -158,6 +162,12 @@ export default function ReservationEdit() {
   const [autoInvoiceType, setAutoInvoiceType] = useState<"DEPOSIT" | "FINAL">("DEPOSIT");
   const [autoInvoicePercent, setAutoInvoicePercent] = useState(25);
 
+  // Partner detection state
+  const [detectedPartner, setDetectedPartner] = useState<Partner | null>(null);
+  const [partnerId, setPartnerId] = useState<number | null>(null);
+  const debouncedContactEmail = useDebounce(sharedContact.contactEmail, 500);
+  const debouncedContactName = useDebounce(sharedContact.contactName, 500);
+
   // Data queries
   const { data: foods } = useQuery({
     queryKey: ["/api/reservation-foods"],
@@ -171,6 +181,18 @@ export default function ReservationEdit() {
   const { data: reservationTypes } = useQuery({
     queryKey: ["/api/reservation-types"],
     queryFn: () => api.get<ReservationType[]>("/api/reservation-types"),
+  });
+
+  // Transport companies for transfer assignment
+  const { data: transportCompanies } = useQuery({
+    queryKey: ["/api/transport"],
+    queryFn: () => api.get<TransportCompany[]>("/api/transport"),
+  });
+
+  // Drinks for person drink selection
+  const { data: drinks } = useQuery<DrinkItem[]>({
+    queryKey: ["/api/drinks"],
+    queryFn: () => api.get("/api/drinks"),
   });
 
   const { data: reservation, isLoading: isLoadingReservation } = useQuery({
@@ -242,8 +264,8 @@ export default function ReservationEdit() {
     }
     let cancelled = false;
     setIsCompanySearching(true);
-    searchCompanies(debouncedCompanyQuery)
-      .then(results => { if (!cancelled) setCompanyResults(results); })
+    smartCompanySearch(debouncedCompanyQuery)
+      .then(result => { if (!cancelled) setCompanyResults(result.results); })
       .catch(() => { if (!cancelled) setCompanyResults([]); })
       .finally(() => { if (!cancelled) setIsCompanySearching(false); });
     return () => { cancelled = true; };
@@ -301,6 +323,9 @@ export default function ReservationEdit() {
         transfers = reservation.transfers.map((t: any) => ({
           personCount: t.personCount || 1,
           address: t.address || "",
+          transportCompanyId: t.transportCompanyId || null,
+          transportVehicleId: t.transportVehicleId || null,
+          transportDriverId: t.transportDriverId || null,
         }));
       } else if (reservation.transferSelected && reservation.transferAddress) {
         // Backwards compatibility: convert old single transfer to array
@@ -315,8 +340,12 @@ export default function ReservationEdit() {
         persons: reservation.persons?.map(p => ({
           type: p.type,
           menu: p.menu,
-          price: p.price,
+          price: Number(p.price),
           nationality: p.nationality || "",
+          drinkOption: p.drinkOption || "none",
+          drinkName: p.drinkName || "",
+          drinkPrice: Number(p.drinkPrice || 0),
+          drinkItemId: p.drinkItemId ?? null,
         })) || [],
         status: reservation.status,
         contactNote: reservation.contactNote || "",
@@ -373,7 +402,7 @@ export default function ReservationEdit() {
     const menu = (type === "infant" || type === "driver" || type === "guide") ? "Bez jídla" : "";
 
     updateReservation(resIndex, {
-      persons: [...reservations[resIndex].persons, { type, menu, price: defaultPrice, nationality }],
+      persons: [...reservations[resIndex].persons, { type, menu, price: defaultPrice, nationality, drinkOption: "none", drinkName: "", drinkPrice: 0, drinkItemId: null }],
     });
   };
 
@@ -495,6 +524,10 @@ export default function ReservationEdit() {
       menu: menuValue,
       price: pricePerPerson,
       nationality: bulkNationality,
+      drinkOption: "none",
+      drinkName: "",
+      drinkPrice: 0,
+      drinkItemId: null,
     }));
 
     updateReservation(resIndex, {
@@ -545,6 +578,18 @@ export default function ReservationEdit() {
     successToast(`Menu změněno u ${affectedCount} osob`);
   };
 
+  const applyBulkDrinkChange = (resIndex: number) => {
+    if (!bulkDrinkChange) return;
+    const updatedPersons = reservations[resIndex].persons.map(p => {
+      if (p.type === "infant") return p;
+      return { ...p, drinkOption: bulkDrinkChange };
+    });
+    updateReservation(resIndex, { persons: updatedPersons });
+    setBulkDrinkChange("");
+    const affectedCount = reservations[resIndex].persons.filter(p => p.type !== "infant").length;
+    successToast(`Nápoj změněn u ${affectedCount} osob`);
+  };
+
   const applyContactToForm = (c: any) => {
     setSharedContact(prev => ({
       ...prev,
@@ -566,7 +611,7 @@ export default function ReservationEdit() {
     setAiError(null);
     setAiJson(null);
     if (!isAiConfigured()) {
-      setAiError("AI není nakonfigurováno. Nastavte VITE_AI_BASE_URL v .env.");
+      setAiError("AI není nakonfigurováno. Žádné AI servery nejsou dostupné.");
       return;
     }
     setAiLoading(true);
@@ -602,7 +647,7 @@ export default function ReservationEdit() {
 
       // Helper to find best matching menu from available foods
       // Handles both English (from email) and Czech (from system) menu names
-      const findMenuMatch = (menuText: string | undefined): string => {
+      const findMenuMatch = (menuText: string | null | undefined): string => {
         const defaultMenu = foods?.find(f =>
           f.name.toLowerCase().includes("traditional") || f.name.toLowerCase().includes("tradiční")
         )?.name || foods?.[0]?.name || "Traditional";
@@ -678,7 +723,7 @@ export default function ReservationEdit() {
 
         // Add adults with the group's specific menu and price
         for (let i = 0; i < r.adults; i++) {
-          persons.push({ type: "adult", menu: groupMenu, price: adultPrice, nationality: groupNationality });
+          persons.push({ type: "adult", menu: groupMenu, price: adultPrice, nationality: groupNationality, drinkOption: "none", drinkName: "", drinkPrice: 0, drinkItemId: null });
         }
 
         // Add children (use proportional child price if custom price is set)
@@ -687,22 +732,22 @@ export default function ReservationEdit() {
           ? Math.round(r.pricePerPerson * 0.64) // ~64% of adult price for children
           : defaultChildPrice;
         for (let i = 0; i < r.children; i++) {
-          persons.push({ type: "child", menu: childMenu, price: childPrice, nationality: groupNationality });
+          persons.push({ type: "child", menu: childMenu, price: childPrice, nationality: groupNationality, drinkOption: "none", drinkName: "", drinkPrice: 0, drinkItemId: null });
         }
 
         // Add infants
         for (let i = 0; i < r.infants; i++) {
-          persons.push({ type: "infant", menu: "Bez jídla", price: 0, nationality: groupNationality });
+          persons.push({ type: "infant", menu: "Bez jídla", price: 0, nationality: groupNationality, drinkOption: "none", drinkName: "", drinkPrice: 0, drinkItemId: null });
         }
 
         // Add free tour leaders (guides)
         for (let i = 0; i < r.freeTourLeaders; i++) {
-          persons.push({ type: "guide", menu: "Bez jídla", price: 0, nationality: "" });
+          persons.push({ type: "guide", menu: "Bez jídla", price: 0, nationality: "", drinkOption: "none", drinkName: "", drinkPrice: 0, drinkItemId: null });
         }
 
         // Add free drivers
         for (let i = 0; i < r.freeDrivers; i++) {
-          persons.push({ type: "driver", menu: "Bez jídla", price: 0, nationality: "" });
+          persons.push({ type: "driver", menu: "Bez jídla", price: 0, nationality: "", drinkOption: "none", drinkName: "", drinkPrice: 0, drinkItemId: null });
         }
 
         // Build note with group code, menu info, price, and special requests
@@ -731,15 +776,23 @@ export default function ReservationEdit() {
 
   // Submit handlers
   const handleSubmitAll = async () => {
-    // Validate
-    if (!sharedContact.contactName || !sharedContact.contactEmail || !sharedContact.contactPhone) {
-      errorToast("Vyplňte kontaktní údaje");
+    // Validate contact
+    const contactErrors: string[] = [];
+    if (!sharedContact.contactName?.trim()) contactErrors.push("Jméno kontaktu");
+    if (!sharedContact.contactEmail?.trim() || !sharedContact.contactEmail.includes("@")) contactErrors.push("Platný e-mail");
+    if (!sharedContact.contactPhone?.trim()) contactErrors.push("Telefon");
+
+    if (contactErrors.length > 0) {
+      errorToast(`Vyplňte: ${contactErrors.join(", ")}`);
       return;
     }
 
-    const invalidReservations = reservations.filter(r => !r.date || r.persons.length === 0);
-    if (invalidReservations.length > 0) {
-      errorToast("Některé rezervace nemají datum nebo osoby");
+    // Validate each reservation
+    const invalidIndexes = reservations
+      .map((r, i) => (!r.date || r.persons.length === 0) ? i + 1 : null)
+      .filter(Boolean);
+    if (invalidIndexes.length > 0) {
+      errorToast(`Rezervace #${invalidIndexes.join(", #")} nemají datum nebo osoby`);
       return;
     }
 
@@ -772,6 +825,7 @@ export default function ReservationEdit() {
         persons: res.persons,
         status: res.status,
         reservationTypeId: res.reservationTypeId,
+        partnerId: partnerId || undefined,
       };
 
       try {
@@ -801,14 +855,23 @@ export default function ReservationEdit() {
   };
 
   const handleSubmitSingle = async () => {
-    if (!sharedContact.contactName || !sharedContact.contactEmail || !sharedContact.contactPhone) {
-      errorToast("Vyplňte kontaktní údaje");
+    const errors: string[] = [];
+    if (!sharedContact.contactName?.trim()) errors.push("Jméno kontaktu");
+    if (!sharedContact.contactEmail?.trim() || !sharedContact.contactEmail.includes("@")) errors.push("Platný e-mail");
+    if (!sharedContact.contactPhone?.trim()) errors.push("Telefon");
+
+    if (errors.length > 0) {
+      errorToast(`Vyplňte: ${errors.join(", ")}`);
       return;
     }
 
     const res = reservations[0];
-    if (!res.date || res.persons.length === 0) {
-      errorToast("Vyplňte datum a přidejte osoby");
+    if (!res.date) {
+      errorToast("Vyplňte datum rezervace");
+      return;
+    }
+    if (res.persons.length === 0) {
+      errorToast("Přidejte alespoň jednu osobu");
       return;
     }
 
@@ -835,6 +898,7 @@ export default function ReservationEdit() {
       persons: res.persons,
       status: res.status,
       reservationTypeId: res.reservationTypeId,
+      partnerId: partnerId || undefined,
     };
 
     try {
@@ -873,6 +937,72 @@ export default function ReservationEdit() {
     }
   };
 
+  // Partner detection effect
+  useEffect(() => {
+    if (!debouncedContactEmail && !debouncedContactName) {
+      setDetectedPartner(null);
+      return;
+    }
+    // Only detect if we have at least an email with @ or a name with 3+ chars
+    if (
+      (!debouncedContactEmail || !debouncedContactEmail.includes("@")) &&
+      (!debouncedContactName || debouncedContactName.length < 3)
+    ) {
+      return;
+    }
+    let cancelled = false;
+    api.post<{ partner: Partner | null }>("/api/partner/detect", {
+      email: debouncedContactEmail || undefined,
+      name: debouncedContactName || undefined,
+    }).then((result) => {
+      if (!cancelled) {
+        setDetectedPartner(result?.partner || null);
+        if (result?.partner) {
+          setPartnerId(result.partner.id);
+        }
+      }
+    }).catch(() => {
+      if (!cancelled) setDetectedPartner(null);
+    });
+    return () => { cancelled = true; };
+  }, [debouncedContactEmail, debouncedContactName]);
+
+  // Apply partner pricing to persons
+  const applyPartnerPricing = () => {
+    if (!detectedPartner) return;
+    const partner = detectedPartner;
+
+    if (partner.pricingModel === "DEFAULT") return;
+
+    setReservations(prev => prev.map((res) => {
+      return {
+        ...res,
+        persons: res.persons.map(person => {
+          if (partner.pricingModel === "FLAT") {
+            const flatPrice =
+              person.type === "adult" || person.type === "driver" || person.type === "guide"
+                ? parseFloat(String(partner.flatPriceAdult || "0"))
+                : person.type === "child"
+                  ? parseFloat(String(partner.flatPriceChild || "0"))
+                  : parseFloat(String(partner.flatPriceInfant || "0"));
+            return { ...person, price: flatPrice };
+          }
+          if (partner.pricingModel === "CUSTOM" && partner.customMenuPrices) {
+            // Try to find custom price by matching menu to food ID
+            const food = foods?.find(f => f.externalId === person.menu || f.name === person.menu);
+            if (food) {
+              const customPrice = partner.customMenuPrices[String(food.id)];
+              if (customPrice != null) {
+                return { ...person, price: customPrice };
+              }
+            }
+          }
+          return person;
+        }),
+      };
+    }));
+  };
+
   // Computed values
   const currentReservation = reservations[activeTabIndex] || reservations[0];
   const currentTotalPrice = useMemo(() => {
@@ -899,7 +1029,7 @@ export default function ReservationEdit() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+          <h1 className="text-3xl font-bold text-primary">
             {isEdit ? `Upravit rezervaci #${reservationId}` : "Nová rezervace"}
           </h1>
           <p className="text-muted-foreground mt-1">
@@ -962,8 +1092,7 @@ export default function ReservationEdit() {
             <TabsContent value="ai" className="space-y-4">
               {!isAiConfigured() && (
                 <div className="p-3 rounded-md bg-yellow-100 text-yellow-900 text-sm">
-                  AI není nakonfigurováno. Nastavte proměnnou VITE_AI_BASE_URL v
-                  .env.
+                  AI není nakonfigurováno. Žádné AI servery nejsou dostupné.
                 </div>
               )}
               <div className="space-y-2">
@@ -1067,6 +1196,23 @@ export default function ReservationEdit() {
 
             {/* Contact Tab */}
             <TabsContent value="contact" className="space-y-4">
+              {detectedPartner && (
+                <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-sm font-medium text-blue-700 dark:text-blue-400">
+                        Partner detekovan: {detectedPartner.name}
+                      </span>
+                      <span className="text-xs text-blue-600 dark:text-blue-300 ml-2">
+                        ({detectedPartner.pricingModel === 'FLAT' ? 'Jednotna cena' : detectedPartner.pricingModel === 'CUSTOM' ? 'Vlastni ceny' : 'Systemove ceny'})
+                      </span>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={applyPartnerPricing}>
+                      Aplikovat partnerske ceny
+                    </Button>
+                  </div>
+                </div>
+              )}
               <ContactSection
                 sharedContact={sharedContact}
                 setSharedContact={setSharedContact}
@@ -1107,29 +1253,39 @@ export default function ReservationEdit() {
             {/* Reservations Tab */}
             <TabsContent value="reservations" className="space-y-4">
               {/* Reservation tabs */}
-              <div className="flex flex-wrap items-center gap-2 border-b pb-2">
-                {reservations.map((r, i) => (
-                  <Button
-                    key={i}
-                    variant={activeTabIndex === i ? "default" : "outline"}
-                    size="sm"
-                    className="relative"
-                    onClick={() => setActiveTabIndex(i)}
-                  >
-                    {r.date ? dayjs(r.date).format("D.M") : `#${i + 1}`}
-                    {reservations.length > 1 && (
-                      <span
-                        className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-destructive-foreground rounded-full text-xs flex items-center justify-center cursor-pointer hover:bg-destructive/80"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeReservation(i);
-                        }}
-                      >
-                        ×
-                      </span>
-                    )}
-                  </Button>
-                ))}
+              <div className="flex flex-wrap items-center gap-1 border-b pb-2">
+                {reservations.map((r, i) => {
+                  const isActive = activeTabIndex === i;
+                  const hasDate = Boolean(r.date);
+                  const hasPersons = r.persons.length > 0;
+                  return (
+                    <button
+                      key={i}
+                      className={`relative px-3 py-1.5 text-sm font-medium rounded-t-md border transition-colors ${
+                        isActive
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-muted/50 text-muted-foreground border-transparent hover:bg-muted hover:text-foreground"
+                      } ${!hasDate || !hasPersons ? "border-orange-400 border-dashed" : ""}`}
+                      onClick={() => setActiveTabIndex(i)}
+                    >
+                      {r.date ? dayjs(r.date).format("D.M.YYYY") : `#${i + 1}`}
+                      {hasPersons && (
+                        <span className="ml-1 text-xs opacity-75">({r.persons.length})</span>
+                      )}
+                      {reservations.length > 1 && (
+                        <span
+                          className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-destructive text-destructive-foreground rounded-full text-[10px] flex items-center justify-center cursor-pointer hover:bg-destructive/80"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeReservation(i);
+                          }}
+                        >
+                          ×
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
                 <Button variant="ghost" size="sm" onClick={addReservation}>
                   <Plus className="w-4 h-4 mr-1" /> Přidat
                 </Button>
@@ -1265,7 +1421,8 @@ export default function ReservationEdit() {
                     )}
 
                     {currentReservation.transfers.map((transfer, transferIndex) => (
-                      <div key={transferIndex} className="flex items-start gap-3 p-3 bg-muted/50 rounded-md">
+                      <div key={transferIndex} className="space-y-2 p-3 bg-muted/50 rounded-md">
+                        <div className="flex items-start gap-3">
                         <div className="w-24">
                           <Label className="text-xs text-muted-foreground">Počet osob</Label>
                           <Input
@@ -1347,6 +1504,93 @@ export default function ReservationEdit() {
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
+                        </div>
+
+                        {/* Transport company/vehicle/driver assignment */}
+                        {transportCompanies && transportCompanies.length > 0 && (
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <Label className="text-xs text-muted-foreground">Dopravce</Label>
+                              <Select
+                                value={transfer.transportCompanyId?.toString() ?? "none"}
+                                onValueChange={(v) => {
+                                  const companyId = v === "none" ? null : parseInt(v);
+                                  updateTransfer(activeTabIndex, transferIndex, {
+                                    transportCompanyId: companyId,
+                                    transportVehicleId: null,
+                                    transportDriverId: null,
+                                  });
+                                }}
+                              >
+                                <SelectTrigger className="mt-1 h-8 text-xs">
+                                  <SelectValue placeholder="Vybrat dopravce" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">-- Bez dopravce --</SelectItem>
+                                  {transportCompanies.filter(tc => tc.isActive).map((tc) => (
+                                    <SelectItem key={tc.id} value={tc.id.toString()}>
+                                      {tc.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {transfer.transportCompanyId && (
+                              <>
+                                <div>
+                                  <Label className="text-xs text-muted-foreground">Vozidlo</Label>
+                                  <Select
+                                    value={transfer.transportVehicleId?.toString() ?? "none"}
+                                    onValueChange={(v) =>
+                                      updateTransfer(activeTabIndex, transferIndex, {
+                                        transportVehicleId: v === "none" ? null : parseInt(v),
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger className="mt-1 h-8 text-xs">
+                                      <SelectValue placeholder="Vozidlo" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="none">-- Libovolné --</SelectItem>
+                                      {(transportCompanies.find(tc => tc.id === transfer.transportCompanyId)?.vehicles ?? [])
+                                        .filter(v => v.isActive)
+                                        .map((v) => (
+                                          <SelectItem key={v.id} value={v.id.toString()}>
+                                            {v.licensePlate} ({v.brand ?? v.vehicleType})
+                                          </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label className="text-xs text-muted-foreground">Řidič</Label>
+                                  <Select
+                                    value={transfer.transportDriverId?.toString() ?? "none"}
+                                    onValueChange={(v) =>
+                                      updateTransfer(activeTabIndex, transferIndex, {
+                                        transportDriverId: v === "none" ? null : parseInt(v),
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger className="mt-1 h-8 text-xs">
+                                      <SelectValue placeholder="Řidič" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="none">-- Libovolný --</SelectItem>
+                                      {(transportCompanies.find(tc => tc.id === transfer.transportCompanyId)?.drivers ?? [])
+                                        .filter(d => d.isActive)
+                                        .map((d) => (
+                                          <SelectItem key={d.id} value={d.id.toString()}>
+                                            {d.firstName} {d.lastName}
+                                          </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
 
@@ -1361,6 +1605,7 @@ export default function ReservationEdit() {
                     currentReservation={currentReservation}
                     activeTabIndex={activeTabIndex}
                     foods={foods}
+                    drinks={drinks}
                     currentTotalPrice={currentTotalPrice}
                     bulkCount={bulkCount}
                     setBulkCount={setBulkCount}
@@ -1376,10 +1621,13 @@ export default function ReservationEdit() {
                     setBulkPriceChange={setBulkPriceChange}
                     bulkMenuChange={bulkMenuChange}
                     setBulkMenuChange={setBulkMenuChange}
+                    bulkDrinkChange={bulkDrinkChange}
+                    setBulkDrinkChange={setBulkDrinkChange}
                     addPerson={addPerson}
                     addBulkPersons={addBulkPersons}
                     applyBulkPriceChange={applyBulkPriceChange}
                     applyBulkMenuChange={applyBulkMenuChange}
+                    applyBulkDrinkChange={applyBulkDrinkChange}
                     handleTypeChange={handleTypeChange}
                     handleMenuChange={handleMenuChange}
                     updatePerson={updatePerson}

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import type { Cashbox, CashMovementItem, CashboxClosureItem, FilteredMovementsResponse, CashboxTransfer, Event } from "@shared/types";
+import type { Cashbox, CashMovementItem, CashboxClosureItem, FilteredMovementsResponse, CashboxTransfer, Event, CashboxAuditLogEntry } from "@shared/types";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import {
@@ -20,7 +20,7 @@ import {
 } from "@/shared/components/ui/tabs";
 import {
   Plus, Lock, Unlock, TrendingUp, TrendingDown, EyeOff, Eye, Wallet, AlertTriangle,
-  Filter, X, ChevronLeft, ChevronRight, ArrowRightLeft,
+  Filter, X, ChevronLeft, ChevronRight, ArrowRightLeft, Pencil, Trash2, Download, ClipboardCheck,
 } from "lucide-react";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
@@ -32,7 +32,7 @@ import { queryClient } from "@/shared/lib/queryClient";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { usePermissions } from "@/modules/auth/hooks/use-permissions";
 import { CategoryCombobox } from "@/shared/components/CategoryCombobox";
-import { useAllTransfers, useTransferToEvent } from "../hooks/useCashboxTransfers";
+import { useAllTransfers, useTransferToEvent, useCancelTransfer, useApproveClosureTransfer } from "../hooks/useCashboxTransfers";
 
 interface CashboxFilters {
   dateFrom: string;
@@ -64,9 +64,67 @@ export default function CashboxPage() {
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
   const [transferOpen, setTransferOpen] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [actualCash, setActualCash] = useState("");
+  const [closeNotes, setCloseNotes] = useState("");
+  const [editingMovement, setEditingMovement] = useState<CashMovementItem | null>(null);
+  const [editAmount, setEditAmount] = useState("");
+  const [editCategory, setEditCategory] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [adjustBalance, setAdjustBalance] = useState("");
+  const [adjustReason, setAdjustReason] = useState("");
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [cashboxNotes, setCashboxNotes] = useState("");
   const { hasPermission, isSuperAdmin } = usePermissions();
 
   const { data: allTransfers } = useAllTransfers();
+  const cancelTransferMutation = useCancelTransfer();
+  const approveClosureMutation = useApproveClosureTransfer();
+
+  const editMovementMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) =>
+      api.put(`/api/cashbox/main/movement/${id}`, data),
+    onSuccess: () => {
+      invalidateMainCashbox();
+      setEditingMovement(null);
+      successToast("Pohyb upraven");
+    },
+    onError: (e: Error) => errorToast(e),
+  });
+
+  const deleteMovementMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/api/cashbox/main/movement/${id}`),
+    onSuccess: () => {
+      invalidateMainCashbox();
+      successToast("Pohyb smazán");
+    },
+    onError: (e: Error) => errorToast(e),
+  });
+
+  const adjustBalanceMutation = useMutation({
+    mutationFn: (data: { newBalance: number; reason: string }) =>
+      api.post('/api/cashbox/main/adjust-balance', data),
+    onSuccess: () => {
+      invalidateMainCashbox();
+      setAdjustOpen(false);
+      setAdjustBalance("");
+      setAdjustReason("");
+      successToast("Zůstatek kasy upraven");
+    },
+    onError: (e: Error) => errorToast(e),
+  });
+
+  const updateNotesMutation = useMutation({
+    mutationFn: (data: { notes: string }) =>
+      api.put('/api/cashbox/main/info', data),
+    onSuccess: () => {
+      invalidateMainCashbox();
+      setNotesOpen(false);
+      successToast("Poznámky uloženy");
+    },
+    onError: (e: Error) => errorToast(e),
+  });
 
   // Filters
   const [filters, setFilters] = useState<CashboxFilters>(emptyFilters);
@@ -109,6 +167,12 @@ export default function CashboxPage() {
     enabled: !!cashbox,
   });
 
+  const { data: auditLogs } = useQuery<CashboxAuditLogEntry[]>({
+    queryKey: ["/api/cashbox/main/audit-log"],
+    queryFn: () => api.get<CashboxAuditLogEntry[]>("/api/cashbox/main/audit-log"),
+    enabled: !!cashbox,
+  });
+
   const { data: hiddenStatus } = useQuery<{ hidden: boolean }>({
     queryKey: ["/api/cashbox/main/hidden-status"],
     queryFn: () => api.get<{ hidden: boolean }>("/api/cashbox/main/hidden-status"),
@@ -141,6 +205,19 @@ export default function CashboxPage() {
   const reopenMutation = useMutation({
     mutationFn: () => api.post("/api/cashbox/main/reopen"),
     onSuccess: () => { invalidateMainCashbox(); successToast("Kasa odemčena"); },
+    onError: (e: Error) => errorToast(e),
+  });
+
+  const closeMutation = useMutation({
+    mutationFn: (data: { actualCash: number; notes?: string }) =>
+      api.post('/api/cashbox/main/close', data),
+    onSuccess: () => {
+      invalidateMainCashbox();
+      setCloseOpen(false);
+      setActualCash("");
+      setCloseNotes("");
+      successToast("Denní uzávěrka dokončena");
+    },
     onError: (e: Error) => errorToast(e),
   });
 
@@ -180,8 +257,35 @@ export default function CashboxPage() {
     return <div className="p-6 text-muted-foreground">Načítání...</div>;
   }
 
-  // Not initialized yet
+  // Not initialized or hidden
   if (!cashbox) {
+    // If hidden, show unhide option for super admin
+    if (hiddenStatus?.hidden) {
+      return (
+        <div className="p-6 space-y-6">
+          <PageHeader title="Hlavní kasa" description="Globální pokladna firmy" />
+          <Card className="max-w-md mx-auto">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <EyeOff className="w-5 h-5" />
+                Kasa je skrytá
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Hlavní kasa byla nouzově skryta. Pro zobrazení je potřeba ji odkrýt.
+              </p>
+              {isSuperAdmin && (
+                <Button onClick={() => unhideMutation.mutate()} disabled={unhideMutation.isPending}>
+                  <Eye className="w-4 h-4 mr-2" /> Odkrýt hlavní kasu
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
     return (
       <div className="p-6 space-y-6">
         <PageHeader title="Hlavní kasa" description="Globální pokladna firmy" />
@@ -221,13 +325,11 @@ export default function CashboxPage() {
   const totalMovements = movementsData?.total ?? 0;
   const totalPages = movementsData?.totalPages ?? 0;
 
-  // Use cashbox-level data for summary (not filtered)
-  const movements = cashbox.movements ?? [];
-  const incomeTotal = movements.filter(m => m.movementType === "INCOME").reduce((s, m) => s + parseFloat(m.amount), 0);
-  const expenseTotal = movements.filter(m => m.movementType === "EXPENSE").reduce((s, m) => s + parseFloat(m.amount), 0);
+  // Use backend-computed summary (from ALL movements, not just paginated subset)
+  const incomeTotal = parseFloat((cashbox as any).totalIncome ?? "0");
+  const expenseTotal = parseFloat((cashbox as any).totalExpense ?? "0");
   const isLocked = !!cashbox.lockedBy;
-  const eventTransfers = allMovements.filter(m => m.category === "Převod z eventu" || m.category === "EVENT_TRANSFER");
-  const regularMovements = allMovements.filter(m => m.category !== "Převod z eventu" && m.category !== "EVENT_TRANSFER");
+  const currencyLabel = cashbox.currency || 'Kč';
 
   return (
     <div className="p-6 space-y-6">
@@ -255,8 +357,36 @@ export default function CashboxPage() {
               </Button>
             )
           )}
+          {isSuperAdmin && (
+            <Button variant="outline" onClick={() => {
+              setAdjustBalance(String(currentBalance));
+              setAdjustReason("");
+              setAdjustOpen(true);
+            }}>
+              <Wallet className="w-4 h-4 mr-2" /> Korekce zůstatku
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => {
+            setCashboxNotes((cashbox as any).notes || "");
+            setNotesOpen(true);
+          }}>
+            <AlertTriangle className="w-4 h-4 mr-2" /> Poznámky
+          </Button>
+          <Button variant="outline" onClick={() => {
+            const params = new URLSearchParams();
+            if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+            if (filters.dateTo) params.set('dateTo', filters.dateTo);
+            if (filters.category) params.set('category', filters.category);
+            if (filters.movementType) params.set('movementType', filters.movementType);
+            window.open(`${import.meta.env.VITE_API_BASE_URL || ''}/api/cashbox/main/export?${params.toString()}`, '_blank');
+          }}>
+            <Download className="w-4 h-4 mr-2" /> Export CSV
+          </Button>
           {!isLocked && (
             <>
+              <Button variant="outline" onClick={() => setCloseOpen(true)}>
+                <ClipboardCheck className="w-4 h-4 mr-2" /> Denní uzávěrka
+              </Button>
               <Button variant="outline" onClick={() => setTransferOpen(true)}>
                 <ArrowRightLeft className="w-4 h-4 mr-2" /> Převod na event
               </Button>
@@ -282,7 +412,7 @@ export default function CashboxPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Počáteční stav</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{initialBalance.toLocaleString("cs-CZ")} Kč</div>
+            <div className="text-2xl font-bold">{initialBalance.toLocaleString("cs-CZ")} {currencyLabel}</div>
           </CardContent>
         </Card>
         <Card>
@@ -290,7 +420,7 @@ export default function CashboxPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Příjmy</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">+{incomeTotal.toLocaleString("cs-CZ")} Kč</div>
+            <div className="text-2xl font-bold text-green-600">+{incomeTotal.toLocaleString("cs-CZ")} {currencyLabel}</div>
           </CardContent>
         </Card>
         <Card>
@@ -298,7 +428,7 @@ export default function CashboxPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Výdaje</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">-{expenseTotal.toLocaleString("cs-CZ")} Kč</div>
+            <div className="text-2xl font-bold text-red-600">-{expenseTotal.toLocaleString("cs-CZ")} {currencyLabel}</div>
           </CardContent>
         </Card>
         <Card>
@@ -307,11 +437,27 @@ export default function CashboxPage() {
           </CardHeader>
           <CardContent>
             <div className={`text-2xl font-bold ${currentBalance >= 0 ? "text-primary" : "text-red-600"}`}>
-              {currentBalance.toLocaleString("cs-CZ")} Kč
+              {currentBalance.toLocaleString("cs-CZ")} {currencyLabel}
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Cashbox notes */}
+      {(cashbox as any).notes && (
+        <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-blue-700 dark:text-blue-400">Poznámky k pokladně</span>
+            <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => {
+              setCashboxNotes((cashbox as any).notes || "");
+              setNotesOpen(true);
+            }}>
+              <Pencil className="w-3 h-3 mr-1" /> Upravit
+            </Button>
+          </div>
+          <p className="text-sm text-blue-800 dark:text-blue-300 whitespace-pre-wrap">{(cashbox as any).notes}</p>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="space-y-3">
@@ -438,18 +584,34 @@ export default function CashboxPage() {
       <Tabs defaultValue="movements">
         <TabsList>
           <TabsTrigger value="movements">
-            <Wallet className="w-4 h-4 mr-1" /> Pohyby ({regularMovements.length})
+            <Wallet className="w-4 h-4 mr-1" /> Pohyby ({totalMovements})
           </TabsTrigger>
           <TabsTrigger value="transfers">
-            Převody z eventů ({eventTransfers.length})
+            <ArrowRightLeft className="w-4 h-4 mr-1" /> Převody na eventy ({allTransfers?.length ?? 0})
           </TabsTrigger>
           <TabsTrigger value="closures">
             Historie uzávěrek ({closures?.length ?? 0})
           </TabsTrigger>
+          <TabsTrigger value="audit">
+            Audit log
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="movements">
-          <MovementTable movements={regularMovements} />
+          <MovementTable
+            movements={allMovements}
+            onEdit={(m) => {
+              setEditingMovement(m);
+              setEditAmount(m.amount);
+              setEditCategory(m.category || "");
+              setEditDescription(m.description || "");
+            }}
+            onDelete={(id) => {
+              if (confirm("Opravdu smazat tento pohyb? Změna se projeví v zůstatku.")) {
+                deleteMovementMutation.mutate(id);
+              }
+            }}
+          />
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-4">
               <span className="text-sm text-muted-foreground">
@@ -488,6 +650,7 @@ export default function CashboxPage() {
                   <TableHead>Stav</TableHead>
                   <TableHead>Vytvořil</TableHead>
                   <TableHead>Popis</TableHead>
+                  <TableHead>Akce</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -503,6 +666,42 @@ export default function CashboxPage() {
                     </TableCell>
                     <TableCell>{t.initiatedByName}</TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-xs truncate">{t.description || "-"}</TableCell>
+                    <TableCell>
+                      {t.status === 'PENDING' && (
+                        <div className="flex items-center gap-1">
+                          {isSuperAdmin && (
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => {
+                                if (confirm(`Schválit převod ${parseFloat(t.amount).toLocaleString("cs-CZ")} ${t.currency} z eventu "${t.eventName}" do hlavní kasy?`)) {
+                                  approveClosureMutation.mutate(t.id);
+                                }
+                              }}
+                              disabled={approveClosureMutation.isPending}
+                            >
+                              Schválit
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive"
+                            onClick={() => {
+                              if (confirm("Opravdu zrušit tento převod?")) {
+                                cancelTransferMutation.mutate(t.id, {
+                                  onSuccess: () => successToast("Převod zrušen"),
+                                  onError: (e: Error) => errorToast(e),
+                                });
+                              }
+                            }}
+                            disabled={cancelTransferMutation.isPending}
+                          >
+                            Zrušit
+                          </Button>
+                        </div>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -528,10 +727,10 @@ export default function CashboxPage() {
                 {closures.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell>{dayjs(c.closedAt).format("DD.MM.YYYY HH:mm")}</TableCell>
-                    <TableCell className="text-right">{parseFloat(c.expectedCash).toLocaleString("cs-CZ")} Kč</TableCell>
-                    <TableCell className="text-right">{parseFloat(c.actualCash).toLocaleString("cs-CZ")} Kč</TableCell>
+                    <TableCell className="text-right">{parseFloat(c.expectedCash).toLocaleString("cs-CZ")} {currencyLabel}</TableCell>
+                    <TableCell className="text-right">{parseFloat(c.actualCash).toLocaleString("cs-CZ")} {currencyLabel}</TableCell>
                     <TableCell className={`text-right font-medium ${parseFloat(c.difference) >= 0 ? "text-green-600" : "text-red-600"}`}>
-                      {parseFloat(c.difference) >= 0 ? "+" : ""}{parseFloat(c.difference).toLocaleString("cs-CZ")} Kč
+                      {parseFloat(c.difference) >= 0 ? "+" : ""}{parseFloat(c.difference).toLocaleString("cs-CZ")} {currencyLabel}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-xs truncate">{c.notes || "-"}</TableCell>
                   </TableRow>
@@ -540,6 +739,37 @@ export default function CashboxPage() {
             </Table>
           ) : (
             <div className="py-8 text-center text-muted-foreground">Žádné uzávěrky</div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="audit">
+          {auditLogs && auditLogs.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Datum</TableHead>
+                  <TableHead>Uživatel</TableHead>
+                  <TableHead>Akce</TableHead>
+                  <TableHead>Popis</TableHead>
+                  <TableHead>IP</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {auditLogs.map((log) => (
+                  <TableRow key={log.id}>
+                    <TableCell className="text-sm">{dayjs(log.createdAt).format("DD.MM.YYYY HH:mm:ss")}</TableCell>
+                    <TableCell className="text-sm">{log.userName || "-"}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs">{log.action}</Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground max-w-md truncate">{log.description || "-"}</TableCell>
+                    <TableCell className="text-xs font-mono text-muted-foreground">{log.ipAddress || "-"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="py-8 text-center text-muted-foreground">Žádné záznamy v audit logu</div>
           )}
         </TabsContent>
       </Tabs>
@@ -617,11 +847,209 @@ export default function CashboxPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Movement Dialog */}
+      <Dialog open={!!editingMovement} onOpenChange={(open) => { if (!open) setEditingMovement(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upravit pohyb</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Částka (Kč)</Label>
+              <Input type="number" step="0.01" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} />
+            </div>
+            <div>
+              <Label>Kategorie</Label>
+              <CategoryCombobox
+                value={editCategory}
+                onChange={setEditCategory}
+                type={editingMovement?.movementType === "INCOME" ? "INCOME" : "EXPENSE"}
+                placeholder="Vyberte nebo napište..."
+              />
+            </div>
+            <div>
+              <Label>Popis</Label>
+              <Textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingMovement(null)}>Zrušit</Button>
+            <Button
+              onClick={() => {
+                if (editingMovement) {
+                  editMovementMutation.mutate({
+                    id: editingMovement.id,
+                    data: { amount: editAmount, category: editCategory, description: editDescription },
+                  });
+                }
+              }}
+              disabled={editMovementMutation.isPending}
+            >
+              {editMovementMutation.isPending ? "Ukládám..." : "Uložit"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Balance Adjustment Dialog */}
+      <Dialog open={adjustOpen} onOpenChange={setAdjustOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Korekce zůstatku kasy</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center p-3 bg-muted rounded-lg">
+              <span className="text-sm text-muted-foreground">Aktuální zůstatek v systému</span>
+              <span className="text-lg font-bold">{currentBalance.toLocaleString("cs-CZ")} {currencyLabel}</span>
+            </div>
+            <div>
+              <Label>Skutečný zůstatek ({currencyLabel})</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={adjustBalance}
+                onChange={(e) => setAdjustBalance(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+            {adjustBalance && parseFloat(adjustBalance) !== currentBalance && (
+              <div className="flex justify-between items-center p-3 rounded-lg border">
+                <span className="text-sm text-muted-foreground">Korekce</span>
+                {(() => {
+                  const diff = parseFloat(adjustBalance) - currentBalance;
+                  return (
+                    <span className={`text-lg font-bold ${diff > 0 ? "text-green-600" : "text-red-600"}`}>
+                      {diff >= 0 ? "+" : ""}{diff.toLocaleString("cs-CZ")} {currencyLabel}
+                    </span>
+                  );
+                })()}
+              </div>
+            )}
+            <div>
+              <Label>Důvod korekce (povinné)</Label>
+              <Textarea
+                value={adjustReason}
+                onChange={(e) => setAdjustReason(e.target.value)}
+                placeholder="Např.: Inventura hotovosti, opraven chybný zápis, ..."
+                className="min-h-[80px]"
+              />
+            </div>
+            <div className="text-xs text-muted-foreground bg-amber-50 dark:bg-amber-950 p-3 rounded border border-amber-200 dark:border-amber-800">
+              Korekce vytvoří vyrovnávací pohyb (příjem nebo výdaj) s kategorií KOREKCE.
+              Vše se zaloguje do audit logu včetně důvodu a původního zůstatku.
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAdjustOpen(false)}>Zrušit</Button>
+            <Button
+              onClick={() => {
+                if (!adjustBalance || !adjustReason.trim()) return;
+                adjustBalanceMutation.mutate({
+                  newBalance: parseFloat(adjustBalance),
+                  reason: adjustReason.trim(),
+                });
+              }}
+              disabled={adjustBalanceMutation.isPending || !adjustBalance || !adjustReason.trim() || parseFloat(adjustBalance) === currentBalance}
+            >
+              {adjustBalanceMutation.isPending ? "Ukládám..." : "Provést korekci"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Notes Dialog */}
+      <Dialog open={notesOpen} onOpenChange={setNotesOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Poznámky k pokladně</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Textarea
+              value={cashboxNotes}
+              onChange={(e) => setCashboxNotes(e.target.value)}
+              placeholder="Poznámky pro účetní, interní informace k pokladně..."
+              className="min-h-[150px]"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNotesOpen(false)}>Zrušit</Button>
+            <Button
+              onClick={() => updateNotesMutation.mutate({ notes: cashboxNotes })}
+              disabled={updateNotesMutation.isPending}
+            >
+              {updateNotesMutation.isPending ? "Ukládám..." : "Uložit poznámky"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Daily Close / Reconciliation Dialog */}
+      <Dialog open={closeOpen} onOpenChange={setCloseOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Denní uzávěrka</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center p-3 bg-muted rounded-lg">
+              <span className="text-sm text-muted-foreground">Očekávaný zůstatek</span>
+              <span className="text-lg font-bold">{currentBalance.toLocaleString("cs-CZ")} Kč</span>
+            </div>
+            <div>
+              <Label>Skutečně napočítaná hotovost (Kč)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={actualCash}
+                onChange={(e) => setActualCash(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+            {actualCash && (
+              <div className="flex justify-between items-center p-3 rounded-lg border">
+                <span className="text-sm text-muted-foreground">Rozdíl</span>
+                {(() => {
+                  const diff = parseFloat(actualCash) - currentBalance;
+                  return (
+                    <span className={`text-lg font-bold ${diff === 0 ? "text-green-600" : diff > 0 ? "text-blue-600" : "text-red-600"}`}>
+                      {diff >= 0 ? "+" : ""}{diff.toLocaleString("cs-CZ")} Kč
+                    </span>
+                  );
+                })()}
+              </div>
+            )}
+            <div>
+              <Label>Poznámky (volitelné)</Label>
+              <Textarea
+                value={closeNotes}
+                onChange={(e) => setCloseNotes(e.target.value)}
+                placeholder="Denní uzávěrka"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCloseOpen(false)}>Zrušit</Button>
+            <Button
+              onClick={() => {
+                if (!actualCash || parseFloat(actualCash) < 0) return;
+                closeMutation.mutate({
+                  actualCash: parseFloat(actualCash),
+                  notes: closeNotes || undefined,
+                });
+              }}
+              disabled={closeMutation.isPending || !actualCash}
+            >
+              {closeMutation.isPending ? "Uzavírám..." : "Potvrdit uzávěrku"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function MovementTable({ movements }: { movements: CashMovementItem[] }) {
+function MovementTable({ movements, onEdit, onDelete }: { movements: CashMovementItem[]; onEdit: (m: CashMovementItem) => void; onDelete: (id: number) => void }) {
   if (movements.length === 0) {
     return <div className="py-8 text-center text-muted-foreground">Žádné pohyby</div>;
   }
@@ -635,6 +1063,7 @@ function MovementTable({ movements }: { movements: CashMovementItem[] }) {
           <TableHead>Kategorie</TableHead>
           <TableHead className="text-right">Částka</TableHead>
           <TableHead>Popis</TableHead>
+          <TableHead className="text-right">Akce</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -650,10 +1079,20 @@ function MovementTable({ movements }: { movements: CashMovementItem[] }) {
             <TableCell>{m.category || "-"}</TableCell>
             <TableCell className="text-right font-medium">
               <span className={m.movementType === "INCOME" ? "text-green-600" : "text-red-600"}>
-                {m.movementType === "INCOME" ? "+" : "-"}{parseFloat(m.amount).toLocaleString("cs-CZ")} Kč
+                {m.movementType === "INCOME" ? "+" : "-"}{parseFloat(m.amount).toLocaleString("cs-CZ")} {m.currency || 'Kč'}
               </span>
             </TableCell>
             <TableCell className="text-sm text-muted-foreground max-w-xs truncate">{m.description || "-"}</TableCell>
+            <TableCell className="text-right">
+              <div className="flex items-center justify-end gap-1">
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(m)}>
+                  <Pencil className="w-3.5 h-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => onDelete(m.id)}>
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -669,6 +1108,8 @@ function TransferStatusBadge({ status }: { status: CashboxTransfer["status"] }) 
       return <Badge variant="outline" className="text-green-600 border-green-300">Potvrzený</Badge>;
     case "REJECTED":
       return <Badge variant="destructive">Odmítnutý</Badge>;
+    case "CANCELLED":
+      return <Badge variant="outline" className="text-gray-500 border-gray-300">Zrušeno</Badge>;
   }
 }
 
@@ -688,6 +1129,11 @@ function TransferToEventDialog({
     queryFn: () => api.get<Event[]>("/api/events"),
     enabled: open,
   });
+
+  const upcomingEvents = (events || []).filter(e =>
+    dayjs(e.eventDate).isAfter(dayjs().subtract(1, 'day')) &&
+    e.status !== 'CANCELLED'
+  );
 
   const transferMutation = useTransferToEvent();
 
@@ -724,7 +1170,7 @@ function TransferToEventDialog({
                 <SelectValue placeholder="Vyberte event" />
               </SelectTrigger>
               <SelectContent>
-                {events?.map((e) => (
+                {upcomingEvents.map((e) => (
                   <SelectItem key={e.id} value={String(e.id)}>
                     {e.name} — {dayjs(e.eventDate).format("DD.MM.YYYY")}
                   </SelectItem>

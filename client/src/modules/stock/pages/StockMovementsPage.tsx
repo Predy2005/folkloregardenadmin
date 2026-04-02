@@ -52,6 +52,7 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import dayjs from "dayjs";
 import { useFormDialog } from "@/shared/hooks/useFormDialog";
 import { useCrudMutations } from "@/shared/hooks/useCrudMutations";
+import { api } from "@/shared/lib/api";
 
 const stockMovementSchema = z.object({
   stockItemId: z.number().min(1, "Vyberte skladovou položku"),
@@ -69,10 +70,12 @@ export default function StockMovements() {
 
   const { data: movements, isLoading } = useQuery<StockMovement[]>({
     queryKey: ["/api/stock-movements"],
+    queryFn: () => api.get<StockMovement[]>("/api/stock-movements"),
   });
 
   const { data: stockItems } = useQuery<StockItem[]>({
     queryKey: ["/api/stock-items"],
+    queryFn: () => api.get<StockItem[]>("/api/stock-items"),
   });
 
   const form = useForm<StockMovementForm>({
@@ -93,7 +96,8 @@ export default function StockMovements() {
   });
 
   const filteredMovements = movements?.filter((movement) => {
-    const matchesSearch = movement.stockItem?.name.toLowerCase().includes(search.toLowerCase());
+    const itemName = movement.stockItemName || '';
+    const matchesSearch = !search || itemName.toLowerCase().includes(search.toLowerCase());
     const matchesType = typeFilter === "all" || movement.movementType === typeFilter;
     return matchesSearch && matchesType;
   });
@@ -125,7 +129,7 @@ export default function StockMovements() {
       <PageHeader title="Pohyby skladu" description="Historie příjmů, výdejů a úprav">
         <Button
           onClick={() => { dialog.openCreate(); form.reset(); }}
-          className="bg-gradient-to-r from-primary to-purple-600"
+          className="bg-primary hover:bg-primary/90"
           data-testid="button-create-stock-movement"
         >
           <Plus className="w-4 h-4 mr-2" />
@@ -206,7 +210,7 @@ export default function StockMovements() {
                       </Badge>
                     </TableCell>
                     <TableCell className="font-medium">
-                      {movement.stockItem?.name || `ID: ${movement.stockItemId}`}
+                      {movement.stockItemName || `ID: ${movement.stockItemId}`}
                     </TableCell>
                     <TableCell className="text-right">
                       <span className={
@@ -216,8 +220,8 @@ export default function StockMovements() {
                           ? 'text-red-600 font-medium'
                           : 'text-blue-600 font-medium'
                       }>
-                        {movement.movementType === 'OUT' ? '-' : '+'}
-                        {movement.quantity} {movement.stockItem?.unit}
+                        {movement.movementType === 'OUT' ? '-' : movement.movementType === 'ADJUSTMENT' ? '=' : '+'}
+                        {movement.quantity}
                       </span>
                     </TableCell>
                     <TableCell>
@@ -339,7 +343,7 @@ export default function StockMovements() {
                 <Button
                   type="submit"
                   disabled={isPending}
-                  className="bg-gradient-to-r from-primary to-purple-600"
+                  className="bg-primary hover:bg-primary/90"
                 >
                   {isPending ? "Vytváření..." : "Vytvořit"}
                 </Button>

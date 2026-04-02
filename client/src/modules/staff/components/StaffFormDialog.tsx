@@ -271,6 +271,52 @@ export function StaffFormDialog({
                 </FormItem>
               )}
             />
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name={"isGroup" as any}
+                render={({ field }) => (
+                  <FormItem className="flex items-center justify-between">
+                    <FormLabel>Skupina / kapela</FormLabel>
+                    <FormControl>
+                      <Switch
+                        checked={field.value ?? false}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {form.watch("isGroup") && (
+                <FormField
+                  control={form.control}
+                  name={"groupSize" as any}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Počet členů</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="1"
+                          placeholder="5"
+                          {...field}
+                          value={field.value ?? ""}
+                          onChange={(e) =>
+                            field.onChange(
+                              e.target.value
+                                ? parseInt(e.target.value)
+                                : null,
+                            )
+                          }
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+            </div>
             <FormField
               control={form.control}
               name={"isActive" as any}
@@ -294,7 +340,7 @@ export function StaffFormDialog({
               <Button
                 type="submit"
                 disabled={pending}
-                className="bg-gradient-to-r from-primary to-purple-600"
+                className="bg-primary hover:bg-primary/90"
               >
                 {pending ? "Ukládání..." : isEdit ? "Uložit" : "Vytvořit"}
               </Button>

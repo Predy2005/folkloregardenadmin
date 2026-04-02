@@ -43,6 +43,71 @@ class ReservationFoodsController extends AbstractController
         return $this->json(['status' => 'created', 'id' => $food->getId()], JsonResponse::HTTP_CREATED);
     }
 
+    #[Route('/bulk-update', methods: ['PUT', 'PATCH'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function bulkUpdate(Request $request, ReservationFoodsRepository $repository, EntityManagerInterface $em): JsonResponse
+    {
+        $data = json_decode($request->getContent(), true);
+        $ids = $data['ids'] ?? [];
+        $updates = $data['updates'] ?? [];
+
+        if (empty($ids)) {
+            return $this->json(['error' => 'No IDs provided'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        $allowedFields = ['price', 'surcharge', 'isChildrenMenu'];
+        $count = 0;
+
+        foreach ($ids as $id) {
+            $food = $repository->find($id);
+            if (!$food) {
+                continue;
+            }
+
+            foreach ($updates as $field => $value) {
+                if (!in_array($field, $allowedFields)) {
+                    continue;
+                }
+                match ($field) {
+                    'price' => $food->setPrice((int) $value),
+                    'surcharge' => $food->setSurcharge((int) $value),
+                    'isChildrenMenu' => $food->setIsChildrenMenu((bool) $value),
+                };
+            }
+            $count++;
+        }
+
+        $em->flush();
+
+        return $this->json(['status' => 'updated', 'count' => $count]);
+    }
+
+    #[Route('/bulk-delete', methods: ['DELETE'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function bulkDelete(Request $request, ReservationFoodsRepository $repository, EntityManagerInterface $em): JsonResponse
+    {
+        $data = json_decode($request->getContent(), true);
+        $ids = $data['ids'] ?? [];
+
+        if (empty($ids)) {
+            return $this->json(['error' => 'No IDs provided'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        $count = 0;
+        foreach ($ids as $id) {
+            $food = $repository->find($id);
+            if (!$food) {
+                continue;
+            }
+            $em->remove($food);
+            $count++;
+        }
+
+        $em->flush();
+
+        return $this->json(['status' => 'deleted', 'count' => $count]);
+    }
+
     #[Route('/{id}', methods: ['PUT', 'PATCH'])]
     #[IsGranted('reservation_foods.update')]
     public function edit(int $id, Request $request, ReservationFoodsRepository $repository, EntityManagerInterface $em): JsonResponse

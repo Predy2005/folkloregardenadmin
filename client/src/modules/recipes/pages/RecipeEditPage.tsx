@@ -205,7 +205,7 @@ export default function RecipeEditPage() {
           <Button
             onClick={form.handleSubmit(handleSubmit)}
             disabled={isPending}
-            className="bg-gradient-to-r from-primary to-purple-600"
+            className="bg-primary hover:bg-primary/90"
           >
             {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             {isEdit ? "Uložit" : "Vytvořit"}

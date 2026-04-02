@@ -25,6 +25,26 @@ export function usePendingTransfers() {
   });
 }
 
+export function useCancelTransfer() {
+  return useMutation({
+    mutationFn: (id: number) => api.post(`/api/cashbox/transfers/${id}/cancel`),
+    onSuccess: () => {
+      invalidateTransfers();
+    },
+  });
+}
+
+export function useApproveClosureTransfer() {
+  return useMutation({
+    mutationFn: (id: number) => api.post(`/api/cashbox/transfers/${id}/approve-closure`),
+    onSuccess: () => {
+      invalidateTransfers();
+      successToast("Předání kasy schváleno. Peníze přijaty do hlavní kasy.");
+    },
+    onError: (e: Error) => errorToast(e),
+  });
+}
+
 export function useTransferToEvent() {
   return useMutation({
     mutationFn: (data: { eventId: number; amount: number; description?: string }) =>

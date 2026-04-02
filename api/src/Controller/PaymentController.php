@@ -48,8 +48,8 @@ class PaymentController extends AbstractController
         }
 
         $client = Comgate::defaults()
-            ->setMerchant($_ENV['COMGATE_MERCHANT'])
-            ->setSecret($_ENV['COMGATE_SECRET'])
+            ->setMerchant($this->getParameter('comgate.merchant_id'))
+            ->setSecret($this->getParameter('comgate.secret_key'))
             ->createClient();
 
         $reservation = $this->entityManager->getRepository(\App\Entity\Reservation::class)->find($data['refId']);
@@ -106,7 +106,7 @@ class PaymentController extends AbstractController
                 ], 400);  // Or other appropriate HTTP status code
             }
         } catch (ApiException $e) {
-            file_put_contents(__DIR__ . '/comgate-error.log', $e->getMessage() . PHP_EOL, FILE_APPEND);
+            error_log('Comgate error: ' . $e->getMessage());
             return $this->json([
                 'message' => $e->getMessage()
             ], 500);  // Internal server error status code
@@ -123,8 +123,8 @@ class PaymentController extends AbstractController
 
         try {
             $client = Comgate::defaults()
-                ->setMerchant($_ENV['COMGATE_MERCHANT'])
-                ->setSecret($_ENV['COMGATE_SECRET'])
+                ->setMerchant($this->getParameter('comgate.merchant_id'))
+                ->setSecret($this->getParameter('comgate.secret_key'))
                 ->createClient();
 
             $paymentStatusResponse = $client->getStatus($transactionId);
@@ -161,11 +161,7 @@ class PaymentController extends AbstractController
                 $payment->setStatus($initialStatus);
 
                 // Log the creation of a new payment from notification
-                file_put_contents(__DIR__ . '/comgate-payment-created.log', 
-                    'Created payment from notification: transId=' . $transactionId . 
-                    ', refId=' . $refId . 
-                    ', status=' . $initialStatus . PHP_EOL, 
-                    FILE_APPEND);
+                error_log('Created payment from notification: transId=' . $transactionId . ', refId=' . $refId . ', status=' . $initialStatus);
             }
 
             switch ($paymentStatusResponse->getStatus()) {
@@ -186,9 +182,9 @@ class PaymentController extends AbstractController
             return $this->json(['message' => 'OK']);
 
         } catch (ApiException $e) {
-            file_put_contents(__DIR__ . '/comgate-error.log', $e->getMessage() . PHP_EOL, FILE_APPEND);
+            error_log('Comgate error: ' . $e->getMessage());
         } catch (\Throwable $e) {
-            file_put_contents(__DIR__ . '/comgate-error.log', $e->getMessage() . PHP_EOL, FILE_APPEND);
+            error_log('Comgate error: ' . $e->getMessage());
         }
 
         return $this->json(['message' => 'OK']);
@@ -235,7 +231,7 @@ class PaymentController extends AbstractController
                     break;
             }
         } catch (ApiException $e) {
-            var_dump($e->getMessage());
+            error_log('Payment status check failed: ' . $e->getMessage());
         }
 
 
@@ -348,8 +344,8 @@ class PaymentController extends AbstractController
     public function paymentResult(Request $request, PaymentRepository $repo, ReservationRepository $reservationRepository): Response
     {
         $client = Comgate::defaults()
-            ->setMerchant($_ENV['COMGATE_MERCHANT'])
-            ->setSecret($_ENV['COMGATE_SECRET'])
+            ->setMerchant($this->getParameter('comgate.merchant_id'))
+            ->setSecret($this->getParameter('comgate.secret_key'))
             ->createClient();
 
         $data = $request->request->all();
@@ -395,15 +391,14 @@ class PaymentController extends AbstractController
                 }
 
                 $this->entityManager->persist($payment);
-                $this->entityManager->flush();
                 $this->entityManager->persist($model);
                 $this->entityManager->flush();
             }
 
         } catch (ApiException $e) {
-            file_put_contents(__DIR__ . '/comgate-error.log', $e->getMessage() . PHP_EOL, FILE_APPEND);
+            error_log('Comgate error: ' . $e->getMessage());
         } catch (\Throwable $e) {
-            file_put_contents(__DIR__ . '/comgate-error.log', $e->getMessage() . PHP_EOL, FILE_APPEND);
+            error_log('Comgate error: ' . $e->getMessage());
         }
 
         // ✅ VŽDY vrátit OK, aby Comgate brána skončila úspěšně
@@ -473,9 +468,9 @@ class PaymentController extends AbstractController
         unset($params['digest']);
         ksort($params);
         $queryString = urldecode(http_build_query($params));
-        $expectedDigest = hash('sha256', $queryString . $_ENV['COMGATE_SECRET']);
+        $expectedDigest = hash('sha256', $queryString . $this->getParameter('comgate.secret_key'));
 
-        if ($digest !== $expectedDigest) {
+        if (!hash_equals($expectedDigest, $digest)) {
             return new Response('Invalid signature', 403);
         }
 
@@ -485,6 +480,11 @@ class PaymentController extends AbstractController
             return new Response('Payment not found', 404);
         }
 
+        $allowedStatuses = [PaymentStatusCode::PAID, PaymentStatusCode::CANCELLED, PaymentStatusCode::PENDING, PaymentStatusCode::AUTHORIZED];
+        if (!in_array($status, $allowedStatuses, true)) {
+            return new Response('Invalid payment status', 400);
+        }
+
         $payment->setStatus($status);
         $this->entityManager->flush();
 
@@ -492,11 +492,12 @@ class PaymentController extends AbstractController
     }
 
     #[Route('/api/payment/test-create', name: 'api_payment_test_create', methods: ['GET'])]
+    #[IsGranted('ROLE_ADMIN')]
     public function testCreate(): JsonResponse
     {
         $client = Comgate::defaults()
-            ->setMerchant($_ENV['COMGATE_MERCHANT'])
-            ->setSecret($_ENV['COMGATE_SECRET'])
+            ->setMerchant($this->getParameter('comgate.merchant_id'))
+            ->setSecret($this->getParameter('comgate.secret_key'))
             ->createClient();
 
         $payment = new \Comgate\SDK\Entity\Payment();

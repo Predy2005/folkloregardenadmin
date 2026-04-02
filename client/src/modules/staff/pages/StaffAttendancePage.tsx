@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/shared/lib/queryClient";
 import { api } from "@/shared/lib/api";
-import type { StaffAttendance, StaffMember } from "@shared/types";
+import type { StaffAttendance, StaffMember, Event } from "@shared/types";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
+import { useAuth } from "@modules/auth";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import {
@@ -57,6 +58,10 @@ export default function StaffAttendance() {
   const [search, setSearch] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [markPaidId, setMarkPaidId] = useState<number | null>(null);
+  const [paymentNote, setPaymentNote] = useState("");
+
+  const { isSuperAdmin } = useAuth();
 
   const { data: attendances, isLoading } = useQuery<StaffAttendance[]>({
     queryKey: ["/api/staff-attendance"],
@@ -66,12 +71,17 @@ export default function StaffAttendance() {
     queryKey: ["/api/staff"],
   });
 
+  const { data: events } = useQuery<Event[]>({
+    queryKey: ["/api/events"],
+  });
+
   const createForm = useForm<AttendanceForm>({
     resolver: zodResolver(attendanceSchema),
     defaultValues: {
-      date: dayjs().format("YYYY-MM-DD"),
+      attendanceDate: dayjs().format("YYYY-MM-DD"),
       hoursWorked: 8,
-      note: "",
+      notes: "",
+      eventId: null,
     },
   });
 
@@ -89,22 +99,35 @@ export default function StaffAttendance() {
   });
 
   const markAsPaidMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return await api.put(`/api/staff-attendance/${id}/mark-paid`);
+    mutationFn: async ({ id, paymentNote }: { id: number; paymentNote?: string }) => {
+      return await api.put(`/api/staff-attendance/${id}/mark-paid`, { paymentNote });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/staff-attendance"] });
+      setMarkPaidId(null);
+      setPaymentNote("");
       successToast("Docházka označena jako zaplacená");
     },
     onError: (error: Error) => errorToast(error),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return await api.delete(`/api/staff-attendance/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/staff-attendance"] });
+      successToast("Záznam docházky smazán");
+    },
+    onError: (error: Error) => errorToast(error),
+  });
+
   const filteredAttendances = attendances?.filter((attendance) => {
-    const matchesSearch = attendance.staffMember
-      ? `${attendance.staffMember.firstName} ${attendance.staffMember.lastName}`
-          .toLowerCase()
-          .includes(search.toLowerCase())
-      : true;
+    const name = attendance.staffMemberName
+      ?? (attendance.staffMember
+        ? `${attendance.staffMember.firstName} ${attendance.staffMember.lastName}`
+        : "");
+    const matchesSearch = name.toLowerCase().includes(search.toLowerCase());
     const matchesStatus =
       statusFilter === "all" ||
       (statusFilter === "paid" && attendance.isPaid) ||
@@ -114,18 +137,18 @@ export default function StaffAttendance() {
 
   const totalUnpaidHours = attendances
     ?.filter((a) => !a.isPaid)
-    .reduce((sum, a) => sum + a.hoursWorked, 0) || 0;
+    .reduce((sum, a) => sum + Number(a.hoursWorked), 0) || 0;
 
   const totalUnpaidAmount = attendances
     ?.filter((a) => !a.isPaid && a.staffMember?.hourlyRate)
-    .reduce((sum, a) => sum + a.hoursWorked * (Number(a.staffMember?.hourlyRate) || 0), 0) || 0;
+    .reduce((sum, a) => sum + Number(a.hoursWorked) * (Number(a.staffMember?.hourlyRate) || 0), 0) || 0;
 
   return (
     <div className="p-6 space-y-6">
       <PageHeader title="Docházka personálu" description="Evidence odpracovaných hodin">
         <Button
           onClick={() => setIsCreateOpen(true)}
-          className="bg-gradient-to-r from-primary to-purple-600"
+          className="bg-primary hover:bg-primary/90"
           data-testid="button-create-attendance"
         >
           <Plus className="w-4 h-4 mr-2" />
@@ -213,18 +236,22 @@ export default function StaffAttendance() {
               </TableHeader>
               <TableBody>
                 {filteredAttendances.map((attendance) => {
-                  const amount = attendance.staffMember?.hourlyRate
-                    ? attendance.hoursWorked * Number(attendance.staffMember.hourlyRate)
-                    : 0;
+                  const amount = attendance.paymentAmount
+                    ? Number(attendance.paymentAmount)
+                    : attendance.staffMember?.hourlyRate
+                      ? Number(attendance.hoursWorked) * Number(attendance.staffMember.hourlyRate)
+                      : 0;
+                  const displayName = attendance.staffMemberName
+                    ?? (attendance.staffMember
+                      ? `${attendance.staffMember.firstName} ${attendance.staffMember.lastName}`
+                      : `ID: ${attendance.staffMemberId}`);
                   return (
                     <TableRow key={attendance.id} data-testid={`row-attendance-${attendance.id}`}>
                       <TableCell>
-                        {dayjs(attendance.date).format("DD.MM.YYYY")}
+                        {dayjs(attendance.attendanceDate).format("DD.MM.YYYY")}
                       </TableCell>
                       <TableCell className="font-medium">
-                        {attendance.staffMember
-                          ? `${attendance.staffMember.firstName} ${attendance.staffMember.lastName}`
-                          : `ID: ${attendance.staffMemberId}`}
+                        {displayName}
                       </TableCell>
                       <TableCell className="text-right">
                         {attendance.hoursWorked} h
@@ -234,7 +261,7 @@ export default function StaffAttendance() {
                       </TableCell>
                       <TableCell>
                         <p className="text-sm text-muted-foreground max-w-xs truncate">
-                          {attendance.note || "-"}
+                          {attendance.notes || "-"}
                         </p>
                       </TableCell>
                       <TableCell>
@@ -250,12 +277,12 @@ export default function StaffAttendance() {
                           </Badge>
                         )}
                       </TableCell>
-                      <TableCell className="text-right">
-                        {!attendance.isPaid && (
+                      <TableCell className="text-right space-x-2">
+                        {!attendance.isPaid && isSuperAdmin && (
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => markAsPaidMutation.mutate(attendance.id)}
+                            onClick={() => setMarkPaidId(attendance.id)}
                             disabled={markAsPaidMutation.isPending}
                             data-testid={`button-mark-paid-${attendance.id}`}
                           >
@@ -266,6 +293,21 @@ export default function StaffAttendance() {
                           <span className="text-sm text-muted-foreground">
                             {dayjs(attendance.paidAt).format("DD.MM.YYYY")}
                           </span>
+                        )}
+                        {isSuperAdmin && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => {
+                              if (confirm("Opravdu smazat tento záznam docházky?")) {
+                                deleteMutation.mutate(attendance.id);
+                              }
+                            }}
+                            disabled={deleteMutation.isPending}
+                          >
+                            Smazat
+                          </Button>
                         )}
                       </TableCell>
                     </TableRow>
@@ -323,7 +365,35 @@ export default function StaffAttendance() {
               />
               <FormField
                 control={createForm.control}
-                name="date"
+                name="eventId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Akce</FormLabel>
+                    <Select
+                      onValueChange={(value) => field.onChange(value === "none" ? null : parseInt(value))}
+                      value={field.value?.toString() ?? "none"}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Bez akce" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">Bez akce</SelectItem>
+                        {events?.map((event) => (
+                          <SelectItem key={event.id} value={event.id.toString()}>
+                            {event.name} ({dayjs(event.eventDate).format("DD.MM.YYYY")})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={createForm.control}
+                name="attendanceDate"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Datum *</FormLabel>
@@ -357,7 +427,7 @@ export default function StaffAttendance() {
               />
               <FormField
                 control={createForm.control}
-                name="note"
+                name="notes"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Poznámka</FormLabel>
@@ -375,13 +445,49 @@ export default function StaffAttendance() {
                 <Button
                   type="submit"
                   disabled={createMutation.isPending}
-                  className="bg-gradient-to-r from-primary to-purple-600"
+                  className="bg-primary hover:bg-primary/90"
                 >
                   {createMutation.isPending ? "Vytváření..." : "Vytvořit"}
                 </Button>
               </DialogFooter>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Mark as Paid Dialog */}
+      <Dialog open={markPaidId !== null} onOpenChange={(open) => { if (!open) { setMarkPaidId(null); setPaymentNote(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Označit jako zaplaceno</DialogTitle>
+            <DialogDescription>Můžete přidat poznámku k platbě</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Poznámka k platbě</label>
+              <Textarea
+                placeholder="Poznámka k platbě (nepovinné)"
+                value={paymentNote}
+                onChange={(e) => setPaymentNote(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setMarkPaidId(null); setPaymentNote(""); }}>
+              Zrušit
+            </Button>
+            <Button
+              onClick={() => {
+                if (markPaidId !== null) {
+                  markAsPaidMutation.mutate({ id: markPaidId, paymentNote: paymentNote || undefined });
+                }
+              }}
+              disabled={markAsPaidMutation.isPending}
+            >
+              {markAsPaidMutation.isPending ? "Označování..." : "Potvrdit platbu"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

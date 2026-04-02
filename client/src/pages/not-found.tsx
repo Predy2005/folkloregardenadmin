@@ -12,7 +12,7 @@ export default function NotFound() {
           Omlouváme se, ale stránka, kterou hledáte, neexistuje nebo byla přesunuta.
         </p>
         <Link href="/">
-          <Button className="bg-gradient-to-r from-primary to-purple-600">
+          <Button className="bg-primary hover:bg-primary/90">
             <Home className="w-4 h-4 mr-2" />
             Zpět na domovskou stránku
           </Button>

@@ -199,19 +199,74 @@ class EventDashboardService
         $required = [];
 
         if (!empty($storedRequirements)) {
+            // First pass: determine the BEST category for each assignment (each assignment counted ONCE)
+            $assignmentCategoryMap = []; // assignmentId => category
+            foreach ($assignments as $assignment) {
+                $assignmentId = $assignment->getId();
+                $roleId = $assignment->getStaffRoleId();
+                $staffMember = $assignment->getStaffMemberId()
+                    ? $this->staffMemberRepo->find($assignment->getStaffMemberId())
+                    : null;
+                $position = $staffMember?->getPosition();
+
+                // Find the best matching category for this assignment
+                // Priority: 1) role match with requirement's roleId, 2) role name match, 3) position match
+                $bestCategory = null;
+
+                foreach ($storedRequirements as $req) {
+                    $cat = $req->getCategory();
+                    $catRoleId = $req->getStaffRoleId();
+
+                    // Exact role ID match (highest priority)
+                    if ($roleId && $catRoleId && $roleId === $catRoleId) {
+                        $bestCategory = $cat;
+                        break; // exact match, stop looking
+                    }
+                }
+
+                if (!$bestCategory) {
+                    // Try role name match
+                    foreach ($storedRequirements as $req) {
+                        $cat = $req->getCategory();
+                        if ($roleId && $this->isRoleInCategory($roleId, $cat)) {
+                            $bestCategory = $cat;
+                            break;
+                        }
+                    }
+                }
+
+                if (!$bestCategory) {
+                    // Fall back to position match
+                    foreach ($storedRequirements as $req) {
+                        $cat = $req->getCategory();
+                        if ($position && $this->isPositionInCategory($position, $cat)) {
+                            $bestCategory = $cat;
+                            break;
+                        }
+                    }
+                }
+
+                if ($bestCategory) {
+                    $assignmentCategoryMap[$assignmentId] = $bestCategory;
+                }
+            }
+
+            // Second pass: build requirement data using the deduplicated mapping
             foreach ($storedRequirements as $req) {
                 $category = $req->getCategory();
                 $requiredCount = $req->getRequiredCount();
                 $categoryRoleId = $req->getStaffRoleId();
 
-                // Count assigned staff in this category
                 $assigned = 0;
                 $confirmed = 0;
                 $present = 0;
+                $assignmentIds = [];
+
                 foreach ($assignments as $assignment) {
-                    $roleId = $assignment->getStaffRoleId();
-                    if ($roleId && $this->isRoleInCategory($roleId, $category)) {
+                    $assignmentId = $assignment->getId();
+                    if (($assignmentCategoryMap[$assignmentId] ?? null) === $category) {
                         $assigned++;
+                        $assignmentIds[] = $assignmentId;
                         $status = $assignment->getAttendanceStatus();
                         if ($status === 'CONFIRMED') {
                             $confirmed++;
@@ -234,6 +289,7 @@ class EventDashboardService
                     'shortfall' => max(0, $requiredCount - $assigned),
                     'operationalShortfall' => max(0, $requiredCount - $present),
                     'isManualOverride' => $req->isManualOverride(),
+                    'assignmentIds' => $assignmentIds,
                 ];
             }
         } else {
@@ -308,28 +364,84 @@ class EventDashboardService
         $reservationsWithTransfer = 0;
 
         foreach ($reservations as $reservation) {
-            $transferCount = $reservation->getTransferCount() ?? 0;
-            $hasTransfer = $transferCount > 0;
-
-            if ($hasTransfer) {
+            // Use new ReservationTransfer entities if available, fallback to legacy fields
+            $transfers = $reservation->getTransfers();
+            if ($transfers && $transfers->count() > 0) {
                 $reservationsWithTransfer++;
+                $resPassengers = 0;
+                $transferDetails = [];
+                foreach ($transfers as $transfer) {
+                    $resPassengers += $transfer->getPersonCount();
+                    $transferDetails[] = [
+                        'address' => $transfer->getAddress(),
+                        'personCount' => $transfer->getPersonCount(),
+                        'transportCompanyId' => $transfer->getTransportCompany()?->getId(),
+                        'transportCompanyName' => $transfer->getTransportCompany()?->getName(),
+                        'transportVehicleId' => $transfer->getTransportVehicle()?->getId(),
+                        'transportVehiclePlate' => $transfer->getTransportVehicle()?->getLicensePlate(),
+                        'transportDriverId' => $transfer->getTransportDriver()?->getId(),
+                        'transportDriverName' => $transfer->getTransportDriver()?->getFullName(),
+                    ];
+                }
                 $taxiReservations[] = [
                     'reservationId' => $reservation->getId(),
                     'contactName' => $reservation->getContactName(),
                     'contactPhone' => $reservation->getContactPhone(),
                     'contactEmail' => $reservation->getContactEmail(),
-                    'pickupAddress' => $reservation->getTransferAddress(),
-                    'passengerCount' => $transferCount,
+                    'pickupAddress' => $transfers->first() ? $transfers->first()->getAddress() : null,
+                    'passengerCount' => $resPassengers,
                     'hasTaxi' => true,
+                    'transfers' => $transferDetails,
                 ];
-                $totalPassengers += $transferCount;
+                $totalPassengers += $resPassengers;
+            } else {
+                // Legacy fallback
+                $transferCount = $reservation->getTransferCount() ?? 0;
+                if ($transferCount > 0) {
+                    $reservationsWithTransfer++;
+                    $taxiReservations[] = [
+                        'reservationId' => $reservation->getId(),
+                        'contactName' => $reservation->getContactName(),
+                        'contactPhone' => $reservation->getContactPhone(),
+                        'contactEmail' => $reservation->getContactEmail(),
+                        'pickupAddress' => $reservation->getTransferAddress(),
+                        'passengerCount' => $transferCount,
+                        'hasTaxi' => true,
+                        'transfers' => [],
+                    ];
+                    $totalPassengers += $transferCount;
+                }
             }
+        }
+
+        // Also include EventTransport assignments
+        $eventTransportAssignments = [];
+        foreach ($event->getTransportAssignments() as $et) {
+            $eventTransportAssignments[] = [
+                'id' => $et->getId(),
+                'companyId' => $et->getCompany()?->getId(),
+                'companyName' => $et->getCompany()?->getName(),
+                'vehicleId' => $et->getVehicle()?->getId(),
+                'vehiclePlate' => $et->getVehicle()?->getLicensePlate(),
+                'driverId' => $et->getDriver()?->getId(),
+                'driverName' => $et->getDriver()?->getFullName(),
+                'transportType' => $et->getTransportType(),
+                'scheduledTime' => $et->getScheduledTime()?->format('H:i'),
+                'pickupLocation' => $et->getPickupLocation(),
+                'dropoffLocation' => $et->getDropoffLocation(),
+                'passengerCount' => $et->getPassengerCount(),
+                'price' => $et->getPrice(),
+                'paymentStatus' => $et->getPaymentStatus(),
+                'invoiceNumber' => $et->getInvoiceNumber(),
+                'notes' => $et->getNotes(),
+            ];
         }
 
         return [
             'reservationsWithTaxi' => $taxiReservations,
             'totalPassengers' => $totalPassengers,
             'totalReservations' => $reservationsWithTransfer,
+            'eventTransports' => $eventTransportAssignments,
         ];
     }
 
@@ -406,9 +518,10 @@ class EventDashboardService
                     ];
                 }
                 $expensesByCategory[$category]['items'][] = [
+                    'id' => $m->getId(),
                     'description' => $m->getDescription(),
                     'amount' => $amount,
-                    'paidTo' => $m->getDescription(), // Use description as paidTo for now
+                    'paidTo' => $m->getDescription(),
                     'paymentMethod' => $m->getPaymentMethod(),
                     'createdAt' => $m->getCreatedAt()->format('Y-m-d H:i:s'),
                 ];
@@ -424,6 +537,7 @@ class EventDashboardService
                     ];
                 }
                 $incomeByCategory[$category]['items'][] = [
+                    'id' => $m->getId(),
                     'description' => $m->getDescription(),
                     'amount' => $amount,
                     'source' => $m->getDescription(),
@@ -548,23 +662,30 @@ class EventDashboardService
             }
         }
 
-        // Get all invoices linked to the event via EventInvoice
-        $eventInvoices = $event->getEventInvoices();
+        // Get all invoices linked to the event:
+        // 1) Via EventInvoice entity
+        // 2) Via reservations linked to the event
         $allInvoices = [];
+        $seenInvoiceIds = [];
+
+        // From EventInvoice
+        $eventInvoices = $event->getEventInvoices();
         foreach ($eventInvoices as $ei) {
             $invoice = $ei->getInvoice();
-            if ($invoice) {
-                $allInvoices[] = [
-                    'id' => $invoice->getId(),
-                    'invoiceNumber' => $invoice->getInvoiceNumber(),
-                    'invoiceType' => $invoice->getInvoiceType(),
-                    'status' => $invoice->getStatus(),
-                    'total' => (float) $invoice->getTotal(),
-                    'customerName' => $invoice->getCustomerName(),
-                    'reservationId' => $invoice->getReservation()?->getId(),
-                    'dueDate' => $invoice->getDueDate()?->format('Y-m-d'),
-                    'paidAt' => $invoice->getPaidAt()?->format('Y-m-d'),
-                ];
+            if ($invoice && !in_array($invoice->getId(), $seenInvoiceIds)) {
+                $seenInvoiceIds[] = $invoice->getId();
+                $allInvoices[] = $this->serializeInvoiceSummary($invoice);
+            }
+        }
+
+        // From reservations (may have invoices not linked via EventInvoice)
+        foreach ($reservationIds as $resId) {
+            $resInvoices = $this->invoiceRepo->findBy(['reservation' => $resId]);
+            foreach ($resInvoices as $invoice) {
+                if (!in_array($invoice->getId(), $seenInvoiceIds)) {
+                    $seenInvoiceIds[] = $invoice->getId();
+                    $allInvoices[] = $this->serializeInvoiceSummary($invoice);
+                }
             }
         }
 
@@ -836,6 +957,42 @@ class EventDashboardService
         return strtolower(preg_replace('/_[A-Z_]+$/', '', $category));
     }
 
+    /**
+     * Check if a staff member's position (enum value) belongs to a category.
+     * Uses direct mapping from position codes to categories.
+     */
+    private function isPositionInCategory(string $position, string $category): bool
+    {
+        $normalizedCategory = $this->normalizeCategory($category);
+        $positionUpper = strtoupper($position);
+
+        $positionToCategory = [
+            'WAITER' => 'waiter',
+            'HEAD_WAITER' => 'waiter',
+            'CHEF' => 'chef',
+            'HEAD_CHEF' => 'chef',
+            'SOUS_CHEF' => 'chef',
+            'PREP_COOK' => 'chef',
+            'BARTENDER' => 'bartender',
+            'HOSTESS' => 'hostess',
+            'COORDINATOR' => 'coordinator',
+            'SECURITY' => 'security',
+            'MUSICIAN' => 'musician',
+            'BAND' => 'musician',
+            'DANCER' => 'dancer',
+            'DANCE_GROUP' => 'dancer',
+            'MODERATOR' => 'coordinator',
+            'PHOTOGRAPHER' => 'photographer',
+            'SOUND_TECH' => 'sound_tech',
+            'CLEANER' => 'cleaner',
+            'DRIVER' => 'driver',
+            'MANAGER' => 'manager',
+        ];
+
+        $mappedCategory = $positionToCategory[$positionUpper] ?? null;
+        return $mappedCategory === $normalizedCategory;
+    }
+
     private function isRoleInCategory(int $roleId, string $category): bool
     {
         $role = $this->staffRoleRepo->find($roleId);
@@ -956,6 +1113,22 @@ class EventDashboardService
         return $count ?: 1;
     }
 
+    private function serializeInvoiceSummary(\App\Entity\Invoice $invoice): array
+    {
+        return [
+            'id' => $invoice->getId(),
+            'invoiceNumber' => $invoice->getInvoiceNumber(),
+            'invoiceType' => $invoice->getInvoiceType(),
+            'status' => $invoice->getStatus(),
+            'total' => (float) $invoice->getTotal(),
+            'customerName' => $invoice->getCustomerName(),
+            'reservationId' => $invoice->getReservation()?->getId(),
+            'dueDate' => $invoice->getDueDate()?->format('Y-m-d'),
+            'paidAt' => $invoice->getPaidAt()?->format('Y-m-d'),
+            'originalInvoiceId' => $invoice->getOriginalInvoiceId(),
+        ];
+    }
+
     private function getExpenseCategoryLabel(string $category): string
     {
         $labels = [
@@ -1055,10 +1228,24 @@ class EventDashboardService
             $assigned = 0;
             $confirmed = 0;
             $present = 0;
+            $assignmentIds = [];
             foreach ($assignments as $assignment) {
                 $roleId = $assignment->getStaffRoleId();
+                $staffMember = $assignment->getStaffMemberId()
+                    ? $this->staffMemberRepo->find($assignment->getStaffMemberId())
+                    : null;
+                $position = $staffMember?->getPosition();
+
+                $matches = false;
                 if ($roleId && $this->isRoleInCategory($roleId, $category)) {
+                    $matches = true;
+                } elseif ($position && $this->isPositionInCategory($position, $category)) {
+                    $matches = true;
+                }
+
+                if ($matches) {
                     $assigned++;
+                    $assignmentIds[] = $assignment->getId();
                     $status = $assignment->getAttendanceStatus();
                     if ($status === 'CONFIRMED') {
                         $confirmed++;
@@ -1081,6 +1268,7 @@ class EventDashboardService
                 'shortfall' => max(0, $requiredCount - $assigned),
                 'operationalShortfall' => max(0, $requiredCount - $present),
                 'isManualOverride' => false,
+                'assignmentIds' => $assignmentIds,
             ];
         }
 

@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Konva canvas overflow protection */
+.konvajs-content {
+  overflow: hidden !important;
+}
+
 /* LIGHT MODE - Čistý bílý design podle návrhu */
 :root {
   --button-outline: rgba(0,0,0, .10);
@@ -32,15 +37,15 @@
 
   --sidebar-border: 0 0% 90%;
 
-  --sidebar-primary: 270 70% 60%;
+  --sidebar-primary: 1 83% 47%;
 
   --sidebar-primary-foreground: 0 0% 100%;
 
-  --sidebar-accent: 270 30% 95%;
+  --sidebar-accent: 142 30% 95%;
 
   --sidebar-accent-foreground: 0 0% 20%;
 
-  --sidebar-ring: 270 70% 60%;
+  --sidebar-ring: 1 83% 47%;
 
   --popover: 0 0% 100%;
 
@@ -48,7 +53,7 @@
 
   --popover-border: 0 0% 90%;
 
-  --primary: 270 70% 60%;
+  --primary: 1 83% 47%;
 
   --primary-foreground: 0 0% 100%;
 
@@ -60,7 +65,7 @@
 
   --muted-foreground: 0 0% 45%;
 
-  --accent: 270 30% 95%;
+  --accent: 142 30% 95%;
 
   --accent-foreground: 0 0% 15%;
 
@@ -69,7 +74,7 @@
   --destructive-foreground: 0 0% 100%;
 
   --input: 0 0% 90%;
-  --ring: 270 70% 60%;
+  --ring: 1 83% 47%;
   --chart-1: 203.8863 88.2845% 53.1373%;
   --chart-2: 159.7826 100% 36.0784%;
   --chart-3: 42.0290 92.8251% 56.2745%;
@@ -150,15 +155,15 @@
 
   --sidebar-border: 20 14% 15%;
 
-  --sidebar-primary: 9 75% 61%;
+  --sidebar-primary: 1 83% 47%;
 
   --sidebar-primary-foreground: 0 0% 100%;
 
-  --sidebar-accent: 25 45% 20%;
+  --sidebar-accent: 142 40% 20%;
 
   --sidebar-accent-foreground: 45 25% 85%;
 
-  --sidebar-ring: 9 75% 61%;
+  --sidebar-ring: 1 83% 47%;
 
   --popover: 20 14% 4%;
 
@@ -166,7 +171,7 @@
 
   --popover-border: 0 0% 25%;
 
-  --primary: 9 75% 61%;
+  --primary: 1 83% 47%;
 
   --primary-foreground: 0 0% 100%;
 
@@ -178,7 +183,7 @@
 
   --muted-foreground: 45 15% 46%;
 
-  --accent: 25 45% 20%;
+  --accent: 142 40% 20%;
 
   --accent-foreground: 45 25% 85%;
 
@@ -187,7 +192,7 @@
   --destructive-foreground: 0 0% 100%;
 
   --input: 20 14% 18%;
-  --ring: 9 75% 61%;
+  --ring: 1 83% 47%;
   --chart-1: 203.8863 88.2845% 53.1373%;
   --chart-2: 159.7826 100% 36.0784%;
   --chart-3: 42.0290 92.8251% 56.2745%;

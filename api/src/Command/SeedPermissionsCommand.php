@@ -108,6 +108,14 @@ class SeedPermissionsCommand extends Command
             'description' => 'Pokladna',
             'actions' => ['read', 'create', 'update', 'delete', 'close', 'reopen'],
         ],
+        'transport' => [
+            'description' => 'Doprava',
+            'actions' => ['read', 'create', 'update', 'delete'],
+        ],
+        'drinks' => [
+            'description' => 'Nápoje',
+            'actions' => ['read', 'create', 'update', 'delete'],
+        ],
         'disabled_dates' => [
             'description' => 'Blokované termíny',
             'actions' => ['read', 'create', 'update', 'delete'],
@@ -152,6 +160,8 @@ class SeedPermissionsCommand extends Command
                 'vouchers.*',
                 'commissions.*',
                 'cashbox.*',
+                'transport.*',
+                'drinks.*',
                 'disabled_dates.*',
                 'reservation_types.*',
             ],
@@ -182,6 +192,8 @@ class SeedPermissionsCommand extends Command
                 'vouchers.*',
                 'commissions.*',
                 'cashbox.*',
+                'transport.*',
+                'drinks.*',
                 'disabled_dates.*',
                 'reservation_types.*',
             ],

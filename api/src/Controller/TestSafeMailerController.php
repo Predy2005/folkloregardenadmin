@@ -24,6 +24,10 @@ class TestSafeMailerController extends AbstractController
     #[Route('/api/test/safe-mailer', name: 'test_safe_mailer', methods: ['GET', 'POST'])]
     public function testSafeMailer(Request $request): JsonResponse
     {
+        if ($this->appEnv === 'prod') {
+            return new JsonResponse(['error' => 'Test endpoints are disabled in production'], JsonResponse::HTTP_FORBIDDEN);
+        }
+
         // Defaultni testovaci prijemce - simuluje skutecneho zakaznika
         $testRecipient = $request->get('email', 'zakaznik@example.com');
         $testCc = $request->get('cc', 'kopie@example.com');
@@ -64,6 +68,10 @@ class TestSafeMailerController extends AbstractController
     #[Route('/api/test/safe-mailer/status', name: 'test_safe_mailer_status', methods: ['GET'])]
     public function status(): JsonResponse
     {
+        if ($this->appEnv === 'prod') {
+            return new JsonResponse(['error' => 'Test endpoints are disabled in production'], JsonResponse::HTTP_FORBIDDEN);
+        }
+
         return new JsonResponse([
             'environment' => $this->appEnv,
             'is_dev' => $this->safeMailer->isDevEnvironment(),

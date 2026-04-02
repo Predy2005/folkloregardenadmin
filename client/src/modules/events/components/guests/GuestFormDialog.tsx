@@ -8,6 +8,7 @@ import { queryClient } from "@/shared/lib/queryClient";
 import { api } from "@/shared/lib/api";
 import type { EventGuest } from "@shared/types";
 import { GUEST_TYPE_LABELS } from "./constants";
+import { NationalityInput } from "@/shared/components/NationalityInput";
 import { Button } from "@/shared/components/ui/button";
 import {
   Form,
@@ -216,7 +217,10 @@ export default function GuestFormDialog({
                   <FormItem>
                     <FormLabel>Národnost</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <NationalityInput
+                        value={field.value ?? ""}
+                        onChange={field.onChange}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

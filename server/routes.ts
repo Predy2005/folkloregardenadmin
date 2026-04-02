@@ -190,7 +190,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/events/:eventId/menu-items", async (req: Request, res: Response) => {
     try {
       const eventId = parseInt(req.params.eventId);
-      const menuItems = await storage.getEventMenuItems(eventId);
+      const menuItems = await storage.getEventMenus(eventId);
       res.json(menuItems);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch event menu items" });
@@ -200,7 +200,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/events/:eventId/menu-items", async (req: Request, res: Response) => {
     try {
       const eventId = parseInt(req.params.eventId);
-      const menuItem = await storage.createEventMenuItem({ ...req.body, eventId });
+      const menuItem = await storage.createEventMenu({ ...req.body, eventId });
       res.status(201).json(menuItem);
     } catch (error) {
       res.status(500).json({ message: "Failed to create event menu item" });
@@ -210,7 +210,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/events/:eventId/menu-items/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
-      const menuItem = await storage.updateEventMenuItem(id, req.body);
+      const menuItem = await storage.updateEventMenu(id, req.body);
       if (!menuItem) {
         return res.status(404).json({ message: "Menu item not found" });
       }
@@ -223,7 +223,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/events/:eventId/menu-items/:id", async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
-      const deleted = await storage.deleteEventMenuItem(id);
+      const deleted = await storage.deleteEventMenu(id);
       if (!deleted) {
         return res.status(404).json({ message: "Menu item not found" });
       }

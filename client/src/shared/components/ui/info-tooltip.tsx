@@ -42,17 +42,27 @@ export function InfoTooltip({
     }, 200);
   };
 
+  const hideTimeoutRef = React.useRef<NodeJS.Timeout>();
+
   const handleMouseLeave = () => {
     setIsHovering(false);
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
-    // Small delay before hiding
-    setTimeout(() => {
-      if (!isHovering) {
-        setOpen(false);
-      }
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+    }
+    // Small delay before hiding — use ref to check latest hover state
+    hideTimeoutRef.current = setTimeout(() => {
+      setOpen(false);
     }, 100);
+  };
+
+  const handleContentMouseEnter = () => {
+    setIsHovering(true);
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+    }
   };
 
   // Cleanup on unmount
@@ -60,6 +70,9 @@ export function InfoTooltip({
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
+      }
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
       }
     };
   }, []);
@@ -84,7 +97,7 @@ export function InfoTooltip({
       <PopoverContent
         side={side}
         className="max-w-[280px] text-sm p-3"
-        onMouseEnter={() => setIsHovering(true)}
+        onMouseEnter={handleContentMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
         {content}

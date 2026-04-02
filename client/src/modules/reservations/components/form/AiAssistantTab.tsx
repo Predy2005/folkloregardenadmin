@@ -27,7 +27,7 @@ export function AiAssistantTab({
     <div className="space-y-4">
       {!aiConfigured && (
         <div className="p-3 rounded-md bg-yellow-100 text-yellow-900 text-sm">
-          AI není nakonfigurováno. Nastavte proměnnou VITE_AI_BASE_URL v klient/.env a znovu spusťte aplikaci.
+          AI není nakonfigurováno. Žádné AI servery nejsou dostupné.
         </div>
       )}
 

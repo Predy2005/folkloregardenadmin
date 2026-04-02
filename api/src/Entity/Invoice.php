@@ -142,6 +142,14 @@ class Invoice
     #[ORM\JoinColumn(nullable: true, onDelete: 'SET NULL')]
     private ?Reservation $reservation = null;
 
+    // Reference na původní fakturu (pro dobropisy)
+    #[ORM\Column(name: 'original_invoice_id', type: Types::INTEGER, nullable: true)]
+    private ?int $originalInvoiceId = null;
+
+    // Poslední uživatel, který fakturu upravil
+    #[ORM\Column(name: 'updated_by', type: Types::INTEGER, nullable: true)]
+    private ?int $updatedBy = null;
+
     // Vytvořil
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(nullable: true, onDelete: 'SET NULL')]
@@ -637,5 +645,32 @@ class Invoice
     public function isFinal(): bool
     {
         return $this->invoiceType === 'FINAL';
+    }
+
+    public function isCreditNote(): bool
+    {
+        return $this->invoiceType === 'CREDIT_NOTE';
+    }
+
+    public function getOriginalInvoiceId(): ?int
+    {
+        return $this->originalInvoiceId;
+    }
+
+    public function setOriginalInvoiceId(?int $originalInvoiceId): static
+    {
+        $this->originalInvoiceId = $originalInvoiceId;
+        return $this;
+    }
+
+    public function getUpdatedBy(): ?int
+    {
+        return $this->updatedBy;
+    }
+
+    public function setUpdatedBy(?int $updatedBy): static
+    {
+        $this->updatedBy = $updatedBy;
+        return $this;
     }
 }

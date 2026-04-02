@@ -93,30 +93,36 @@ class InvoiceService
             $invoice->setCustomerZipcode($reservation->getInvoiceZipcode());
         }
 
-        // Položky faktury - z osob v rezervaci
-        $items = [];
+        // Položky faktury - z osob v rezervaci, seskupené podle typu a ceny
+        $grouped = [];
         $subtotal = 0;
+        $dateStr = $reservation->getDate()?->format('d.m.Y') ?? '';
 
         foreach ($reservation->getPersons() as $person) {
             $price = (float) $person->getPrice();
             $subtotal += $price;
 
-            $items[] = [
-                'description' => sprintf(
-                    'Rezervace na %s - %s (%s)',
-                    $reservation->getDate()?->format('d.m.Y'),
-                    $this->getPersonTypeLabel($person->getType()),
-                    $person->getMenu() ?? 'standardní menu'
-                ),
-                'quantity' => 1,
-                'unitPrice' => $price,
-                'total' => $price,
-            ];
+            $typeLabel = $this->getPersonTypeLabel($person->getType());
+            $menu = $person->getMenu() ?? 'standardní menu';
+            $key = $typeLabel . '|' . $menu . '|' . number_format($price, 2, '.', '');
+
+            if (!isset($grouped[$key])) {
+                $grouped[$key] = [
+                    'description' => sprintf('%s - %s (%s)', $dateStr, $typeLabel, $menu),
+                    'quantity' => 0,
+                    'unitPrice' => $price,
+                    'total' => 0,
+                ];
+            }
+            $grouped[$key]['quantity']++;
+            $grouped[$key]['total'] += $price;
         }
+
+        $items = array_values($grouped);
 
         // Pokud je transfer
         if ($reservation->isTransferSelected() && $reservation->getTransferCount()) {
-            $transferPrice = $reservation->getTransferCount() * 200; // Předpokládaná cena transferu
+            $transferPrice = $reservation->getTransferCount() * 200;
             $subtotal += $transferPrice;
 
             $items[] = [
@@ -206,8 +212,11 @@ class InvoiceService
         $invoice->setInvoiceNumber($invoiceNumber);
 
         // Data z formuláře
-        $invoice->setIssueDate(new \DateTime($data['issueDate'] ?? 'now'));
-        $invoice->setTaxableDate(new \DateTime($data['taxableDate'] ?? 'now'));
+        $issueDate = new \DateTime($data['issueDate'] ?? 'now');
+        $invoice->setIssueDate($issueDate);
+        // DUZP: pokud není zadán, použij datum vystavení
+        $taxableDate = isset($data['taxableDate']) ? new \DateTime($data['taxableDate']) : clone $issueDate;
+        $invoice->setTaxableDate($taxableDate);
         $invoice->setDueDate(new \DateTime($data['dueDate'] ?? '+' . $settings->getInvoiceDueDays() . ' days'));
         $invoice->setVariableSymbol($data['variableSymbol'] ?? '');
         $invoice->setStatus($data['status'] ?? 'DRAFT');
@@ -240,11 +249,11 @@ class InvoiceService
 
         // Položky a částky
         $invoice->setItems($data['items'] ?? []);
-        $invoice->setSubtotal($data['subtotal'] ?? '0.00');
         $invoice->setVatRate((int) ($data['vatRate'] ?? $settings->getDefaultVatRate()));
-        $invoice->setVatAmount($data['vatAmount'] ?? '0.00');
-        $invoice->setTotal($data['total'] ?? '0.00');
         $invoice->setCurrency($data['currency'] ?? 'CZK');
+
+        // Server-side přepočet celkových částek
+        $this->recalculateTotals($invoice);
 
         // Generuj QR kód pro platbu
         $qrData = $this->generateQrPaymentData($invoice, $settings);
@@ -264,8 +273,24 @@ class InvoiceService
     /**
      * Aktualizuje fakturu
      */
-    public function update(Invoice $invoice, array $data): Invoice
+    public function update(Invoice $invoice, array $data, ?User $updatedBy = null): Invoice
     {
+        // Kontrola immutability dle stavu faktury
+        if ($invoice->getStatus() === 'PAID') {
+            throw new \RuntimeException('Zaplacená faktura nelze upravovat.');
+        }
+        if ($invoice->getStatus() === 'SENT') {
+            // Only allow changing note and status
+            $allowedFields = ['note', 'status'];
+            $restrictedChanges = array_diff(array_keys($data), $allowedFields);
+            if (!empty($restrictedChanges)) {
+                throw new \RuntimeException('Odeslaná faktura - lze měnit pouze poznámku.');
+            }
+        }
+        if ($invoice->getStatus() === 'CANCELLED') {
+            throw new \RuntimeException('Stornovaná faktura nelze upravovat.');
+        }
+
         // Data z formuláře
         if (isset($data['issueDate'])) {
             $invoice->setIssueDate(new \DateTime($data['issueDate']));
@@ -319,20 +344,16 @@ class InvoiceService
         if (isset($data['items'])) {
             $invoice->setItems($data['items']);
         }
-        if (isset($data['subtotal'])) {
-            $invoice->setSubtotal($data['subtotal']);
-        }
         if (isset($data['vatRate'])) {
             $invoice->setVatRate((int) $data['vatRate']);
         }
-        if (isset($data['vatAmount'])) {
-            $invoice->setVatAmount($data['vatAmount']);
-        }
-        if (isset($data['total'])) {
-            $invoice->setTotal($data['total']);
-        }
         if (isset($data['currency'])) {
             $invoice->setCurrency($data['currency']);
+        }
+
+        // Server-side přepočet celkových částek pokud se změnily položky nebo DPH
+        if (isset($data['items']) || isset($data['vatRate'])) {
+            $this->recalculateTotals($invoice);
         }
 
         // Aktualizuj QR kód
@@ -341,6 +362,12 @@ class InvoiceService
         $invoice->setQrPaymentData($qrData);
 
         $invoice->setUpdatedAt(new \DateTime());
+
+        // Audit: zaznamenej kdo provedl změnu
+        if ($updatedBy) {
+            $invoice->setUpdatedBy($updatedBy->getId());
+        }
+
         $this->entityManager->flush();
 
         return $invoice;
@@ -349,10 +376,13 @@ class InvoiceService
     /**
      * Označí fakturu jako odeslanou
      */
-    public function markAsSent(Invoice $invoice): Invoice
+    public function markAsSent(Invoice $invoice, ?User $updatedBy = null): Invoice
     {
         $invoice->setStatus('SENT');
         $invoice->setUpdatedAt(new \DateTime());
+        if ($updatedBy) {
+            $invoice->setUpdatedBy($updatedBy->getId());
+        }
         $this->entityManager->flush();
 
         return $invoice;
@@ -361,11 +391,14 @@ class InvoiceService
     /**
      * Označí fakturu jako zaplacenou a aktualizuje rezervaci
      */
-    public function markAsPaid(Invoice $invoice): Invoice
+    public function markAsPaid(Invoice $invoice, ?User $updatedBy = null): Invoice
     {
         $invoice->setStatus('PAID');
         $invoice->setPaidAt(new \DateTime());
         $invoice->setUpdatedAt(new \DateTime());
+        if ($updatedBy) {
+            $invoice->setUpdatedBy($updatedBy->getId());
+        }
 
         // Aktualizuj rezervaci pokud existuje
         $reservation = $invoice->getReservation();
@@ -393,10 +426,13 @@ class InvoiceService
     /**
      * Stornuje fakturu
      */
-    public function cancel(Invoice $invoice): Invoice
+    public function cancel(Invoice $invoice, ?User $updatedBy = null): Invoice
     {
         $invoice->setStatus('CANCELLED');
         $invoice->setUpdatedAt(new \DateTime());
+        if ($updatedBy) {
+            $invoice->setUpdatedBy($updatedBy->getId());
+        }
         $this->entityManager->flush();
 
         return $invoice;
@@ -577,7 +613,7 @@ class InvoiceService
         $invoiceNumber = $settings->generateNextDepositInvoiceNumber();
         $invoice->setInvoiceNumber($invoiceNumber);
 
-        // Typ faktury
+        // Typ faktury - DEPOSIT je proforma (výzva k platbě), není daňový doklad
         $invoice->setInvoiceType('DEPOSIT');
         $invoice->setDepositPercent(number_format($percent, 2, '.', ''));
 
@@ -618,29 +654,32 @@ class InvoiceService
 
         $invoice->setItems($items);
 
-        // Výpočet DPH
+        // Zálohová faktura (proforma) - zobrazí celkovou částku k úhradě
+        // DPH se uvádí informativně, ale není to daňový doklad
+        // Daňový doklad k přijaté záloze se vystaví až po zaplacení
         $vatRate = $settings->getDefaultVatRate();
         if ($settings->isVatPayer()) {
-            $vatAmount = $depositAmount * ($vatRate / 100);
-            $total = $depositAmount + $vatAmount;
+            $vatAmount = bcmul((string) $depositAmount, bcdiv((string) $vatRate, '100', 6), 2);
+            $total = bcadd((string) $depositAmount, $vatAmount, 2);
         } else {
-            $vatAmount = 0;
-            $total = $depositAmount;
+            $vatAmount = '0.00';
+            $total = number_format($depositAmount, 2, '.', '');
         }
 
         $invoice->setSubtotal(number_format($depositAmount, 2, '.', ''));
         $invoice->setVatRate($vatRate);
-        $invoice->setVatAmount(number_format($vatAmount, 2, '.', ''));
-        $invoice->setTotal(number_format($total, 2, '.', ''));
+        $invoice->setVatAmount($vatAmount);
+        $invoice->setTotal($total);
         $invoice->setCurrency('CZK');
 
         // Generuj QR kód pro platbu
         $qrData = $this->generateQrPaymentData($invoice, $settings);
         $invoice->setQrPaymentData($qrData);
 
-        // Poznámka
+        // Poznámka - důležité upozornění dle zákona
         $invoice->setNote(sprintf(
-            'Zálohová faktura - %d%% z celkové ceny %s Kč',
+            "Zálohová faktura (proforma) - %d%% z celkové ceny %s Kč.\n" .
+            "Toto není daňový doklad. Daňový doklad k přijaté platbě bude vystaven po úhradě zálohy dle §28 odst. 9 zákona o DPH.",
             (int) $percent,
             number_format($totalPrice, 2, ',', ' ')
         ));
@@ -682,18 +721,26 @@ class InvoiceService
             $reservation->setTotalPrice(number_format($totalPrice, 2, '.', ''));
         }
 
-        // Zjisti již zaplacené zálohy
-        $paidDeposits = 0;
+        // Zjisti již zaplacené zálohy - odečítáme ZÁKLAD (subtotal), ne total s DPH
+        // Protože DPH ze zálohy už bylo odvedeno v daňovém dokladu k záloze
+        $paidDepositsSubtotal = '0.00';
+        $paidDepositsVat = '0.00';
+        $paidDepositsTotal = '0.00';
+        $depositInvoiceRefs = [];
         if ($deductDeposit) {
             foreach ($reservation->getInvoices() as $existingInvoice) {
                 if ($existingInvoice->getInvoiceType() === 'DEPOSIT' && $existingInvoice->getStatus() === 'PAID') {
-                    $paidDeposits += (float) $existingInvoice->getTotal();
+                    $paidDepositsSubtotal = bcadd($paidDepositsSubtotal, $existingInvoice->getSubtotal(), 2);
+                    $paidDepositsVat = bcadd($paidDepositsVat, $existingInvoice->getVatAmount(), 2);
+                    $paidDepositsTotal = bcadd($paidDepositsTotal, $existingInvoice->getTotal(), 2);
+                    $depositInvoiceRefs[] = sprintf(
+                        'DD č. %s ze dne %s',
+                        $existingInvoice->getInvoiceNumber(),
+                        $existingInvoice->getIssueDate()->format('d.m.Y')
+                    );
                 }
             }
         }
-
-        // Částka k doplacení
-        $remainingAmount = max(0, $totalPrice - $paidDeposits);
 
         // Vytvoř fakturu
         $invoice = new Invoice();
@@ -725,27 +772,33 @@ class InvoiceService
             $items = $customItems;
             $subtotal = array_reduce($items, fn($sum, $item) => $sum + (float)($item['total'] ?? 0), 0);
         } else {
-            // Standardní položky z rezervace
-            $items = [];
+            // Standardní položky z rezervace - seskupené podle typu a ceny
+            $grouped = [];
             $subtotal = 0;
+            $dateStr = $reservation->getDate()?->format('d.m.Y') ?? '';
 
-            // Položky z osob v rezervaci
             foreach ($reservation->getPersons() as $person) {
                 $price = (float) $person->getPrice();
                 $subtotal += $price;
 
-                $items[] = [
-                    'description' => sprintf(
-                        'Rezervace na %s - %s (%s)',
-                        $reservation->getDate()?->format('d.m.Y'),
-                        $this->getPersonTypeLabel($person->getType()),
-                        $person->getMenu() ?? 'standardní menu'
-                    ),
-                    'quantity' => 1,
-                    'unitPrice' => $price,
-                    'total' => $price,
-                ];
+                $typeLabel = $this->getPersonTypeLabel($person->getType());
+                $menu = $person->getMenu() ?? 'standardní menu';
+                // Klíč pro seskupení: typ + menu + cena
+                $key = $typeLabel . '|' . $menu . '|' . number_format($price, 2, '.', '');
+
+                if (!isset($grouped[$key])) {
+                    $grouped[$key] = [
+                        'description' => sprintf('%s - %s (%s)', $dateStr, $typeLabel, $menu),
+                        'quantity' => 0,
+                        'unitPrice' => $price,
+                        'total' => 0,
+                    ];
+                }
+                $grouped[$key]['quantity']++;
+                $grouped[$key]['total'] += $price;
             }
+
+            $items = array_values($grouped);
 
             // Transfer
             if ($reservation->isTransferSelected() && $reservation->getTransferCount()) {
@@ -761,52 +814,88 @@ class InvoiceService
             }
 
             // Odečti zálohy pokud byly zaplaceny
-            if ($paidDeposits > 0) {
+            // Dle §36 odst. 12 zákona o DPH: odpočet zálohy = základ zvlášť, DPH zvlášť
+            if (bccomp($paidDepositsSubtotal, '0', 2) > 0) {
+                $depositDesc = 'Odpočet uhrazené zálohy';
+                if (!empty($depositInvoiceRefs)) {
+                    $depositDesc .= ' (dle ' . implode(', ', $depositInvoiceRefs) . ')';
+                }
                 $items[] = [
-                    'description' => 'Uhrazená záloha',
+                    'description' => $depositDesc,
                     'quantity' => 1,
-                    'unitPrice' => -$paidDeposits,
-                    'total' => -$paidDeposits,
+                    'unitPrice' => -1 * (float) $paidDepositsSubtotal,
+                    'total' => -1 * (float) $paidDepositsSubtotal,
                 ];
-                $subtotal -= $paidDeposits;
+                $subtotal -= (float) $paidDepositsSubtotal;
             }
         }
 
         $invoice->setItems($items);
 
-        // Výpočet DPH
+        // Výpočet DPH na vyúčtovací faktuře
+        // Základ = plná cena služeb MINUS záloha (základ)
+        // DPH = DPH z plné ceny MINUS DPH ze zálohy
         $vatRate = $settings->getDefaultVatRate();
+        $subtotalStr = number_format(max(0, $subtotal), 2, '.', '');
+
         if ($settings->isVatPayer()) {
-            $vatAmount = max(0, $subtotal) * ($vatRate / 100);
-            $total = max(0, $subtotal) + $vatAmount;
+            // DPH z celkového základu (po odpočtu zálohy)
+            $fullVatAmount = bcmul($subtotalStr, bcdiv((string) $vatRate, '100', 6), 2);
+            $total = bcadd($subtotalStr, $fullVatAmount, 2);
         } else {
-            $vatAmount = 0;
-            $total = max(0, $subtotal);
+            $fullVatAmount = '0.00';
+            $total = $subtotalStr;
         }
 
-        $invoice->setSubtotal(number_format(max(0, $subtotal), 2, '.', ''));
+        $invoice->setSubtotal($subtotalStr);
         $invoice->setVatRate($vatRate);
-        $invoice->setVatAmount(number_format($vatAmount, 2, '.', ''));
-        $invoice->setTotal(number_format($total, 2, '.', ''));
+        $invoice->setVatAmount($fullVatAmount);
+        $invoice->setTotal($total);
         $invoice->setCurrency('CZK');
 
         // Generuj QR kód pro platbu
         $qrData = $this->generateQrPaymentData($invoice, $settings);
         $invoice->setQrPaymentData($qrData);
 
-        // Poznámka
-        if ($paidDeposits > 0) {
-            $invoice->setNote(sprintf(
-                'Doplatek - celková cena %s Kč, záloha %s Kč',
-                number_format($totalPrice, 2, ',', ' '),
-                number_format($paidDeposits, 2, ',', ' ')
-            ));
+        // Poznámka s referencemi dle zákona
+        $noteLines = [];
+        $isFullyPaidByDeposits = bccomp($total, '0', 2) <= 0 || bccomp($total, '0.01', 2) < 0;
+
+        if (bccomp($paidDepositsTotal, '0', 2) > 0) {
+            $noteLines[] = sprintf(
+                'Vyúčtovací faktura - celková cena %s Kč',
+                number_format($totalPrice, 2, ',', ' ')
+            );
+            $noteLines[] = sprintf(
+                'Uhrazená záloha: %s Kč (základ %s Kč + DPH %s Kč)',
+                number_format((float) $paidDepositsTotal, 2, ',', ' '),
+                number_format((float) $paidDepositsSubtotal, 2, ',', ' '),
+                number_format((float) $paidDepositsVat, 2, ',', ' ')
+            );
+            if ($isFullyPaidByDeposits) {
+                $noteLines[] = 'UHRAZENO v plné výši zálohami. Nic k doplacení.';
+            } else {
+                $noteLines[] = sprintf('K úhradě: %s Kč', number_format((float) $total, 2, ',', ' '));
+            }
+            if (!empty($depositInvoiceRefs)) {
+                $noteLines[] = 'Záloha uhrazena dle: ' . implode(', ', $depositInvoiceRefs);
+            }
+        }
+        if (!empty($noteLines)) {
+            $invoice->setNote(implode("\n", $noteLines));
         }
 
         // Vazby
         $invoice->setReservation($reservation);
         $invoice->setCreatedBy($createdBy);
-        $invoice->setStatus('DRAFT');
+
+        // Pokud zálohy pokryly celou částku, faktura je automaticky "zaplacená"
+        if ($isFullyPaidByDeposits && bccomp($paidDepositsTotal, '0', 2) > 0) {
+            $invoice->setStatus('PAID');
+            $invoice->setPaidAt(new \DateTime());
+        } else {
+            $invoice->setStatus('DRAFT');
+        }
 
         // Uložení
         $this->entityManager->persist($invoice);
@@ -814,6 +903,128 @@ class InvoiceService
         $this->entityManager->flush();
 
         return $invoice;
+    }
+
+    /**
+     * Vytvoří dobropis (credit note) k existující faktuře
+     */
+    public function createCreditNote(Invoice $originalInvoice, User $createdBy, ?string $reason = null): Invoice
+    {
+        if (!in_array($originalInvoice->getStatus(), ['SENT', 'PAID'], true)) {
+            throw new \RuntimeException('Dobropis lze vytvořit pouze k odeslané nebo zaplacené faktuře.');
+        }
+
+        $settings = $this->companySettingsRepository->getOrCreateDefault();
+
+        $creditNote = new Invoice();
+
+        // Vygeneruj číslo dobropisu s prefixem D
+        $invoiceNumber = 'D' . $settings->generateNextInvoiceNumber();
+        $creditNote->setInvoiceNumber($invoiceNumber);
+
+        // Typ a reference
+        $creditNote->setInvoiceType('CREDIT_NOTE');
+        $creditNote->setOriginalInvoiceId($originalInvoice->getId());
+
+        // Variabilní symbol - stejný jako originál
+        $creditNote->setVariableSymbol($originalInvoice->getVariableSymbol());
+
+        // Datumy
+        $creditNote->setIssueDate(new \DateTime());
+        $creditNote->setTaxableDate(new \DateTime());
+        $creditNote->setDueDate((new \DateTime())->modify('+' . $settings->getInvoiceDueDays() . ' days'));
+
+        // Dodavatel - kopie z originálu
+        $creditNote->setSupplierName($originalInvoice->getSupplierName());
+        $creditNote->setSupplierStreet($originalInvoice->getSupplierStreet());
+        $creditNote->setSupplierCity($originalInvoice->getSupplierCity());
+        $creditNote->setSupplierZipcode($originalInvoice->getSupplierZipcode());
+        $creditNote->setSupplierIco($originalInvoice->getSupplierIco());
+        $creditNote->setSupplierDic($originalInvoice->getSupplierDic());
+        $creditNote->setSupplierEmail($originalInvoice->getSupplierEmail());
+        $creditNote->setSupplierPhone($originalInvoice->getSupplierPhone());
+        $creditNote->setSupplierBankAccount($originalInvoice->getSupplierBankAccount());
+        $creditNote->setSupplierBankName($originalInvoice->getSupplierBankName());
+        $creditNote->setSupplierIban($originalInvoice->getSupplierIban());
+        $creditNote->setSupplierSwift($originalInvoice->getSupplierSwift());
+
+        // Odběratel - kopie z originálu
+        $creditNote->setCustomerName($originalInvoice->getCustomerName());
+        $creditNote->setCustomerCompany($originalInvoice->getCustomerCompany());
+        $creditNote->setCustomerStreet($originalInvoice->getCustomerStreet());
+        $creditNote->setCustomerCity($originalInvoice->getCustomerCity());
+        $creditNote->setCustomerZipcode($originalInvoice->getCustomerZipcode());
+        $creditNote->setCustomerIco($originalInvoice->getCustomerIco());
+        $creditNote->setCustomerDic($originalInvoice->getCustomerDic());
+        $creditNote->setCustomerEmail($originalInvoice->getCustomerEmail());
+        $creditNote->setCustomerPhone($originalInvoice->getCustomerPhone());
+
+        // Položky - negace původních
+        $originalItems = $originalInvoice->getItems();
+        $negatedItems = [];
+        foreach ($originalItems as $item) {
+            $negatedItems[] = [
+                'description' => 'STORNO: ' . ($item['description'] ?? ''),
+                'quantity' => $item['quantity'] ?? 1,
+                'unitPrice' => bcmul('-1', (string)($item['unitPrice'] ?? 0), 2),
+                'total' => bcmul('-1', (string)($item['total'] ?? 0), 2),
+            ];
+        }
+        $creditNote->setItems($negatedItems);
+
+        // Finanční údaje - negace
+        $creditNote->setSubtotal(bcmul('-1', $originalInvoice->getSubtotal(), 2));
+        $creditNote->setVatRate($originalInvoice->getVatRate());
+        $creditNote->setVatAmount(bcmul('-1', $originalInvoice->getVatAmount(), 2));
+        $creditNote->setTotal(bcmul('-1', $originalInvoice->getTotal(), 2));
+        $creditNote->setCurrency($originalInvoice->getCurrency());
+
+        // Poznámka
+        $noteText = sprintf(
+            'Dobropis k faktuře č. %s.',
+            $originalInvoice->getInvoiceNumber()
+        );
+        if ($reason) {
+            $noteText .= ' Důvod: ' . $reason;
+        }
+        $creditNote->setNote($noteText);
+
+        // Vazby
+        $creditNote->setReservation($originalInvoice->getReservation());
+        $creditNote->setCreatedBy($createdBy);
+        $creditNote->setStatus('DRAFT');
+
+        // Označ původní fakturu jako stornovanou
+        $originalInvoice->setStatus('CANCELLED');
+        $originalInvoice->setUpdatedAt(new \DateTime());
+        $originalInvoice->setUpdatedBy($createdBy->getId());
+
+        // Uložení
+        $this->entityManager->persist($creditNote);
+        $this->entityManager->persist($settings);
+        $this->entityManager->flush();
+
+        return $creditNote;
+    }
+
+    /**
+     * Přepočítá celkové částky faktury z položek (server-side)
+     * Používá bcmath pro přesné finanční výpočty
+     */
+    private function recalculateTotals(Invoice $invoice): void
+    {
+        $items = $invoice->getItems();
+        $subtotal = '0.00';
+        foreach ($items as $key => $item) {
+            $itemTotal = bcmul((string)($item['quantity'] ?? 1), (string)($item['unitPrice'] ?? 0), 2);
+            $items[$key]['total'] = $itemTotal;
+            $subtotal = bcadd($subtotal, $itemTotal, 2);
+        }
+        $invoice->setItems($items);
+        $invoice->setSubtotal($subtotal);
+        $vatAmount = bcmul($subtotal, bcdiv((string)$invoice->getVatRate(), '100', 6), 2);
+        $invoice->setVatAmount($vatAmount);
+        $invoice->setTotal(bcadd($subtotal, $vatAmount, 2));
     }
 
     /**
@@ -1090,7 +1301,9 @@ class InvoiceService
             'note' => $invoice->getNote(),
 
             'reservationId' => $invoice->getReservation()?->getId(),
+            'originalInvoiceId' => $invoice->getOriginalInvoiceId(),
             'createdById' => $invoice->getCreatedBy()?->getId(),
+            'updatedBy' => $invoice->getUpdatedBy(),
             'createdAt' => $invoice->getCreatedAt()->format('Y-m-d H:i:s'),
             'updatedAt' => $invoice->getUpdatedAt()->format('Y-m-d H:i:s'),
         ];

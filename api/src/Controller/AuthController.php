@@ -4,18 +4,22 @@ namespace App\Controller;
 
 use App\Entity\User;
 use App\Repository\UserRepository;
+use App\Service\SafeMailerService;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Mime\Email;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 final class AuthController extends AbstractController
 {
     #[Route('/auth/register', name: 'api_register', methods: ['POST'])]
+    #[IsGranted('ROLE_ADMIN')]
     public function register(
         Request                     $request,
         EntityManagerInterface      $em,
@@ -58,7 +62,7 @@ final class AuthController extends AbstractController
     }
 
     #[Route('/auth/forgot-password', name: 'api_forgot_password', methods: ['POST'])]
-    public function forgotPassword(Request $request, UserRepository $userRepository, EntityManagerInterface $em): JsonResponse
+    public function forgotPassword(Request $request, UserRepository $userRepository, EntityManagerInterface $em, SafeMailerService $mailer): JsonResponse
     {
         $data = json_decode($request->getContent(), true);
         if (!isset($data['email'])) {
@@ -66,8 +70,15 @@ final class AuthController extends AbstractController
         }
 
         $user = $userRepository->findOneBy(['email' => $data['email']]);
+
+        // Always return the same response to prevent user enumeration
+        $genericResponse = new JsonResponse(
+            ['status' => 'Pokud e-mail existuje, byl odeslán odkaz pro obnovení hesla.'],
+            JsonResponse::HTTP_OK
+        );
+
         if (!$user) {
-            return new JsonResponse(['error' => 'User not found'], JsonResponse::HTTP_NOT_FOUND);
+            return $genericResponse;
         }
 
         $resetToken = bin2hex(random_bytes(32));
@@ -77,7 +88,45 @@ final class AuthController extends AbstractController
         $em->persist($user);
         $em->flush();
 
-        return new JsonResponse(['resetToken' => $resetToken], JsonResponse::HTTP_OK);
+        // Build reset link pointing to the frontend
+        $frontendUrl = rtrim($_ENV['FRONTEND_URL'] ?? 'https://admin.folkloregarden.cz', '/');
+        $resetLink = $frontendUrl . '/reset-password/' . $resetToken;
+
+        $html = <<<HTML
+        <!DOCTYPE html>
+        <html lang="cs">
+        <head><meta charset="UTF-8"><title>Obnovení hesla</title></head>
+        <body style="font-family:Arial,sans-serif;color:#333;line-height:1.6;padding:20px;">
+            <div style="max-width:500px;margin:0 auto;background:#fff;border-radius:8px;padding:30px;box-shadow:0 2px 10px rgba(0,0,0,0.1);">
+                <h2 style="color:#DC1A15;margin-top:0;">Obnovení hesla</h2>
+                <p>Obdrželi jsme žádost o obnovení hesla pro váš účet v systému Folklore Garden.</p>
+                <p>Klikněte na tlačítko níže pro nastavení nového hesla:</p>
+                <p style="text-align:center;margin:30px 0;">
+                    <a href="{$resetLink}" style="display:inline-block;padding:12px 32px;background:#DC1A15;color:#fff;text-decoration:none;border-radius:30px;font-weight:bold;font-size:16px;">
+                        Nastavit nové heslo
+                    </a>
+                </p>
+                <p style="font-size:13px;color:#666;">Odkaz je platný 1 hodinu. Pokud jste o obnovení hesla nežádali, tento e-mail ignorujte.</p>
+                <hr style="border:none;border-top:1px solid #eee;margin:20px 0;">
+                <p style="font-size:12px;color:#999;margin-bottom:0;">Folklore Garden — Administrační systém</p>
+            </div>
+        </body>
+        </html>
+        HTML;
+
+        try {
+            $email = (new Email())
+                ->from('info@folkloregarden.cz')
+                ->to($user->getEmail())
+                ->subject('Obnovení hesla — Folklore Garden')
+                ->html($html);
+
+            $mailer->send($email);
+        } catch (\Exception $e) {
+            error_log('Failed to send password reset email: ' . $e->getMessage());
+        }
+
+        return $genericResponse;
     }
 
     #[Route('/auth/reset-password', name: 'api_reset_password', methods: ['POST'])]

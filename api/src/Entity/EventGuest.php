@@ -60,6 +60,11 @@ class EventGuest
     #[ORM\Column(type: Types::STRING, length: 50, nullable: true)]
     private ?string $space = null;
 
+    // New: FK to Room entity (nullable for backward compatibility)
+    #[ORM\ManyToOne(targetEntity: Room::class)]
+    #[ORM\JoinColumn(name: 'room_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?Room $roomEntity = null;
+
     #[ORM\Column(type: Types::DATETIME_MUTABLE)]
     private \DateTimeInterface $createdAt;
 
@@ -107,6 +112,9 @@ class EventGuest
 
     public function getSpace(): ?string { return $this->space; }
     public function setSpace(?string $v): self { $this->space = $v; return $this; }
+
+    public function getRoomEntity(): ?Room { return $this->roomEntity; }
+    public function setRoomEntity(?Room $v): self { $this->roomEntity = $v; return $this; }
 
     public function getCreatedAt(): \DateTimeInterface { return $this->createdAt; }
 }

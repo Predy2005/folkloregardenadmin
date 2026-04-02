@@ -12,15 +12,21 @@ use App\Enum\FoodMenu;
 class TestReservationEmailController extends AbstractController
 {
     private SafeMailerService $mailer;
+    private string $appEnv;
 
-    public function __construct(SafeMailerService $mailer)
+    public function __construct(SafeMailerService $mailer, string $appEnv)
     {
         $this->mailer = $mailer;
+        $this->appEnv = $appEnv;
     }
 
     #[Route('/api/test/reservation-email', name: 'test_reservation_email', methods: ['GET'])]
     public function testReservationEmail(): JsonResponse
     {
+        if ($this->appEnv === 'prod') {
+            return new JsonResponse(['error' => 'Test endpoints are disabled in production'], JsonResponse::HTTP_FORBIDDEN);
+        }
+
         // Testovací data simulující přijatý JSON request
         $testData = [
             'date' => '2025-06-15',

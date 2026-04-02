@@ -34,6 +34,29 @@ class RecipeController extends AbstractController
         return $this->json($data);
     }
 
+    #[Route('/bulk-delete', methods: ['DELETE'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function bulkDelete(Request $request, RecipeRepository $repo, EntityManagerInterface $em): JsonResponse
+    {
+        $data = json_decode($request->getContent(), true) ?? [];
+        $ids = $data['ids'] ?? [];
+        if (!is_array($ids) || count($ids) === 0) {
+            return $this->json(['error' => 'No IDs provided'], 400);
+        }
+
+        $count = 0;
+        foreach ($ids as $id) {
+            $recipe = $repo->find((int)$id);
+            if ($recipe) {
+                $em->remove($recipe);
+                $count++;
+            }
+        }
+        $em->flush();
+
+        return $this->json(['status' => 'deleted', 'count' => $count]);
+    }
+
     #[Route('/{id}', methods: ['GET'], requirements: ['id' => '\d+'])]
     #[IsGranted('recipes.read')]
     public function show(int $id, RecipeRepository $repo): JsonResponse

@@ -7,6 +7,7 @@ import { SidebarProvider, SidebarTrigger } from "@/shared/components/ui/sidebar"
 import { ThemeProvider } from "@/shared/contexts/ThemeContext";
 import { ThemeToggle } from "@/shared/components/ThemeToggle";
 import { AppSidebar } from "@/shared/components/AppSidebar";
+import { HelpChatbot } from "@/shared/components/HelpChatbot";
 
 // Auth module
 import {
@@ -15,7 +16,9 @@ import {
   ProtectedRoute,
   LoginPage as Login,
   RegisterPage as Register,
-  ProfilePage as Profile
+  ProfilePage as Profile,
+  ForgotPasswordPage as ForgotPassword,
+  ResetPasswordPage as ResetPassword
 } from "@modules/auth";
 
 // Dashboard module
@@ -28,13 +31,13 @@ import { ReservationsPage as Reservations, ReservationEditPage as ReservationEdi
 import { EventsPage as Events, EventCreatePage as EventCreate, EventEditPage as EventEdit, EventDashboardPage as EventDashboard, WaiterViewPage as WaiterView } from "@modules/events";
 
 // Staff module
-import { StaffMembersPage as StaffMembers, StaffAttendancePage as StaffAttendance, StaffingFormulasPage as StaffingFormulas } from "@modules/staff";
+import { StaffMembersPage as StaffMembers, StaffEditPage as StaffEdit, StaffAttendancePage as StaffAttendance, StaffingFormulasPage as StaffingFormulas } from "@modules/staff";
 
 // Contacts module
 import { ContactsPage as Contacts, ContactEditPage as ContactEdit } from "@modules/contacts";
 
 // Partners module
-import { PartnersPage as Partners, VouchersPage as Vouchers } from "@modules/partners";
+import { PartnersPage as Partners, PartnerEditPage as PartnerEdit, VouchersPage as Vouchers } from "@modules/partners";
 
 // Payments module
 import { PaymentsPage as Payments } from "@modules/payments";
@@ -45,6 +48,12 @@ import { InvoicesPage as Invoices, InvoiceEditPage as InvoiceEdit } from "@modul
 // Cashbox module
 import { CashboxPage as Cashbox, CommissionLogsPage as CommissionLogs } from "@modules/cashbox";
 
+// Drinks module
+import { DrinksPage as Drinks } from "@modules/drinks";
+
+// Transport module
+import { TransportCompaniesPage as TransportCompanies, TransportCompanyEditPage as TransportCompanyEdit } from "@modules/transport";
+
 // Foods module
 import { FoodsPage as Foods, FoodEditPage as FoodEdit } from "@modules/foods";
 
@@ -52,7 +61,10 @@ import { FoodsPage as Foods, FoodEditPage as FoodEdit } from "@modules/foods";
 import { RecipesPage as Recipes, RecipeEditPage as RecipeEdit } from "@modules/recipes";
 
 // Stock module
-import { StockItemsPage as StockItems, StockMovementsPage as StockMovements, StockRequirementsPage as StockRequirements } from "@modules/stock";
+import { StockItemsPage as StockItems, StockMovementsPage as StockMovements, StockRequirementsPage as StockRequirements, StockReceivingPage as StockReceiving } from "@modules/stock";
+
+// Venue module
+import { BuildingsPage as Buildings, FloorPlanTemplatesPage as FloorPlanTemplates, TemplateDesignerPage as TemplateDesigner } from "@modules/venue";
 
 // Admin module
 import { UsersPage as Users, RolesPage as Roles, SettingsPage as Settings, PricingPage as Pricing, DisabledDatesPage as DisabledDates, ReservationTypesPage as ReservationTypes, CashMovementCategoriesPage as CashCategories } from "@modules/admin";
@@ -75,13 +87,14 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <ThemeToggle />
           </header>
-          <main className="flex-1 overflow-y-auto p-6 bg-background">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden p-6 bg-background">
             <div className="container_muj mx-auto">
               {children}
             </div>
           </main>
         </div>
       </div>
+      <HelpChatbot />
     </SidebarProvider>
   );
 }
@@ -91,8 +104,8 @@ function Router() {
   const { isAuthenticated } = useAuth();
 
   // Public routes (bez autentizace)
-  const publicRoutes = ['/login', '/register'];
-  const isPublicRoute = publicRoutes.includes(location);
+  const publicRoutes = ['/login', '/register', '/forgot-password'];
+  const isPublicRoute = publicRoutes.includes(location) || location.startsWith('/reset-password/');
 
   // Pokud je uživatel přihlášený a je na public route, přesměruj na dashboard
   if (isAuthenticated && isPublicRoute) {
@@ -105,6 +118,8 @@ function Router() {
       {/* Public routes */}
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
+      <Route path="/forgot-password" component={ForgotPassword} />
+      <Route path="/reset-password/:token" component={ResetPassword} />
 
       {/* Protected routes */}
       <Route path="/">
@@ -259,6 +274,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/stock/receive">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <StockReceiving />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/stock-items">
         <ProtectedRoute>
           <AuthenticatedLayout>
@@ -307,6 +330,54 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/drinks">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <Drinks />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/transport/new">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <TransportCompanyEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/transport/:id/edit">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <TransportCompanyEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/transport">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <TransportCompanies />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/partners/new">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <PartnerEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/partners/:id/edit">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <PartnerEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/partners">
         <ProtectedRoute>
           <AuthenticatedLayout>
@@ -335,6 +406,22 @@ function Router() {
         <ProtectedRoute>
           <AuthenticatedLayout>
             <StaffMembers />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/staff/new">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <StaffEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/staff/:id/edit">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <StaffEdit />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -411,6 +498,30 @@ function Router() {
         <ProtectedRoute>
           <AuthenticatedLayout>
             <StaffingFormulas />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/venue/buildings">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <Buildings />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/venue/templates">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <FloorPlanTemplates />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/venue/templates/:id/designer">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <TemplateDesigner />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

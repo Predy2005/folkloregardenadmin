@@ -70,23 +70,19 @@ export function DashboardGrid({ boxes }: DashboardGridProps) {
   });
 
   const handleDragStart = (event: DragStartEvent) => {
-    console.log("[DnD] Drag started:", event.active.id);
     setActiveId(event.active.id as string);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    console.log("[DnD] Drag ended:", { activeId: active.id, overId: over?.id });
     setActiveId(null);
 
     if (over && active.id !== over.id) {
-      console.log("[DnD] Reordering:", active.id, "->", over.id);
       reorderBox(active.id as string, over.id as string);
     }
   };
 
   const handleDragCancel = () => {
-    console.log("[DnD] Drag cancelled");
     setActiveId(null);
   };
 

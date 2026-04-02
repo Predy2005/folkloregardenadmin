@@ -29,9 +29,21 @@ class ReservationPerson
     private ?string $price = null; // Ukládá základní cenu + případný příplatek
 
     #[ORM\Column(type: "string", length: 100, nullable: true)]
-    private ?string $nationality = null; // Národnost osoby pro skupinování ke stolům
+    private ?string $nationality = null;
 
-    // Gettery a settery generujte pomocí maker nebo IDE.
+    /** none = bez nápoje, welcome = 1 drink v ceně, allin = neomezené pití */
+    #[ORM\Column(name: 'drink_option', type: 'string', length: 20, options: ['default' => 'none'])]
+    private string $drinkOption = 'none';
+
+    #[ORM\Column(name: 'drink_name', type: 'string', length: 255, nullable: true)]
+    private ?string $drinkName = null;
+
+    #[ORM\Column(name: 'drink_price', type: 'decimal', precision: 10, scale: 2, nullable: true)]
+    private ?string $drinkPrice = null;
+
+    #[ORM\ManyToOne(targetEntity: DrinkItem::class)]
+    #[ORM\JoinColumn(name: 'drink_item_id', nullable: true, onDelete: 'SET NULL')]
+    private ?DrinkItem $drinkItem = null;
 
     public function getId(): ?int
     {
@@ -94,7 +106,18 @@ class ReservationPerson
     public function setNationality(?string $nationality): static
     {
         $this->nationality = $nationality;
-
         return $this;
     }
+
+    public function getDrinkOption(): string { return $this->drinkOption; }
+    public function setDrinkOption(string $v): static { $this->drinkOption = $v; return $this; }
+
+    public function getDrinkName(): ?string { return $this->drinkName; }
+    public function setDrinkName(?string $v): static { $this->drinkName = $v; return $this; }
+
+    public function getDrinkPrice(): ?string { return $this->drinkPrice; }
+    public function setDrinkPrice(?string $v): static { $this->drinkPrice = $v; return $this; }
+
+    public function getDrinkItem(): ?DrinkItem { return $this->drinkItem; }
+    public function setDrinkItem(?DrinkItem $v): static { $this->drinkItem = $v; return $this; }
 }

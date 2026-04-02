@@ -1,11 +1,24 @@
 import { useState, useMemo } from 'react';
-import dayjs from 'dayjs';
+import { useMutation } from '@tanstack/react-query';
+import { api } from '@/shared/lib/api';
+import { invalidateContactQueries } from '@/shared/lib/query-helpers';
+import { successToast, errorToast } from '@/shared/lib/toast-helpers';
 import { Button } from '@/shared/components/ui/button';
+import { Badge } from '@/shared/components/ui/badge';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
+import { Checkbox } from '@/shared/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/components/ui/dialog';
 import { Search, Edit, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Filter, X } from 'lucide-react';
 import type { Contact } from '@shared/types';
 import { usePagination } from '@/shared/hooks/usePagination';
@@ -45,6 +58,12 @@ export function ContactTable({
   const [invoiceFilter, setInvoiceFilter] = useState<string>('');
   const [clientComeFromFilter, setClientComeFromFilter] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
+
+  // Bulk action states
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkActionOpen, setBulkActionOpen] = useState(false);
+  const [bulkActionType, setBulkActionType] = useState<'delete' | 'source' | null>(null);
+  const [bulkValue, setBulkValue] = useState('');
 
   // Extract unique clientComeFrom values
   const clientSources = useMemo(() => {
@@ -103,6 +122,83 @@ export function ContactTable({
   // Check if any filter is active
   const hasActiveFilters = companyFilter || invoiceFilter || clientComeFromFilter;
 
+  // Selection functions
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    const pageIds = paginatedData.map((c) => c.id);
+    const allSelected = pageIds.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        pageIds.forEach((id) => next.delete(id));
+      } else {
+        pageIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const openBulkAction = (type: 'delete' | 'source') => {
+    setBulkActionType(type);
+    setBulkValue('');
+    setBulkActionOpen(true);
+  };
+
+  const closeBulkAction = () => {
+    setBulkActionOpen(false);
+    setBulkActionType(null);
+    setBulkValue('');
+  };
+
+  // Bulk mutations
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: number[]) =>
+      api.delete('/api/contacts/bulk-delete', { data: { ids } }),
+    onSuccess: () => {
+      successToast(`Smazáno ${selectedIds.size} kontaktů`);
+      clearSelection();
+      closeBulkAction();
+      invalidateContactQueries();
+    },
+    onError: (error: Error) => errorToast(error),
+  });
+
+  const bulkUpdateMutation = useMutation({
+    mutationFn: async ({ ids, updates }: { ids: number[]; updates: Record<string, string> }) =>
+      api.put('/api/contacts/bulk-update', { ids, updates }),
+    onSuccess: () => {
+      successToast(`Aktualizováno ${selectedIds.size} kontaktů`);
+      clearSelection();
+      closeBulkAction();
+      invalidateContactQueries();
+    },
+    onError: (error: Error) => errorToast(error),
+  });
+
+  const executeBulkAction = () => {
+    const ids = Array.from(selectedIds);
+    if (bulkActionType === 'delete') {
+      bulkDeleteMutation.mutate(ids);
+    } else if (bulkActionType === 'source') {
+      bulkUpdateMutation.mutate({ ids, updates: { clientComeFrom: bulkValue } });
+    }
+  };
+
   const handleSearchChange = (value: string) => {
     onSearchChange(value);
     setPage(1);
@@ -134,6 +230,11 @@ export function ContactTable({
     onSearchChange('');
     setPage(1);
   };
+
+  const pageAllSelected = paginatedData.length > 0 && paginatedData.every((c) => selectedIds.has(c.id));
+  const pageSomeSelected = paginatedData.some((c) => selectedIds.has(c.id)) && !pageAllSelected;
+
+  const colCount = 7; // checkbox + 6 original columns
 
   return (
     <TooltipProvider>
@@ -278,11 +379,45 @@ export function ContactTable({
         )}
       </div>
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border">
+          <Badge variant="secondary">{selectedIds.size} vybráno</Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => openBulkAction('source')}
+          >
+            Změnit zdroj
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => openBulkAction('delete')}
+          >
+            Smazat
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearSelection}
+          >
+            Zrušit výběr
+          </Button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[40px]">
+                <Checkbox
+                  checked={pageAllSelected ? true : pageSomeSelected ? 'indeterminate' : false}
+                  onCheckedChange={toggleSelectAll}
+                />
+              </TableHead>
               <TableHead>Kontakt</TableHead>
               <TableHead>Telefon</TableHead>
               <TableHead>Firma</TableHead>
@@ -294,13 +429,22 @@ export function ContactTable({
           <TableBody>
             {paginatedData.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={colCount} className="text-center py-8 text-muted-foreground">
                   Žádné kontakty
                 </TableCell>
               </TableRow>
             ) : (
               paginatedData.map((contact) => (
-                <TableRow key={contact.id}>
+                <TableRow
+                  key={contact.id}
+                  className={selectedIds.has(contact.id) ? 'bg-primary/5' : ''}
+                >
+                  <TableCell className="w-[40px]">
+                    <Checkbox
+                      checked={selectedIds.has(contact.id)}
+                      onCheckedChange={() => toggleSelect(contact.id)}
+                    />
+                  </TableCell>
                   <TableCell>
                     <div className="flex flex-col gap-0.5">
                       <span className="font-medium">{contact.name}</span>
@@ -421,6 +565,56 @@ export function ContactTable({
           </div>
         </div>
       )}
+
+      {/* Bulk action dialog */}
+      <Dialog open={bulkActionOpen} onOpenChange={(o) => { if (!o) closeBulkAction(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {bulkActionType === 'delete' && 'Smazat kontakty'}
+              {bulkActionType === 'source' && 'Změnit zdroj kontaktů'}
+            </DialogTitle>
+            <DialogDescription>
+              {bulkActionType === 'delete' &&
+                `Opravdu chcete smazat ${selectedIds.size} vybraných kontaktů? Tato akce je nevratná.`}
+              {bulkActionType === 'source' &&
+                `Změna zdroje pro ${selectedIds.size} vybraných kontaktů.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {bulkActionType === 'source' && (
+            <div className="space-y-2 py-2">
+              <Label>Nový zdroj</Label>
+              <Input
+                value={bulkValue}
+                onChange={(e) => setBulkValue(e.target.value)}
+                placeholder="Zadejte nový zdroj..."
+              />
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeBulkAction}>
+              Zrušit
+            </Button>
+            <Button
+              variant={bulkActionType === 'delete' ? 'destructive' : 'default'}
+              onClick={executeBulkAction}
+              disabled={
+                (bulkActionType === 'source' && !bulkValue.trim()) ||
+                bulkDeleteMutation.isPending ||
+                bulkUpdateMutation.isPending
+              }
+            >
+              {(bulkDeleteMutation.isPending || bulkUpdateMutation.isPending)
+                ? 'Provádím...'
+                : bulkActionType === 'delete'
+                  ? 'Smazat'
+                  : 'Uložit'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
     </TooltipProvider>
   );

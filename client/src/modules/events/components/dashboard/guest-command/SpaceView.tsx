@@ -17,11 +17,11 @@ import { Progress } from "@/shared/components/ui/progress";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/shared/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -457,14 +457,14 @@ function MoveGuestsDialog({
   }, [filterMode, moveCount, selectedReservation, selectedNationality, selectedMenu, reservations, spaceData, menus]);
 
   return (
-    <Sheet open onOpenChange={() => onClose()}>
-      <SheetContent side="bottom" className="h-auto max-h-[85vh] overflow-y-auto">
-        <SheetHeader className="pb-4">
-          <SheetTitle className="flex items-center gap-2">
+    <Dialog open onOpenChange={() => onClose()}>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader className="pb-4">
+          <DialogTitle className="flex items-center gap-2">
             <ArrowRightLeft className="h-5 w-5" />
             Přesunout hosty z {fromSpace.charAt(0).toUpperCase() + fromSpace.slice(1)}
-          </SheetTitle>
-        </SheetHeader>
+          </DialogTitle>
+        </DialogHeader>
 
         <div className="space-y-6">
           {/* Filter mode tabs */}
@@ -641,7 +641,7 @@ function MoveGuestsDialog({
             </Button>
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }

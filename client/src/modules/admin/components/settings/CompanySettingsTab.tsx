@@ -12,7 +12,7 @@ import {
 } from "@/shared/components/ui/popover";
 import { Building2, Loader2, Search } from "lucide-react";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
-import { searchCompanies, parseCompanyData, type CompanySearchResult } from "@modules/contacts/utils/companySearch";
+import { smartCompanySearch, parseCompanyData, type CompanySearchResult } from "@modules/contacts/utils/companySearch";
 import type { SettingsTabProps } from "./types";
 import type { CompanySettings } from "@shared/types";
 
@@ -30,8 +30,8 @@ export function CompanySettingsTab({ formData, handleChange, setFormData }: Comp
     if (aresQuery.length < 2) return;
     setAresLoading(true);
     try {
-      const results = await searchCompanies(aresQuery);
-      setAresResults(results);
+      const result = await smartCompanySearch(aresQuery);
+      setAresResults(result.results);
     } catch (error) {
       console.error("ARES search failed:", error);
       errorToast("Chyba při vyhledávání v ARES");

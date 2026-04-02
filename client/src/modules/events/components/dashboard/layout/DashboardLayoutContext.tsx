@@ -133,10 +133,6 @@ export function DashboardLayoutProvider({ children, eventId }: DashboardLayoutPr
       if (saved) {
         const parsed = JSON.parse(saved);
         const migratedOrder = migrateBoxOrder(parsed.boxOrder || DEFAULT_BOX_ORDER);
-        console.log("[Layout] Loaded state:", {
-          original: parsed.boxOrder,
-          migrated: migratedOrder
-        });
         return {
           layout: parsed.layout || DEFAULT_LAYOUT,
           boxOrder: migratedOrder,
@@ -190,24 +186,18 @@ export function DashboardLayoutProvider({ children, eventId }: DashboardLayoutPr
 
       // Add missing IDs if they're not in the order
       if (!workingOrder.includes(activeId)) {
-        console.log("[Layout] Adding missing activeId to order:", activeId);
         workingOrder.push(activeId);
       }
       if (!workingOrder.includes(overId)) {
-        console.log("[Layout] Adding missing overId to order:", overId);
         workingOrder.push(overId);
       }
 
       const activeIndex = workingOrder.indexOf(activeId);
       const overIndex = workingOrder.indexOf(overId);
 
-      console.log("[Layout] Reordering:", { activeId, overId, activeIndex, overIndex, workingOrder });
-
       const newOrder = [...workingOrder];
       newOrder.splice(activeIndex, 1);
       newOrder.splice(overIndex, 0, activeId);
-
-      console.log("[Layout] New order:", newOrder);
 
       return { ...prev, boxOrder: newOrder };
     });

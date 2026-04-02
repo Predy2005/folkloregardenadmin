@@ -249,7 +249,7 @@ export default function Reservations() {
     setAiError(null);
     setAiJson(null);
     if (!isAiConfigured()) {
-      setAiError("AI není nakonfigurováno. Nastavte VITE_AI_BASE_URL v .env.");
+      setAiError("AI není nakonfigurováno. Žádné AI servery nejsou dostupné.");
       return;
     }
     if (!foods) {
@@ -473,7 +473,7 @@ export default function Reservations() {
       <PageHeader title="Rezervace" description="Správa všech rezervací">
         <Button
           onClick={handleCreate}
-          className="bg-gradient-to-r from-primary to-purple-600"
+          className="bg-primary hover:bg-primary/90"
           data-testid="button-create-reservation"
         >
           <Plus className="w-4 h-4 mr-2" />

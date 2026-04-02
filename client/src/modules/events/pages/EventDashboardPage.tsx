@@ -143,7 +143,7 @@ export default function EventDashboardPage() {
           {dashboardData.transport.totalReservations} rez.
         </Badge>
       ),
-      render: () => <TransportCard transport={dashboardData.transport} />,
+      render: () => <TransportCard transport={dashboardData.transport} eventId={eventId} />,
     },
     {
       id: "stock",

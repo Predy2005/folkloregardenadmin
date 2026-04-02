@@ -44,6 +44,12 @@ class StaffMember
     #[ORM\Column(type: Types::DECIMAL, precision: 10, scale: 2, nullable: true)]
     private ?string $fixedRate = null;
 
+    #[ORM\Column(name: 'is_group', type: Types::BOOLEAN, options: ['default' => false])]
+    private bool $isGroup = false;
+
+    #[ORM\Column(name: 'group_size', type: Types::INTEGER, nullable: true)]
+    private ?int $groupSize = null;
+
     #[ORM\Column(type: Types::BOOLEAN, options: ['default' => true])]
     private bool $isActive = true;
 
@@ -93,6 +99,10 @@ class StaffMember
     public function setHourlyRate(?string $rate): self { $this->hourlyRate = $rate; return $this; }
     public function getFixedRate(): ?string { return $this->fixedRate; }
     public function setFixedRate(?string $rate): self { $this->fixedRate = $rate; return $this; }
+    public function isGroup(): bool { return $this->isGroup; }
+    public function setIsGroup(bool $v): self { $this->isGroup = $v; return $this; }
+    public function getGroupSize(): ?int { return $this->groupSize; }
+    public function setGroupSize(?int $v): self { $this->groupSize = $v; return $this; }
     public function isActive(): bool { return $this->isActive; }
     public function setIsActive(bool $active): self { $this->isActive = $active; return $this; }
     public function getEmergencyContact(): ?string { return $this->emergencyContact; }

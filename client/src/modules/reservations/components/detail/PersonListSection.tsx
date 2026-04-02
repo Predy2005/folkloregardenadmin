@@ -25,7 +25,7 @@ export function PersonListSection({ reservation }: Props) {
                     <p className="text-sm text-muted-foreground">Menu: {person.menu || 'Bez jídla'}</p>
                   </div>
                 </div>
-                <p className="font-mono font-medium">{Math.round(person.price).toLocaleString('cs-CZ')} Kč</p>
+                <p className="font-mono font-medium">{Math.round(Number(person.price)).toLocaleString('cs-CZ')} Kč</p>
               </div>
             ))}
           </div>

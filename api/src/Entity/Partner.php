@@ -63,6 +63,51 @@ class Partner
     #[ORM\Column(type: Types::DATETIME_MUTABLE)]
     private \DateTimeInterface $updatedAt;
 
+    // Pricing model
+    #[ORM\Column(name: 'pricing_model', type: Types::STRING, length: 20, options: ['default' => 'DEFAULT'])]
+    private string $pricingModel = 'DEFAULT'; // DEFAULT = use system prices, CUSTOM = per-menu prices, FLAT = single price per person
+
+    #[ORM\Column(name: 'flat_price_adult', type: Types::DECIMAL, precision: 10, scale: 2, nullable: true)]
+    private ?string $flatPriceAdult = null; // Used when pricingModel = FLAT
+
+    #[ORM\Column(name: 'flat_price_child', type: Types::DECIMAL, precision: 10, scale: 2, nullable: true)]
+    private ?string $flatPriceChild = null;
+
+    #[ORM\Column(name: 'flat_price_infant', type: Types::DECIMAL, precision: 10, scale: 2, nullable: true)]
+    private ?string $flatPriceInfant = null;
+
+    // Custom menu prices: JSON map of { menuName: price } overrides
+    // e.g. {"Traditional": 850, "Chicken Menu": 900, "Children menu": 500}
+    #[ORM\Column(name: 'custom_menu_prices', type: Types::JSON, nullable: true)]
+    private ?array $customMenuPrices = null;
+
+    // Billing settings
+    #[ORM\Column(name: 'billing_period', type: Types::STRING, length: 20, options: ['default' => 'PER_RESERVATION'])]
+    private string $billingPeriod = 'PER_RESERVATION'; // PER_RESERVATION, MONTHLY, QUARTERLY
+
+    #[ORM\Column(name: 'billing_email', type: Types::STRING, length: 255, nullable: true)]
+    private ?string $billingEmail = null;
+
+    // Invoice info (for auto-generating partner invoices)
+    #[ORM\Column(name: 'invoice_company', type: Types::STRING, length: 255, nullable: true)]
+    private ?string $invoiceCompany = null;
+
+    #[ORM\Column(name: 'invoice_street', type: Types::STRING, length: 255, nullable: true)]
+    private ?string $invoiceStreet = null;
+
+    #[ORM\Column(name: 'invoice_city', type: Types::STRING, length: 255, nullable: true)]
+    private ?string $invoiceCity = null;
+
+    #[ORM\Column(name: 'invoice_zipcode', type: Types::STRING, length: 20, nullable: true)]
+    private ?string $invoiceZipcode = null;
+
+    // Detection: emails/domains that identify this partner's reservations
+    #[ORM\Column(name: 'detection_emails', type: Types::JSON, nullable: true)]
+    private ?array $detectionEmails = null; // e.g. ["@hotelprague.cz", "booking@agency.com"]
+
+    #[ORM\Column(name: 'detection_keywords', type: Types::JSON, nullable: true)]
+    private ?array $detectionKeywords = null; // e.g. ["Hotel Prague", "Prague Tours"]
+
     public function __construct()
     {
         $this->createdAt = new \DateTime();
@@ -118,4 +163,43 @@ class Partner
 
     public function getUpdatedAt(): \DateTimeInterface { return $this->updatedAt; }
     public function setUpdatedAt(\DateTimeInterface $v): self { $this->updatedAt = $v; return $this; }
+
+    public function getPricingModel(): string { return $this->pricingModel; }
+    public function setPricingModel(string $v): self { $this->pricingModel = $v; return $this; }
+
+    public function getFlatPriceAdult(): ?string { return $this->flatPriceAdult; }
+    public function setFlatPriceAdult(?string $v): self { $this->flatPriceAdult = $v; return $this; }
+
+    public function getFlatPriceChild(): ?string { return $this->flatPriceChild; }
+    public function setFlatPriceChild(?string $v): self { $this->flatPriceChild = $v; return $this; }
+
+    public function getFlatPriceInfant(): ?string { return $this->flatPriceInfant; }
+    public function setFlatPriceInfant(?string $v): self { $this->flatPriceInfant = $v; return $this; }
+
+    public function getCustomMenuPrices(): ?array { return $this->customMenuPrices; }
+    public function setCustomMenuPrices(?array $v): self { $this->customMenuPrices = $v; return $this; }
+
+    public function getBillingPeriod(): string { return $this->billingPeriod; }
+    public function setBillingPeriod(string $v): self { $this->billingPeriod = $v; return $this; }
+
+    public function getBillingEmail(): ?string { return $this->billingEmail; }
+    public function setBillingEmail(?string $v): self { $this->billingEmail = $v; return $this; }
+
+    public function getInvoiceCompany(): ?string { return $this->invoiceCompany; }
+    public function setInvoiceCompany(?string $v): self { $this->invoiceCompany = $v; return $this; }
+
+    public function getInvoiceStreet(): ?string { return $this->invoiceStreet; }
+    public function setInvoiceStreet(?string $v): self { $this->invoiceStreet = $v; return $this; }
+
+    public function getInvoiceCity(): ?string { return $this->invoiceCity; }
+    public function setInvoiceCity(?string $v): self { $this->invoiceCity = $v; return $this; }
+
+    public function getInvoiceZipcode(): ?string { return $this->invoiceZipcode; }
+    public function setInvoiceZipcode(?string $v): self { $this->invoiceZipcode = $v; return $this; }
+
+    public function getDetectionEmails(): ?array { return $this->detectionEmails; }
+    public function setDetectionEmails(?array $v): self { $this->detectionEmails = $v; return $this; }
+
+    public function getDetectionKeywords(): ?array { return $this->detectionKeywords; }
+    public function setDetectionKeywords(?array $v): self { $this->detectionKeywords = $v; return $this; }
 }

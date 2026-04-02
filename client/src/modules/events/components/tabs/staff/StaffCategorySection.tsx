@@ -56,16 +56,18 @@ export default function StaffCategorySection({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(requirement.required);
 
-  const { label, required, assigned, category } = requirement;
+  const { label, required, assigned, category, assignmentIds } = requirement;
   const hasShortfall = assigned < required;
   const isFulfilled = assigned >= required;
 
-  // Get assignments for this category
-  const categoryAssignments = assignments.filter((a) => {
-    const member = a.staffMember;
-    if (!member) return false;
-    return matchRoleToCategory(member.position || "", category);
-  });
+  // Get assignments for this category - use backend IDs if available, fallback to position matching
+  const categoryAssignments = assignmentIds?.length
+    ? assignments.filter((a) => assignmentIds.includes(a.id))
+    : assignments.filter((a) => {
+        const member = a.staffMember;
+        if (!member) return false;
+        return matchRoleToCategory(member.position || "", category);
+      });
 
   const handleSave = () => {
     if (editValue !== requirement.required) {
@@ -251,7 +253,14 @@ export function StaffAssignmentRow({ assignment, eventId, onDelete, onPayment, c
       }`}
     >
       <div className="flex-1 min-w-0">
-        <div className="font-medium truncate">{staffName}</div>
+        <div className="font-medium truncate flex items-center gap-1.5">
+          {staffName}
+          {assignment.staffMember?.isGroup && (
+            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 font-normal">
+              {assignment.staffMember.groupSize ? `${assignment.staffMember.groupSize} os.` : "skupina"}
+            </Badge>
+          )}
+        </div>
         <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
           {assignment.staffMember?.position && (
             <span>{translateStaffRole(assignment.staffMember.position)}</span>
@@ -276,9 +285,9 @@ export function StaffAssignmentRow({ assignment, eventId, onDelete, onPayment, c
           variant={isPresent ? "default" : "outline"}
           size="icon"
           className={`h-8 w-8 ${isPresent ? "bg-green-600 hover:bg-green-700" : ""}`}
-          onClick={() => updateAttendanceMutation.mutate("PRESENT")}
+          onClick={() => updateAttendanceMutation.mutate(isPresent ? "UNKNOWN" : "PRESENT")}
           disabled={isPending}
-          title="Přítomen"
+          title={isPresent ? "Zrušit přítomnost" : "Přítomen"}
         >
           {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
         </Button>
@@ -286,9 +295,9 @@ export function StaffAssignmentRow({ assignment, eventId, onDelete, onPayment, c
           variant={isAbsent ? "destructive" : "outline"}
           size="icon"
           className="h-8 w-8"
-          onClick={() => updateAttendanceMutation.mutate("ABSENT")}
+          onClick={() => updateAttendanceMutation.mutate(isAbsent ? "UNKNOWN" : "ABSENT")}
           disabled={isPending}
-          title="Nepřítomen"
+          title={isAbsent ? "Zrušit nepřítomnost" : "Nepřítomen"}
         >
           <X className="h-4 w-4" />
         </Button>

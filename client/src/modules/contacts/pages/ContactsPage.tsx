@@ -133,7 +133,7 @@ export default function Contacts() {
         </Button>
         <Button
           onClick={() => setIsCreateOpen(true)}
-          className="bg-gradient-to-r from-primary to-purple-600"
+          className="bg-primary hover:bg-primary/90"
         >
           <Plus className="w-4 h-4 mr-2" />
           Přidat kontakt

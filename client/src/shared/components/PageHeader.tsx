@@ -8,7 +8,7 @@ export function PageHeader({ title, description, children }: PageHeaderProps) {
   return (
     <div className="flex items-center justify-between">
       <div>
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+        <h1 className="text-3xl font-bold text-primary">
           {title}
         </h1>
         {description && (

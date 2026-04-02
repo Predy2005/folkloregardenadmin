@@ -46,6 +46,7 @@ interface InvoiceItemsEditorProps {
   subtotal: number;
   vatAmount: number;
   total: number;
+  disableItems?: boolean;
 }
 
 export default function InvoiceItemsEditor({
@@ -54,6 +55,7 @@ export default function InvoiceItemsEditor({
   subtotal,
   vatAmount,
   total,
+  disableItems,
 }: InvoiceItemsEditorProps) {
   // Reservation selection state
   const [reservationOpen, setReservationOpen] = useState(false);
@@ -158,6 +160,7 @@ export default function InvoiceItemsEditor({
   return (
     <>
       {/* Items section */}
+      <fieldset disabled={disableItems} className="contents">
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -303,6 +306,8 @@ export default function InvoiceItemsEditor({
           </div>
         </CardContent>
       </Card>
+
+      </fieldset>
 
       {/* Note */}
       <Card>

@@ -13,14 +13,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/shared/components/ui/form";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/shared/components/ui/card";
 import { useAuth } from "@modules/auth";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 
@@ -49,7 +41,7 @@ export default function Login() {
   const onSubmit = async (data: LoginForm) => {
     try {
       setIsLoading(true);
-      await login({ username: data.username, password: data.password });
+      await login({ username: data.username, password: data.password, rememberMe: data.rememberMe });
       setLocation("/");
     } catch (error) {
       console.error("Login error:", error);
@@ -60,144 +52,156 @@ export default function Login() {
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
-      {/* Levá strana - Hero s purple gradient */}
-      <div className="hidden lg:flex flex-col justify-between bg-gradient-to-br from-primary via-purple-600 to-pink-500 p-12 text-white relative overflow-hidden">
-        <div className="absolute inset-0 bg-black/20"></div>
-        <div className="relative z-10">
-          <div className="w-12 h-12 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center mb-4">
-            <span className="text-2xl font-bold">FG</span>
+      {/* Levá strana - Bílé pozadí s logem, textem a patternem */}
+      <div className="hidden lg:flex flex-col justify-between p-12 bg-white relative">
+        {/* Logo */}
+        <div>
+          <img src="/logo.svg" alt="Folklore Garden" className="h-10" />
+        </div>
+
+        {/* Hlavní text */}
+        <div className="flex-1 flex flex-col justify-center max-w-xl">
+          <h1 className="font-bold text-[#21150C] mb-4 leading-tight" style={{ fontSize: '50px' }}>
+            CRM Folklore Garden
+          </h1>
+          <p className="text-sm text-[#21150C]/70">
+            Kompletní administrační systém pro
+            <br />
+            správu rezervací, plateb, akcí a personálu
+          </p>
+
+          {/* Pattern */}
+          <div className="mt-10 overflow-hidden">
+            <img
+              src="/pattern.svg"
+              alt=""
+              className="w-full max-w-sm h-auto"
+              aria-hidden="true"
+            />
           </div>
         </div>
 
-        <div className="relative z-10">
-          <h1 className="text-4xl font-serif font-bold mb-4">
-            Nejrychlejší a nejjednodušší způsob
-          </h1>
-          <p className="text-xl font-serif font-bold mb-6">
-            Správa Folklore Garden
-          </p>
-          <p className="text-white/90 text-sm max-w-md">
-            Kompletní administrační systém pro správu rezervací, plateb, akcí a
-            personálu
-          </p>
-        </div>
-
-        <div className="relative z-10 text-xs text-white/80">
-          Version: 1.0.0.1
+        {/* Footer */}
+        <div className="flex items-center justify-between text-xs text-[#21150C]/60">
+          <span>Version 10.01</span>
+          <span className="text-[#DC1A15] font-medium">
+            Podpora +420 123 456 789
+          </span>
         </div>
       </div>
 
-      {/* Pravá strana - Login form */}
-      <div className="flex items-center justify-center p-6 bg-background">
-        <div className="w-full max-w-md space-y-6">
-          <div className="text-right mb-6">
-            <div className="inline-flex items-center gap-2 text-sm">
-              <div className="w-8 h-8 rounded-md bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center text-white font-bold">
-                FG
-              </div>
-              <span className="font-semibold">Folklore Garden</span>
-            </div>
+      {/* Pravá strana - Login form na krémovém pozadí */}
+      <div className="flex items-center justify-center p-6" style={{ backgroundColor: '#F7EFE8' }}>
+        <div className="w-full max-w-md space-y-8">
+          {/* Nadpis s logem */}
+          <div className="flex items-start justify-between">
+            <h2 className="text-2xl font-bold text-[#21150C]">Přihlášení</h2>
+            <img src="/logo.svg" alt="Folklore Garden" className="h-8" />
           </div>
 
-          <Card className="border-border">
-            <CardHeader className="space-y-1">
-              <CardTitle className="text-2xl font-serif">Přihlášení</CardTitle>
-              <CardDescription>Zadejte své přihlašovací údaje</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Form {...form}>
-                <form
-                  onSubmit={form.handleSubmit(onSubmit)}
-                  className="space-y-4"
-                >
-                  <FormField
-                    control={form.control}
-                    name="username"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email / Uživatelské jméno</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="text"
-                            placeholder="vas@email.cz"
-                            data-testid="input-email"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+          {/* Popis */}
+          <p className="text-sm text-[#21150C]/60 -mt-4">
+            Zadejte své přihlašovací údaje
+          </p>
 
-                  <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Heslo</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="password"
-                            placeholder="Zadejte heslo"
-                            data-testid="input-password"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+          {/* Formulář */}
+          <Form {...form}>
+            <form
+              onSubmit={form.handleSubmit(onSubmit)}
+              className="space-y-5"
+            >
+              <FormField
+                control={form.control}
+                name="username"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-[#21150C]/80 text-sm">
+                      E-mail / Uživatelské jméno
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="text"
+                        placeholder="admin@folkloregarden.cz"
+                        data-testid="input-email"
+                        className="bg-white border-[#21150C]/10 h-11"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-                  <div className="flex items-center justify-between">
-                    <FormField
-                      control={form.control}
-                      name="rememberMe"
-                      render={({ field }) => (
-                        <FormItem className="flex items-center gap-2 space-y-0">
-                          <FormControl>
-                            <Checkbox
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                              data-testid="checkbox-remember"
-                            />
-                          </FormControl>
-                          <FormLabel className="text-sm font-normal cursor-pointer">
-                            Zapamatovat si mě
-                          </FormLabel>
-                        </FormItem>
-                      )}
-                    />
-                    <Link
-                      href="/forgot-password"
-                      className="text-sm text-primary hover:underline"
-                    >
-                      Zapomněli jste heslo?
-                    </Link>
-                  </div>
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-[#21150C]/80 text-sm">
+                      Heslo
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="password"
+                        placeholder="Zadejte heslo"
+                        data-testid="input-password"
+                        className="bg-white border-[#21150C]/10 h-11"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-                  <Button
-                    type="submit"
-                    className="w-full bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90"
-                    disabled={isLoading}
-                    data-testid="button-login"
-                  >
-                    {isLoading ? "Přihlašování..." : "Přihlásit se"}
-                  </Button>
-                </form>
-              </Form>
-            </CardContent>
-            <CardFooter className="flex justify-center">
-              <p className="text-sm text-muted-foreground">
-                Nemáte účet?{" "}
+              <div className="flex items-center justify-between">
+                <FormField
+                  control={form.control}
+                  name="rememberMe"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center gap-2 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          data-testid="checkbox-remember"
+                        />
+                      </FormControl>
+                      <FormLabel className="text-sm font-normal cursor-pointer text-[#21150C]/70">
+                        Zapamatovat si mě
+                      </FormLabel>
+                    </FormItem>
+                  )}
+                />
                 <Link
-                  href="/register"
-                  className="text-primary hover:underline font-medium"
+                  href="/forgot-password"
+                  className="text-sm text-[#DC1A15] hover:underline"
                 >
-                  Zaregistrovat se
+                  Zapomněli jste heslo?
                 </Link>
-              </p>
-            </CardFooter>
-          </Card>
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full h-11 text-white font-medium rounded-full"
+                style={{ backgroundColor: '#DC1A15' }}
+                disabled={isLoading}
+                data-testid="button-login"
+              >
+                {isLoading ? "Přihlašování..." : "Přihlásit se"}
+              </Button>
+            </form>
+          </Form>
+
+          <p className="text-sm text-center text-[#21150C]/60">
+            Nemáte účet?{" "}
+            <Link
+              href="/register"
+              className="text-[#0E7834] hover:underline font-medium"
+            >
+              Zaregistrovat se.
+            </Link>
+          </p>
         </div>
       </div>
     </div>

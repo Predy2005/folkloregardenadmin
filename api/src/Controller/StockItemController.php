@@ -40,6 +40,71 @@ class StockItemController extends AbstractController
         return $this->json(['status' => 'created', 'id' => $item->getId()], JsonResponse::HTTP_CREATED);
     }
 
+    #[Route('/bulk-update', methods: ['PUT', 'PATCH'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function bulkUpdate(Request $request, StockItemRepository $repository, EntityManagerInterface $em): JsonResponse
+    {
+        $data = json_decode($request->getContent(), true);
+        $ids = $data['ids'] ?? [];
+        $updates = $data['updates'] ?? [];
+
+        if (empty($ids)) {
+            return $this->json(['error' => 'No IDs provided'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        $allowedFields = ['supplier', 'minQuantity', 'pricePerUnit'];
+        $count = 0;
+
+        foreach ($ids as $id) {
+            $item = $repository->find($id);
+            if (!$item) {
+                continue;
+            }
+
+            foreach ($updates as $field => $value) {
+                if (!in_array($field, $allowedFields)) {
+                    continue;
+                }
+                match ($field) {
+                    'supplier' => $item->setSupplier($value),
+                    'minQuantity' => $item->setMinQuantity($value !== null ? (string) $value : null),
+                    'pricePerUnit' => $item->setPricePerUnit($value !== null ? (string) $value : null),
+                };
+            }
+            $count++;
+        }
+
+        $em->flush();
+
+        return $this->json(['status' => 'updated', 'count' => $count]);
+    }
+
+    #[Route('/bulk-delete', methods: ['DELETE'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function bulkDelete(Request $request, StockItemRepository $repository, EntityManagerInterface $em): JsonResponse
+    {
+        $data = json_decode($request->getContent(), true);
+        $ids = $data['ids'] ?? [];
+
+        if (empty($ids)) {
+            return $this->json(['error' => 'No IDs provided'], JsonResponse::HTTP_BAD_REQUEST);
+        }
+
+        $count = 0;
+        foreach ($ids as $id) {
+            $item = $repository->find($id);
+            if (!$item) {
+                continue;
+            }
+            $em->remove($item);
+            $count++;
+        }
+
+        $em->flush();
+
+        return $this->json(['status' => 'deleted', 'count' => $count]);
+    }
+
     #[Route('/{id}', methods: ['PUT','PATCH'])]
     #[IsGranted('stock_items.update')]
     public function update(int $id, Request $request, StockItemRepository $repo, EntityManagerInterface $em): JsonResponse

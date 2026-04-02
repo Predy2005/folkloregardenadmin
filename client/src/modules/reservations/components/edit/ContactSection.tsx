@@ -1,6 +1,7 @@
 import type { Ref } from "react";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { NationalityInput } from "@/shared/components/NationalityInput";
 import type { SharedContact } from "@modules/reservations/types";
 
 export interface ContactSectionProps {
@@ -128,12 +129,12 @@ export function ContactSection({
       </div>
       <div>
         <Label>Národnost *</Label>
-        <Input
+        <NationalityInput
           value={sharedContact.contactNationality}
-          onChange={(e) =>
+          onChange={(val) =>
             setSharedContact((prev) => ({
               ...prev,
-              contactNationality: e.target.value,
+              contactNationality: val,
             }))
           }
           className="mt-1"

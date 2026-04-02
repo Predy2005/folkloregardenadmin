@@ -22,6 +22,7 @@ import { api } from "@/shared/lib/api";
 import BasicInfoTab from "../components/BasicInfoTab";
 import GuestsTab from "../components/GuestsTab";
 import { MenuTab, BeveragesTab, ScheduleTab, TablesTab, StaffTab, VouchersTab, FinanceTab } from "../components/tabs";
+import { TransportTab } from "../components/tabs/TransportTab";
 
 // Notes panel
 import { EventNotesProvider } from "../contexts/EventNotesContext";
@@ -177,7 +178,7 @@ export default function EventEdit() {
                     Harmonogram
                   </TabsTrigger>
                   <TabsTrigger value="tables" data-testid="tab-trigger-tables">
-                    Stoly
+                    Plánek stolů
                   </TabsTrigger>
                   <TabsTrigger value="staff" data-testid="tab-trigger-staff">
                     Personál
@@ -185,8 +186,8 @@ export default function EventEdit() {
                   <TabsTrigger value="finance" data-testid="tab-trigger-finance">
                     Finance
                   </TabsTrigger>
-                  <TabsTrigger value="vouchers" data-testid="tab-trigger-vouchers">
-                    Vouchery
+                  <TabsTrigger value="transport" data-testid="tab-trigger-transport">
+                    Doprava
                   </TabsTrigger>
                 </TabsList>
 
@@ -242,6 +243,7 @@ export default function EventEdit() {
                     staffAssignments={staffAssignments || []}
                     staffMembers={staffMembers || []}
                     isLoading={staffLoading}
+                    eventDurationMinutes={event?.durationMinutes || 0}
                   />
                 </TabsContent>
 
@@ -255,6 +257,10 @@ export default function EventEdit() {
                     vouchers={eventVouchers || []}
                     isLoading={vouchersLoading}
                   />
+                </TabsContent>
+
+                <TabsContent value="transport" className="mt-6">
+                  <TransportTab eventId={eventId} />
                 </TabsContent>
               </Tabs>
             </CardContent>

@@ -15,6 +15,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
@@ -64,6 +65,136 @@ class CashboxController extends AbstractController
         }
 
         return $this->json($this->cashboxService->serializeCashbox($main, true));
+    }
+
+    #[Route('/main/adjust-balance', name: 'cashbox_main_adjust_balance', methods: ['POST'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function mainAdjustBalance(Request $request): JsonResponse
+    {
+        $main = $this->cashboxService->getMainCashbox();
+        if (!$main) {
+            return $this->json(['error' => 'Hlavní kasa neexistuje'], 404);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        if (!isset($data['newBalance']) || !isset($data['reason'])) {
+            return $this->json(['error' => 'Povinné pole: newBalance, reason'], 400);
+        }
+
+        $this->cashboxService->setCurrentIp($request->getClientIp());
+        $user = $this->getUser();
+
+        try {
+            $movement = $this->cashboxService->adjustBalance(
+                $main,
+                (string) $data['newBalance'],
+                $data['reason'],
+                $user
+            );
+            $this->em->flush();
+        } catch (\RuntimeException | \InvalidArgumentException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        }
+
+        return $this->json([
+            'status' => 'ok',
+            'movement' => $this->cashboxService->serializeMovement($movement),
+            'newBalance' => $main->getCurrentBalance(),
+        ]);
+    }
+
+    #[Route('/main/info', name: 'cashbox_main_update_info', methods: ['PUT', 'PATCH'])]
+    #[IsGranted('cashbox.update')]
+    public function mainUpdateInfo(Request $request): JsonResponse
+    {
+        $main = $this->cashboxService->getMainCashbox();
+        if (!$main) {
+            return $this->json(['error' => 'Hlavní kasa neexistuje'], 404);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        $this->cashboxService->setCurrentIp($request->getClientIp());
+        $user = $this->getUser();
+
+        $this->cashboxService->updateCashboxInfo($main, $data, $user);
+
+        return $this->json(['status' => 'ok']);
+    }
+
+    #[Route('/main/report', name: 'cashbox_main_report', methods: ['GET'])]
+    #[IsGranted('cashbox.read')]
+    public function mainReport(Request $request): JsonResponse
+    {
+        $main = $this->cashboxService->getMainCashbox();
+        if (!$main) {
+            return $this->json(['error' => 'Hlavní kasa neexistuje'], 404);
+        }
+
+        $dateFrom = $request->query->get('dateFrom');
+        $dateTo = $request->query->get('dateTo');
+
+        return $this->json($this->cashboxService->getCashboxReport($main, $dateFrom, $dateTo));
+    }
+
+    #[Route('/event/{eventId}/adjust-balance', name: 'cashbox_event_adjust_balance', methods: ['POST'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function eventAdjustBalance(int $eventId, Request $request): JsonResponse
+    {
+        $event = $this->em->getRepository(\App\Entity\Event::class)->find($eventId);
+        if (!$event) {
+            return $this->json(['error' => 'Event nenalezen'], 404);
+        }
+
+        $cashbox = $this->cashboxService->getEventCashbox($event);
+        if (!$cashbox) {
+            return $this->json(['error' => 'Kasa eventu neexistuje'], 404);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        if (!isset($data['newBalance']) || !isset($data['reason'])) {
+            return $this->json(['error' => 'Povinné pole: newBalance, reason'], 400);
+        }
+
+        $this->cashboxService->setCurrentIp($request->getClientIp());
+        $user = $this->getUser();
+
+        try {
+            $movement = $this->cashboxService->adjustBalance(
+                $cashbox,
+                (string) $data['newBalance'],
+                $data['reason'],
+                $user
+            );
+            $this->em->flush();
+        } catch (\RuntimeException | \InvalidArgumentException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        }
+
+        return $this->json([
+            'status' => 'ok',
+            'movement' => $this->cashboxService->serializeMovement($movement),
+            'newBalance' => $cashbox->getCurrentBalance(),
+        ]);
+    }
+
+    #[Route('/event/{eventId}/report', name: 'cashbox_event_report', methods: ['GET'])]
+    #[IsGranted('cashbox.read')]
+    public function eventReport(int $eventId, Request $request): JsonResponse
+    {
+        $event = $this->em->getRepository(\App\Entity\Event::class)->find($eventId);
+        if (!$event) {
+            return $this->json(['error' => 'Event nenalezen'], 404);
+        }
+
+        $cashbox = $this->cashboxService->getEventCashbox($event);
+        if (!$cashbox) {
+            return $this->json(['error' => 'Kasa eventu neexistuje'], 404);
+        }
+
+        $dateFrom = $request->query->get('dateFrom');
+        $dateTo = $request->query->get('dateTo');
+
+        return $this->json($this->cashboxService->getCashboxReport($cashbox, $dateFrom, $dateTo));
     }
 
     #[Route('/main/movements', name: 'cashbox_main_movements', methods: ['GET'])]
@@ -137,6 +268,12 @@ class CashboxController extends AbstractController
             }
         }
 
+        if (!in_array($data['movementType'], ['INCOME', 'EXPENSE'], true)) {
+            return $this->json(['error' => 'Neplatný typ pohybu. Povolené hodnoty: INCOME, EXPENSE'], 400);
+        }
+
+        $this->cashboxService->setCurrentIp($request->getClientIp());
+
         try {
             $user = $this->getUser();
             $movement = $this->cashboxService->addMovement($main, $data['movementType'], (string) $data['amount'], [
@@ -157,10 +294,75 @@ class CashboxController extends AbstractController
         ]);
     }
 
+    #[Route('/main/movement/{movementId}', name: 'cashbox_main_edit_movement', methods: ['PUT', 'PATCH'])]
+    #[IsGranted('cashbox.update')]
+    public function editMainMovement(int $movementId, Request $request): JsonResponse
+    {
+        $this->cashboxService->setCurrentIp($request->getClientIp());
+        $main = $this->cashboxService->getMainCashbox();
+        if (!$main) return $this->json(['error' => 'Hlavní kasa neexistuje'], 404);
+
+        $movement = $this->em->getRepository(\App\Entity\CashMovement::class)->find($movementId);
+        if (!$movement || $movement->getCashbox()->getId() !== $main->getId()) {
+            return $this->json(['error' => 'Pohyb nenalezen'], 404);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        $user = $this->getUser();
+
+        try {
+            $updated = $this->cashboxService->editMovement($movement, $data, $user);
+            $this->em->flush();
+            return $this->json($this->cashboxService->serializeMovement($updated));
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    #[Route('/main/movement/{movementId}', name: 'cashbox_main_delete_movement', methods: ['DELETE'])]
+    #[IsGranted('cashbox.update')]
+    public function deleteMainMovement(int $movementId, Request $request): JsonResponse
+    {
+        $this->cashboxService->setCurrentIp($request->getClientIp());
+        $main = $this->cashboxService->getMainCashbox();
+        if (!$main) return $this->json(['error' => 'Hlavní kasa neexistuje'], 404);
+
+        $movement = $this->em->getRepository(\App\Entity\CashMovement::class)->find($movementId);
+        if (!$movement || $movement->getCashbox()->getId() !== $main->getId()) {
+            return $this->json(['error' => 'Pohyb nenalezen'], 404);
+        }
+
+        $user = $this->getUser();
+
+        try {
+            $this->cashboxService->deleteMovement($movement, $user);
+            $this->em->flush();
+            return $this->json(['status' => 'deleted']);
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    #[Route('/main/audit-log', name: 'cashbox_main_audit_log', methods: ['GET'])]
+    #[IsGranted('cashbox.read')]
+    public function mainAuditLog(Request $request): JsonResponse
+    {
+        $main = $this->cashboxService->getMainCashbox();
+        if (!$main) return $this->json([]);
+
+        $limit = min(200, max(10, (int) $request->query->get('limit', 100)));
+        $offset = max(0, (int) $request->query->get('offset', 0));
+
+        $logs = $this->em->getRepository(\App\Entity\CashboxAuditLog::class)->findByCashbox($main, $limit, $offset);
+
+        return $this->json(array_map(fn($log) => $this->cashboxService->serializeAuditLog($log), $logs));
+    }
+
     #[Route('/main/lock', name: 'cashbox_main_lock', methods: ['POST'])]
     #[IsGranted('cashbox.update')]
-    public function mainLock(): JsonResponse
+    public function mainLock(Request $request): JsonResponse
     {
+        $this->cashboxService->setCurrentIp($request->getClientIp());
         if ($this->cashboxService->isMainCashboxHidden()) {
             return $this->json(['error' => 'Not found'], 404);
         }
@@ -182,8 +384,9 @@ class CashboxController extends AbstractController
 
     #[Route('/main/reopen', name: 'cashbox_main_reopen', methods: ['POST'])]
     #[IsGranted('cashbox.reopen')]
-    public function mainReopen(): JsonResponse
+    public function mainReopen(Request $request): JsonResponse
     {
+        $this->cashboxService->setCurrentIp($request->getClientIp());
         if ($this->cashboxService->isMainCashboxHidden()) {
             return $this->json(['error' => 'Not found'], 404);
         }
@@ -231,9 +434,111 @@ class CashboxController extends AbstractController
         return $this->json(array_map(fn($c) => $this->cashboxService->serializeClosure($c), $closures));
     }
 
+    #[Route('/main/export', name: 'cashbox_main_export', methods: ['GET'])]
+    #[IsGranted('cashbox.read')]
+    public function exportMainMovements(Request $request): Response
+    {
+        $main = $this->cashboxService->getMainCashbox();
+        if (!$main) {
+            return new Response('Hlavní kasa neexistuje.', 404);
+        }
+
+        $filters = [
+            'dateFrom' => $request->query->get('dateFrom'),
+            'dateTo' => $request->query->get('dateTo'),
+            'category' => $request->query->get('category'),
+            'movementType' => $request->query->get('movementType'),
+        ];
+
+        $movements = $this->cashboxService->getAllFilteredMovements($main, $filters);
+        $csv = $this->generateMovementsCsv($movements);
+        $date = (new \DateTime())->format('Y-m-d');
+
+        return new Response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"kasa-export-{$date}.csv\"",
+        ]);
+    }
+
+    #[Route('/main/close', name: 'cashbox_main_close', methods: ['POST'])]
+    #[IsGranted('cashbox.close')]
+    public function mainClose(Request $request): JsonResponse
+    {
+        if ($this->cashboxService->isMainCashboxHidden()) {
+            return $this->json(['error' => 'Not found'], 404);
+        }
+
+        $main = $this->cashboxService->getMainCashbox();
+        if (!$main) {
+            return $this->json(['error' => 'Hlavní kasa neexistuje.'], 404);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        if (!isset($data['actualCash'])) {
+            return $this->json(['error' => 'Missing required field: actualCash'], 400);
+        }
+
+        $user = $this->getUser();
+        if (!$user instanceof User) {
+            return $this->json(['error' => 'Unauthorized'], 401);
+        }
+
+        try {
+            $result = $this->cashboxService->closeMainCashbox(
+                $main,
+                (string) $data['actualCash'],
+                $user,
+                $data['notes'] ?? null,
+            );
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        }
+
+        return $this->json([
+            'status' => 'closed',
+            'closureId' => $result['closure']->getId(),
+            'expectedCash' => $result['closure']->getExpectedCash(),
+            'actualCash' => $result['closure']->getActualCash(),
+            'difference' => $result['closure']->getDifference(),
+            'currentBalance' => $main->getCurrentBalance(),
+        ]);
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     //  EVENT CASHBOX
     // ═══════════════════════════════════════════════════════════════════
+
+    #[Route('/event/{eventId}/export', name: 'cashbox_event_export', methods: ['GET'])]
+    #[IsGranted('cashbox.read')]
+    public function exportEventMovements(int $eventId, Request $request): Response
+    {
+        $event = $this->em->getRepository(\App\Entity\Event::class)->find($eventId);
+        if (!$event) {
+            return new Response('Event nenalezen.', 404);
+        }
+
+        $cashbox = $this->cashboxService->getEventCashbox($event);
+        if (!$cashbox) {
+            return new Response('Kasa eventu neexistuje.', 404);
+        }
+
+        $filters = [
+            'dateFrom' => $request->query->get('dateFrom'),
+            'dateTo' => $request->query->get('dateTo'),
+            'category' => $request->query->get('category'),
+            'movementType' => $request->query->get('movementType'),
+        ];
+
+        $movements = $this->cashboxService->getAllFilteredMovements($cashbox, $filters);
+        $csv = $this->generateMovementsCsv($movements);
+        $date = (new \DateTime())->format('Y-m-d');
+        $eventName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $event->getName());
+
+        return new Response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"kasa-event-{$eventName}-{$date}.csv\"",
+        ]);
+    }
 
     #[Route('/event/{eventId}', name: 'cashbox_event_detail', methods: ['GET'])]
     #[IsGranted('cashbox.read')]
@@ -295,6 +600,12 @@ class CashboxController extends AbstractController
             }
         }
 
+        if (!in_array($data['movementType'], ['INCOME', 'EXPENSE'], true)) {
+            return $this->json(['error' => 'Neplatný typ pohybu. Povolené hodnoty: INCOME, EXPENSE'], 400);
+        }
+
+        $this->cashboxService->setCurrentIp($request->getClientIp());
+
         try {
             $user = $this->getUser();
             $movement = $this->cashboxService->addMovement($cashbox, $data['movementType'], (string) $data['amount'], [
@@ -315,10 +626,84 @@ class CashboxController extends AbstractController
         ]);
     }
 
+    #[Route('/event/{eventId}/movement/{movementId}', name: 'cashbox_event_edit_movement', methods: ['PUT', 'PATCH'])]
+    #[IsGranted('cashbox.update')]
+    public function editEventMovement(int $eventId, int $movementId, Request $request): JsonResponse
+    {
+        $this->cashboxService->setCurrentIp($request->getClientIp());
+        $event = $this->em->getRepository(\App\Entity\Event::class)->find($eventId);
+        if (!$event) return $this->json(['error' => 'Event nenalezen'], 404);
+
+        $cashbox = $this->cashboxService->getEventCashbox($event);
+        if (!$cashbox) return $this->json(['error' => 'Kasa eventu neexistuje'], 404);
+
+        $movement = $this->em->getRepository(\App\Entity\CashMovement::class)->find($movementId);
+        if (!$movement || $movement->getCashbox()->getId() !== $cashbox->getId()) {
+            return $this->json(['error' => 'Pohyb nenalezen'], 404);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        $user = $this->getUser();
+
+        try {
+            $updated = $this->cashboxService->editMovement($movement, $data, $user);
+            $this->em->flush();
+            return $this->json($this->cashboxService->serializeMovement($updated));
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    #[Route('/event/{eventId}/movement/{movementId}', name: 'cashbox_event_delete_movement', methods: ['DELETE'])]
+    #[IsGranted('cashbox.update')]
+    public function deleteEventMovement(int $eventId, int $movementId, Request $request): JsonResponse
+    {
+        $this->cashboxService->setCurrentIp($request->getClientIp());
+        $event = $this->em->getRepository(\App\Entity\Event::class)->find($eventId);
+        if (!$event) return $this->json(['error' => 'Event nenalezen'], 404);
+
+        $cashbox = $this->cashboxService->getEventCashbox($event);
+        if (!$cashbox) return $this->json(['error' => 'Kasa eventu neexistuje'], 404);
+
+        $movement = $this->em->getRepository(\App\Entity\CashMovement::class)->find($movementId);
+        if (!$movement || $movement->getCashbox()->getId() !== $cashbox->getId()) {
+            return $this->json(['error' => 'Pohyb nenalezen'], 404);
+        }
+
+        $user = $this->getUser();
+
+        try {
+            $this->cashboxService->deleteMovement($movement, $user);
+            $this->em->flush();
+            return $this->json(['status' => 'deleted']);
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    #[Route('/event/{eventId}/audit-log', name: 'cashbox_event_audit_log', methods: ['GET'])]
+    #[IsGranted('cashbox.read')]
+    public function eventAuditLog(int $eventId, Request $request): JsonResponse
+    {
+        $event = $this->em->getRepository(\App\Entity\Event::class)->find($eventId);
+        if (!$event) return $this->json(['error' => 'Event nenalezen'], 404);
+
+        $cashbox = $this->cashboxService->getEventCashbox($event);
+        if (!$cashbox) return $this->json([]);
+
+        $limit = min(200, max(10, (int) $request->query->get('limit', 100)));
+        $offset = max(0, (int) $request->query->get('offset', 0));
+
+        $logs = $this->em->getRepository(\App\Entity\CashboxAuditLog::class)->findByCashbox($cashbox, $limit, $offset);
+
+        return $this->json(array_map(fn($log) => $this->cashboxService->serializeAuditLog($log), $logs));
+    }
+
     #[Route('/event/{eventId}/close', name: 'cashbox_event_close', methods: ['POST'])]
     #[IsGranted('cashbox.close')]
     public function eventClose(int $eventId, Request $request, EventRepository $eventRepo): JsonResponse
     {
+        $this->cashboxService->setCurrentIp($request->getClientIp());
         $event = $eventRepo->find($eventId);
         if (!$event) {
             return $this->json(['error' => 'Event not found'], 404);
@@ -360,8 +745,9 @@ class CashboxController extends AbstractController
 
     #[Route('/event/{eventId}/reopen', name: 'cashbox_event_reopen', methods: ['POST'])]
     #[IsGranted('cashbox.reopen')]
-    public function eventReopen(int $eventId, EventRepository $eventRepo): JsonResponse
+    public function eventReopen(int $eventId, Request $request, EventRepository $eventRepo): JsonResponse
     {
+        $this->cashboxService->setCurrentIp($request->getClientIp());
         $event = $eventRepo->find($eventId);
         if (!$event) {
             return $this->json(['error' => 'Event not found'], 404);
@@ -379,8 +765,9 @@ class CashboxController extends AbstractController
 
     #[Route('/event/{eventId}/lock', name: 'cashbox_event_lock', methods: ['POST'])]
     #[IsGranted('cashbox.update')]
-    public function eventLock(int $eventId, EventRepository $eventRepo): JsonResponse
+    public function eventLock(int $eventId, Request $request, EventRepository $eventRepo): JsonResponse
     {
+        $this->cashboxService->setCurrentIp($request->getClientIp());
         $event = $eventRepo->find($eventId);
         if (!$event) {
             return $this->json(['error' => 'Event not found'], 404);
@@ -405,6 +792,7 @@ class CashboxController extends AbstractController
     #[IsGranted('cashbox.update')]
     public function eventPayStaff(int $eventId, int $assignmentId, Request $request, EventRepository $eventRepo): JsonResponse
     {
+        $this->cashboxService->setCurrentIp($request->getClientIp());
         $event = $eventRepo->find($eventId);
         if (!$event) {
             return $this->json(['error' => 'Event not found'], 404);
@@ -419,6 +807,10 @@ class CashboxController extends AbstractController
         }
         if (!$assignment) {
             return $this->json(['error' => 'Staff assignment not found'], 404);
+        }
+
+        if ($assignment->getPaymentStatus() === 'PAID') {
+            return $this->json(['error' => 'Personál je již zaplacen'], 409);
         }
 
         $data = json_decode($request->getContent(), true) ?? [];
@@ -468,8 +860,9 @@ class CashboxController extends AbstractController
 
     #[Route('/event/{eventId}/pay-all-staff', name: 'cashbox_event_pay_all_staff', methods: ['POST'])]
     #[IsGranted('cashbox.update')]
-    public function eventPayAllStaff(int $eventId, EventRepository $eventRepo): JsonResponse
+    public function eventPayAllStaff(int $eventId, Request $request, EventRepository $eventRepo): JsonResponse
     {
+        $this->cashboxService->setCurrentIp($request->getClientIp());
         $event = $eventRepo->find($eventId);
         if (!$event) {
             return $this->json(['error' => 'Event not found'], 404);
@@ -537,6 +930,7 @@ class CashboxController extends AbstractController
     #[IsGranted('cashbox.update')]
     public function addMovement(int $id, Request $request, CashboxRepository $repo): JsonResponse
     {
+        $this->cashboxService->setCurrentIp($request->getClientIp());
         $box = $repo->find($id);
         if (!$box) {
             return $this->json(['error' => 'Cashbox not found'], 404);
@@ -547,6 +941,10 @@ class CashboxController extends AbstractController
             if (!isset($data[$req])) {
                 return $this->json(['error' => 'Missing required field: ' . $req], 400);
             }
+        }
+
+        if (!in_array($data['movementType'], ['INCOME', 'EXPENSE'], true)) {
+            return $this->json(['error' => 'Neplatný typ pohybu. Povolené hodnoty: INCOME, EXPENSE'], 400);
         }
 
         try {
@@ -638,6 +1036,36 @@ class CashboxController extends AbstractController
         return $this->json(['status' => 'closed', 'closureId' => $closure->getId()]);
     }
 
+    #[Route('/main/reset', name: 'cashbox_main_reset', methods: ['POST'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function mainReset(Request $request): JsonResponse
+    {
+        $main = $this->cashboxService->getMainCashbox();
+        if (!$main) {
+            return $this->json(['error' => 'Hlavní kasa neexistuje'], 404);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        if (($data['confirm'] ?? '') !== 'RESET') {
+            return $this->json(['error' => 'Pro reset pošlete { "confirm": "RESET" }'], 400);
+        }
+
+        $cashboxId = $main->getId();
+        $conn = $this->em->getConnection();
+
+        // Delete all related data
+        $conn->executeStatement('DELETE FROM cashbox_audit_log WHERE cashbox_id = ?', [$cashboxId]);
+        $conn->executeStatement('DELETE FROM cashbox_transfer WHERE source_cashbox_id = ?', [$cashboxId]);
+        $conn->executeStatement('DELETE FROM cashbox_closure WHERE cashbox_id = ?', [$cashboxId]);
+        $conn->executeStatement('DELETE FROM cash_movement WHERE cashbox_id = ?', [$cashboxId]);
+        $conn->executeStatement('DELETE FROM cashbox WHERE id = ?', [$cashboxId]);
+
+        // Clear entity manager to avoid stale references
+        $this->em->clear();
+
+        return $this->json(['status' => 'reset', 'message' => 'Hlavní kasa byla kompletně smazána. Můžete ji znovu inicializovat.']);
+    }
+
     #[Route('/{id}/destroy', name: 'cashbox_destroy', methods: ['POST'], requirements: ['id' => '\d+'])]
     #[IsGranted('cashbox.delete')]
     public function destroy(int $id, CashboxRepository $repo): JsonResponse
@@ -677,6 +1105,7 @@ class CashboxController extends AbstractController
     #[IsGranted('cashbox.update')]
     public function initiateTransfer(Request $request, EventRepository $eventRepo): JsonResponse
     {
+        $this->cashboxService->setCurrentIp($request->getClientIp());
         if ($this->cashboxService->isMainCashboxHidden()) {
             return $this->json(['error' => 'Not found'], 404);
         }
@@ -758,18 +1187,21 @@ class CashboxController extends AbstractController
     }
 
     #[Route('/transfers/{id}/confirm', name: 'cashbox_transfer_confirm', methods: ['POST'])]
-    public function confirmTransfer(int $id, CashboxTransferRepository $transferRepo): JsonResponse
+    public function confirmTransfer(int $id, Request $request, CashboxTransferRepository $transferRepo): JsonResponse
     {
+        $this->cashboxService->setCurrentIp($request->getClientIp());
         $user = $this->getUser();
         if (!$user instanceof User) {
             return $this->json(['error' => 'Unauthorized'], 401);
         }
 
-        // Role check: only MANAGER+ can confirm
-        $roles = $user->getRoles();
-        $allowed = array_intersect($roles, ['ROLE_SUPER_ADMIN', 'ROLE_ADMIN', 'ROLE_MANAGER']);
-        if (empty($allowed)) {
-            return $this->json(['error' => 'Pouze manažer může potvrdit převzetí peněz'], 403);
+        // Role check: only MANAGER+ or super admin can confirm
+        if (!$user->isSuperAdmin()) {
+            $roles = $user->getRoles();
+            $allowed = array_intersect($roles, ['ROLE_SUPER_ADMIN', 'ROLE_ADMIN', 'ROLE_MANAGER']);
+            if (empty($allowed)) {
+                return $this->json(['error' => 'Pouze manažer může potvrdit převzetí peněz'], 403);
+            }
         }
 
         $transfer = $transferRepo->find($id);
@@ -790,19 +1222,51 @@ class CashboxController extends AbstractController
         }
     }
 
-    #[Route('/transfers/{id}/reject', name: 'cashbox_transfer_reject', methods: ['POST'])]
-    public function rejectTransfer(int $id, Request $request, CashboxTransferRepository $transferRepo): JsonResponse
+    #[Route('/transfers/{id}/approve-closure', name: 'cashbox_transfer_approve_closure', methods: ['POST'])]
+    #[IsGranted('ROLE_SUPER_ADMIN')]
+    public function approveClosureTransfer(int $id, Request $request, CashboxTransferRepository $transferRepo): JsonResponse
     {
+        $this->cashboxService->setCurrentIp($request->getClientIp());
         $user = $this->getUser();
         if (!$user instanceof User) {
             return $this->json(['error' => 'Unauthorized'], 401);
         }
 
-        // Role check: only MANAGER+ can reject
-        $roles = $user->getRoles();
-        $allowed = array_intersect($roles, ['ROLE_SUPER_ADMIN', 'ROLE_ADMIN', 'ROLE_MANAGER']);
-        if (empty($allowed)) {
-            return $this->json(['error' => 'Pouze manažer může odmítnout převod'], 403);
+        $transfer = $transferRepo->find($id);
+        if (!$transfer) {
+            return $this->json(['error' => 'Převod nenalezen'], 404);
+        }
+
+        try {
+            $this->cashboxService->approveClosureTransfer($transfer, $user);
+
+            return $this->json([
+                'status' => 'CONFIRMED',
+                'amount' => $transfer->getAmount(),
+                'confirmedAt' => $transfer->getConfirmedAt()?->format(DATE_ATOM),
+                'message' => 'Předání kasy schváleno. Peníze přijaty do hlavní kasy.',
+            ]);
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    #[Route('/transfers/{id}/reject', name: 'cashbox_transfer_reject', methods: ['POST'])]
+    public function rejectTransfer(int $id, Request $request, CashboxTransferRepository $transferRepo): JsonResponse
+    {
+        $this->cashboxService->setCurrentIp($request->getClientIp());
+        $user = $this->getUser();
+        if (!$user instanceof User) {
+            return $this->json(['error' => 'Unauthorized'], 401);
+        }
+
+        // Role check: only MANAGER+ or super admin can reject
+        if (!$user->isSuperAdmin()) {
+            $roles = $user->getRoles();
+            $allowed = array_intersect($roles, ['ROLE_SUPER_ADMIN', 'ROLE_ADMIN', 'ROLE_MANAGER']);
+            if (empty($allowed)) {
+                return $this->json(['error' => 'Pouze manažer může odmítnout převod'], 403);
+            }
         }
 
         $transfer = $transferRepo->find($id);
@@ -824,6 +1288,25 @@ class CashboxController extends AbstractController
         }
     }
 
+    #[Route('/transfers/{id}/cancel', name: 'cashbox_transfer_cancel', methods: ['POST'])]
+    #[IsGranted('cashbox.update')]
+    public function cancelTransfer(int $id, Request $request): JsonResponse
+    {
+        $this->cashboxService->setCurrentIp($request->getClientIp());
+        $transfer = $this->em->getRepository(\App\Entity\CashboxTransfer::class)->find($id);
+        if (!$transfer) return $this->json(['error' => 'Převod nenalezen'], 404);
+
+        $user = $this->getUser();
+
+        try {
+            $this->cashboxService->cancelTransfer($transfer, $user);
+            $this->em->flush();
+            return $this->json(['status' => 'cancelled']);
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     //  HIDDEN STATUS (for sidebar/frontend)
     // ═══════════════════════════════════════════════════════════════════
@@ -834,5 +1317,40 @@ class CashboxController extends AbstractController
         return $this->json([
             'hidden' => $this->cashboxService->isMainCashboxHidden(),
         ]);
+    }
+
+    // ─── CSV Helper ──────────────────────────────────────────────────
+
+    /**
+     * @param \App\Entity\CashMovement[] $movements
+     */
+    private function generateMovementsCsv(array $movements): string
+    {
+        $bom = "\xEF\xBB\xBF";
+        $header = ['Datum', 'Typ', 'Kategorie', 'Částka', 'Měna', 'Popis', 'Platební metoda', 'Uživatel'];
+
+        $handle = fopen('php://temp', 'r+');
+        fwrite($handle, $bom);
+        fputcsv($handle, $header, ';');
+
+        foreach ($movements as $m) {
+            $row = [
+                $m->getCreatedAt()->format('d.m.Y H:i'),
+                $m->getMovementType() === 'INCOME' ? 'Příjem' : 'Výdaj',
+                $m->getCategory() ?? '',
+                $m->getAmount(),
+                $m->getCurrency(),
+                $m->getDescription() ?? '',
+                $m->getPaymentMethod() ?? '',
+                $m->getUser() ? $m->getUser()->getUsername() : '',
+            ];
+            fputcsv($handle, $row, ';');
+        }
+
+        rewind($handle);
+        $csv = stream_get_contents($handle);
+        fclose($handle);
+
+        return $csv;
     }
 }

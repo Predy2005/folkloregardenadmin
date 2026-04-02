@@ -199,6 +199,14 @@ class Event
     #[ORM\OneToMany(mappedBy: 'event', targetEntity: EventInvoice::class, cascade: ['persist', 'remove'])]
     private Collection $eventInvoices;
 
+    /** @var Collection<int, FloorPlanElement> */
+    #[ORM\OneToMany(mappedBy: 'event', targetEntity: FloorPlanElement::class, cascade: ['persist', 'remove'])]
+    private Collection $floorPlanElements;
+
+    /** @var Collection<int, EventTransport> */
+    #[ORM\OneToMany(mappedBy: 'event', targetEntity: EventTransport::class, cascade: ['persist', 'remove'])]
+    private Collection $transportAssignments;
+
     public function __construct()
     {
         $this->guests = new ArrayCollection();
@@ -210,6 +218,8 @@ class Event
         $this->tables = new ArrayCollection();
         $this->spaces = new ArrayCollection();
         $this->eventInvoices = new ArrayCollection();
+        $this->floorPlanElements = new ArrayCollection();
+        $this->transportAssignments = new ArrayCollection();
         $this->createdAt = new \DateTime();
         $this->updatedAt = new \DateTime();
     }
@@ -742,6 +752,31 @@ class Event
         return $this->vouchers;
     }
 
+    /** @return Collection<int, EventTable> */
+    public function getTables(): Collection
+    {
+        return $this->tables;
+    }
+
+    public function addTable(EventTable $table): self
+    {
+        if (!$this->tables->contains($table)) {
+            $this->tables->add($table);
+            $table->setEvent($this);
+        }
+        return $this;
+    }
+
+    public function removeTable(EventTable $table): self
+    {
+        if ($this->tables->removeElement($table)) {
+            if ($table->getEvent() === $this) {
+                $table->setEvent(null);
+            }
+        }
+        return $this;
+    }
+
     /** @return Collection<int, EventSpace> */
     public function getSpaces(): Collection
     {
@@ -752,5 +787,36 @@ class Event
     public function getEventInvoices(): Collection
     {
         return $this->eventInvoices;
+    }
+
+    /** @return Collection<int, FloorPlanElement> */
+    public function getFloorPlanElements(): Collection
+    {
+        return $this->floorPlanElements;
+    }
+
+    /** @return Collection<int, EventTransport> */
+    public function getTransportAssignments(): Collection
+    {
+        return $this->transportAssignments;
+    }
+
+    public function addFloorPlanElement(FloorPlanElement $el): self
+    {
+        if (!$this->floorPlanElements->contains($el)) {
+            $this->floorPlanElements->add($el);
+            $el->setEvent($this);
+        }
+        return $this;
+    }
+
+    public function removeFloorPlanElement(FloorPlanElement $el): self
+    {
+        if ($this->floorPlanElements->removeElement($el)) {
+            if ($el->getEvent() === $this) {
+                $el->setEvent(null);
+            }
+        }
+        return $this;
     }
 }

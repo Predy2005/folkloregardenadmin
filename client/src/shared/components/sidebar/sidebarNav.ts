@@ -23,6 +23,10 @@ import {
   FileText,
   Building2,
   Tag,
+  Building,
+  LayoutTemplate,
+  Truck,
+  Wine,
 } from "lucide-react";
 import { PERMISSIONS } from "@modules/auth";
 
@@ -90,6 +94,12 @@ export const menuItems: MenuItem[] = [
     url: "/pricing",
     icon: DollarSign,
     permission: PERMISSIONS.PRICING_READ,
+  },
+  {
+    title: "Nápoje",
+    url: "/drinks",
+    icon: Wine,
+    permission: PERMISSIONS.DRINKS_READ,
   },
   {
     title: "Sklad",
@@ -185,10 +195,35 @@ export const menuItems: MenuItem[] = [
     ],
   },
   {
+    title: "Areál",
+    icon: Building,
+    permissions: [PERMISSIONS.EVENTS_READ],
+    items: [
+      {
+        title: "Budovy a místnosti",
+        url: "/venue/buildings",
+        icon: Building,
+        permission: PERMISSIONS.EVENTS_READ,
+      },
+      {
+        title: "Šablony plánků",
+        url: "/venue/templates",
+        icon: LayoutTemplate,
+        permission: PERMISSIONS.EVENTS_READ,
+      },
+    ],
+  },
+  {
     title: "Pokladna",
     url: "/cashbox",
     icon: Wallet,
     permission: PERMISSIONS.CASHBOX_READ,
+  },
+  {
+    title: "Doprava",
+    url: "/transport",
+    icon: Truck,
+    permission: PERMISSIONS.TRANSPORT_READ,
   },
   {
     title: "Správa",

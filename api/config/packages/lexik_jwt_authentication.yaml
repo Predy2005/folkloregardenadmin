@@ -6,4 +6,4 @@ lexik_jwt_authentication:
   secret_key: '%kernel.project_dir%/config/jwt/private.pem' # cesta k soukromému klíči
   public_key: '%kernel.project_dir%/config/jwt/public.pem'  # cesta k veřejnému klíči
   pass_phrase: 'KillPrd2005'                     # heslo k soukromému klíči
-  token_ttl: 3600                                         # platnost tokenu v sekundách
+  token_ttl: 86400                                         # platnost tokenu v sekundách (24 hodin)

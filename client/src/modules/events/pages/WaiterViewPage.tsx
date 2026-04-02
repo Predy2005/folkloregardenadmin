@@ -75,9 +75,8 @@ export default function WaiterViewPage() {
 
   const { event, tables, unassignedGuests, schedule, menuSummary, nationalityDistribution } = data;
 
-  const handleTableClick = (tableId: number) => {
+  const handleTableClick = (_tableId: number) => {
     // Could open a detail modal or navigate
-    console.log("Table clicked:", tableId);
   };
 
   return (

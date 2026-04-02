@@ -50,7 +50,7 @@ export default function StaffRecommendationCard({
   staffAssignments.forEach((assignment) => {
     // Get role from staff member
     const member = staffMembers.find((m) => m.id === assignment.staffMemberId);
-    const category = member?.primaryRole || "DEFAULT";
+    const category = member?.position || "DEFAULT";
     currentByCategory[category] = (currentByCategory[category] || 0) + 1;
   });
 

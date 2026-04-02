@@ -106,7 +106,7 @@ export default function StaffingFormulas() {
       <PageHeader title="Výpočetní vzorce personálu" description="Nastavení automatických výpočtů potřebného personálu pro akce">
         <Button
           onClick={handleCreate}
-          className="bg-gradient-to-r from-primary to-purple-600"
+          className="bg-primary hover:bg-primary/90"
           data-testid="button-create-formula"
         >
           <Plus className="mr-2 h-4 w-4" />
@@ -415,7 +415,7 @@ export default function StaffingFormulas() {
                 <Button
                   type="submit"
                   disabled={createMutation.isPending || updateMutation.isPending}
-                  className="bg-gradient-to-r from-primary to-purple-600"
+                  className="bg-primary hover:bg-primary/90"
                   data-testid="button-submit"
                 >
                   {createMutation.isPending || updateMutation.isPending

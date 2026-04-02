@@ -65,7 +65,7 @@ export default function Roles() {
   return (
     <div className="space-y-6">
       <PageHeader title="Role" description="Správa rolí a jejich oprávnění">
-        <Button onClick={handleCreate} className="bg-gradient-to-r from-primary to-purple-600">
+        <Button onClick={handleCreate} className="bg-primary hover:bg-primary/90">
           <Plus className="w-4 h-4 mr-2" />
           Přidat roli
         </Button>
