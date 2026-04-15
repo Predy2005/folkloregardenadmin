@@ -20,6 +20,7 @@ export interface ReservationPersonsSectionProps {
   activeTabIndex: number;
   foods: ReservationFood[] | undefined;
   drinks?: DrinkItem[];
+  currency?: string;
   currentTotalPrice: number;
   // Bulk add persons state
   bulkCount: number;
@@ -56,6 +57,7 @@ export function ReservationPersonsSection({
   activeTabIndex,
   foods,
   drinks,
+  currency,
   currentTotalPrice,
   bulkCount,
   setBulkCount,
@@ -107,7 +109,7 @@ export function ReservationPersonsSection({
             <Label className="text-xs">Typ osoby</Label>
             <Select
               value={bulkType}
-              onValueChange={(v) => setBulkType(v as any)}
+              onValueChange={(v) => setBulkType(v as PersonEntry["type"])}
             >
               <SelectTrigger className="mt-1">
                 <SelectValue />
@@ -154,7 +156,7 @@ export function ReservationPersonsSection({
                     {f.name}
                     {f.surcharge > 0 && (
                       <span className="text-orange-600 ml-1">
-                        (+{f.surcharge} Kč)
+                        (+{formatCurrency(f.surcharge, currency)})
                       </span>
                     )}
                   </SelectItem>
@@ -221,7 +223,7 @@ export function ReservationPersonsSection({
                     {f.name}
                     {f.surcharge > 0 && (
                       <span className="text-orange-600 ml-1">
-                        (+{f.surcharge} Kč)
+                        (+{formatCurrency(f.surcharge, currency)})
                       </span>
                     )}
                   </SelectItem>
@@ -349,7 +351,7 @@ export function ReservationPersonsSection({
         </div>
         {/* Total price */}
         <div className="bg-primary/10 text-primary px-4 py-2 rounded-lg font-semibold text-lg">
-          Celkem: {formatCurrency(currentTotalPrice)}
+          Celkem: {formatCurrency(currentTotalPrice, currency)}
         </div>
       </div>
 
@@ -421,7 +423,7 @@ export function ReservationPersonsSection({
                         {f.name}
                         {f.surcharge > 0 && (
                           <span className="text-orange-600 ml-1">
-                            (+{f.surcharge} Kč)
+                            (+{formatCurrency(f.surcharge, currency)})
                           </span>
                         )}
                       </SelectItem>

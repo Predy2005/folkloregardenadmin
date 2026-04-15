@@ -12,6 +12,7 @@ import type { InvoiceFormData } from "@modules/invoices/types";
 import CustomerSection from "@modules/invoices/components/CustomerSection";
 import InvoiceItemsEditor from "@modules/invoices/components/InvoiceItemsEditor";
 import InvoiceMetaSidebar from "@modules/invoices/components/InvoiceMetaSidebar";
+import { CurrencySelect } from "@/shared/components/CurrencySelect";
 
 export default function InvoiceEdit() {
   const { id } = useParams<{ id: string }>();
@@ -212,6 +213,15 @@ export default function InvoiceEdit() {
             <fieldset disabled={invoice?.status === 'SENT'} className="contents">
               <CustomerSection formData={formData} onFormChange={setFormData} />
             </fieldset>
+
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-sm font-medium text-muted-foreground">Měna faktury:</span>
+              <CurrencySelect
+                value={formData.currency}
+                onChange={(c) => setFormData((prev) => ({ ...prev, currency: c }))}
+                className="w-24"
+              />
+            </div>
 
             <InvoiceItemsEditor
               formData={formData}

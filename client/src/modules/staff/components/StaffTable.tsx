@@ -13,6 +13,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/components/ui/tooltip";
 import { Pencil, Trash2 } from "lucide-react";
 import type { StaffMember } from "@shared/types";
+import { formatCurrency } from "@/shared/lib/formatting";
 
 interface StaffTableProps {
   members: StaffMember[];
@@ -60,7 +61,7 @@ export function StaffTable({
               </Badge>
             </TableCell>
             <TableCell>
-              {member.hourlyRate ? `${member.hourlyRate} Kč/h` : "-"}
+              {member.hourlyRate ? `${formatCurrency(member.hourlyRate)}/h` : "-"}
             </TableCell>
             <TableCell>
               <Badge variant={member.isActive ? "default" : "secondary"}>

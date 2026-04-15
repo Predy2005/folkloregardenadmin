@@ -7,6 +7,7 @@ import { useMutation } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
 import { queryClient } from "@/shared/lib/queryClient";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
+import { formatCurrency } from "@/shared/lib/formatting";
 import { eventQueryKeys } from "./queryKeys";
 
 /**
@@ -110,7 +111,7 @@ export function usePayAllStaff(eventId: number) {
     onSuccess: (data: { paidCount: number; totalPaid: string }) => {
       invalidateStaff(eventId);
       invalidateDashboard(eventId);
-      successToast(`Vyplaceno ${data.paidCount} osob, celkem ${parseFloat(data.totalPaid).toLocaleString()} Kč`);
+      successToast(`Vyplaceno ${data.paidCount} osob, celkem ${formatCurrency(data.totalPaid)}`);
     },
     onError: (error: Error) => errorToast(error),
   });
@@ -170,7 +171,7 @@ export function useCloseEventCashbox(eventId: number) {
     },
     onSuccess: (data: { transferAmount: string }) => {
       invalidateDashboard(eventId);
-      successToast(`Kasa uzavřena, převedeno ${parseFloat(data.transferAmount).toLocaleString()} Kč do hlavní kasy`);
+      successToast(`Kasa uzavřena, převedeno ${formatCurrency(data.transferAmount)} do hlavní kasy`);
     },
     onError: (error: Error) => errorToast(error),
   });

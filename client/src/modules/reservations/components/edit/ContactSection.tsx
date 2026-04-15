@@ -2,7 +2,9 @@ import type { Ref } from "react";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { NationalityInput } from "@/shared/components/NationalityInput";
+import { CurrencySelect } from "@/shared/components/CurrencySelect";
 import type { SharedContact } from "@modules/reservations/types";
+import type { Contact } from "@shared/types";
 
 export interface ContactSectionProps {
   sharedContact: SharedContact;
@@ -13,8 +15,8 @@ export interface ContactSectionProps {
   setIsContactDropdownOpen: (value: boolean) => void;
   contactBoxRef: Ref<HTMLDivElement>;
   isSearchingContacts: boolean;
-  contactSearchItems: any[] | undefined;
-  applyContactToForm: (contact: any) => void;
+  contactSearchItems: Contact[] | undefined;
+  applyContactToForm: (contact: Contact) => void;
 }
 
 export function ContactSection({
@@ -58,7 +60,7 @@ export function ContactSection({
                         Nenalezen žádný kontakt
                       </div>
                     )}
-                  {contactSearchItems?.map((c: any) => (
+                  {contactSearchItems?.map((c) => (
                     <button
                       type="button"
                       key={c.id}
@@ -140,7 +142,7 @@ export function ContactSection({
           className="mt-1"
         />
       </div>
-      <div className="md:col-span-2">
+      <div>
         <Label>Odkud klient přišel</Label>
         <Input
           value={sharedContact.clientComeFrom}
@@ -152,6 +154,16 @@ export function ContactSection({
           }
           className="mt-1"
         />
+      </div>
+      <div>
+        <Label>Měna</Label>
+        <div className="mt-1">
+          <CurrencySelect
+            value={sharedContact.currency}
+            onChange={(v) => setSharedContact((prev) => ({ ...prev, currency: v }))}
+            className="w-full"
+          />
+        </div>
       </div>
     </div>
   );

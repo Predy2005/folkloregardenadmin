@@ -33,6 +33,7 @@ import { Plus, Pencil, Trash2, Search, Users2, ChevronDown, Power, PowerOff } fr
 import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
 import { useToast } from "@/shared/hooks/use-toast";
+import { errorToast } from "@/shared/lib/toast-helpers";
 
 const PARTNER_TYPE_LABELS: Record<string, string> = {
   HOTEL: "Hotel",
@@ -84,6 +85,7 @@ export default function Partners() {
       };
       toast({ title: `Hromadna akce: ${variables.ids.length} partneru ${labels[variables.action]}` });
     },
+    onError: (error: Error) => errorToast(error),
   });
 
   const filteredPartners = partners?.filter((partner) =>

@@ -1,4 +1,6 @@
 import { formatCurrency } from "@/shared/lib/formatting";
+import { useCurrency } from "@/shared/contexts/CurrencyContext";
+import { CurrencySelect } from "@/shared/components/CurrencySelect";
 import type { ReservationPaymentSummary } from "@shared/types";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -89,24 +91,28 @@ export function RecordPaymentDialog({
   onSave,
   isPending,
 }: RecordPaymentDialogProps) {
+  const { defaultCurrency } = useCurrency();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Zaznamenat platbu</DialogTitle>
           <DialogDescription>
-            {reservation?.contactName} - Zbývá: {reservation && formatCurrency(reservation.remainingAmount)}
+            {reservation?.contactName} - Zbývá: {reservation && formatCurrency(reservation.remainingAmount, defaultCurrency)}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-medium">Částka (Kč)</label>
-            <Input
-              type="number"
-              value={paymentAmount}
-              onChange={(e) => onPaymentAmountChange(e.target.value)}
-              placeholder="Zadejte částku"
-            />
+            <label className="text-sm font-medium">Částka</label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                value={paymentAmount}
+                onChange={(e) => onPaymentAmountChange(e.target.value)}
+                placeholder="Zadejte částku"
+              />
+              <CurrencySelect value={defaultCurrency} onChange={() => {}} className="w-24" />
+            </div>
           </div>
           <div>
             <label className="text-sm font-medium">Poznámka (volitelná)</label>

@@ -13,6 +13,7 @@ import { api } from "@/shared/lib/api";
 import { queryClient } from "@/shared/lib/queryClient";
 import { errorToast } from "@/shared/lib/toast-helpers";
 import type { SpaceGuestData } from "@shared/types";
+import { formatCurrency } from "@/shared/lib/formatting";
 
 interface SpaceGuestsCardProps {
   spaces: SpaceGuestData[];
@@ -269,7 +270,7 @@ function SpaceRow({ space, index, isExpanded, onToggle, onUpdatePresence, isPend
                   <Badge key={menu.menuName} variant="secondary" className="text-xs">
                     {menu.menuName}: {menu.count}
                     {menu.surcharge > 0 && (
-                      <span className="text-green-600 ml-1">+{menu.surcharge} Kč</span>
+                      <span className="text-green-600 ml-1">+{formatCurrency(menu.surcharge)}</span>
                     )}
                   </Badge>
                 ))}

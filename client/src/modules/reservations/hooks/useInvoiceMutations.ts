@@ -35,7 +35,7 @@ export function useInvoiceMutations(reservationId: number | null | undefined) {
   const markPaidMutation = useMutation({
     mutationFn: ({ paymentMethod, cashboxTarget }: { paymentMethod: string; cashboxTarget?: string }) =>
       api.post(`/api/reservations/${reservationId}/mark-paid`, { paymentMethod, cashboxTarget }),
-    onSuccess: (data: any) => {
+    onSuccess: (data: { cashboxRecorded?: string }) => {
       invalidateAll();
       const cashboxMsg = data?.cashboxRecorded ? ` (zapsáno do: ${data.cashboxRecorded})` : "";
       successToast(`Rezervace byla označena jako zaplacená${cashboxMsg}`);

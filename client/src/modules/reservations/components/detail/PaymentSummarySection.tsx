@@ -45,19 +45,19 @@ export function PaymentSummarySection({
             <div className="p-4 rounded-lg bg-muted/50 text-center">
               <p className="text-sm text-muted-foreground">Celková cena</p>
               <p className="text-xl font-bold font-mono">
-                {formatCurrency(paymentSummary.totalPrice)} Kč
+                {formatCurrency(paymentSummary.totalPrice, paymentSummary.currency)}
               </p>
             </div>
             <div className="p-4 rounded-lg bg-green-500/10 text-center">
               <p className="text-sm text-muted-foreground">Zaplaceno</p>
               <p className="text-xl font-bold font-mono text-green-600">
-                {formatCurrency(paymentSummary.paidAmount)} Kč
+                {formatCurrency(paymentSummary.paidAmount, paymentSummary.currency)}
               </p>
             </div>
             <div className="p-4 rounded-lg bg-orange-500/10 text-center">
               <p className="text-sm text-muted-foreground">Zbývá</p>
               <p className="text-xl font-bold font-mono text-orange-600">
-                {formatCurrency(paymentSummary.remainingAmount)} Kč
+                {formatCurrency(paymentSummary.remainingAmount, paymentSummary.currency)}
               </p>
             </div>
           </div>

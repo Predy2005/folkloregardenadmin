@@ -27,14 +27,14 @@ import { Switch } from "@/shared/components/ui/switch";
 import { Button } from "@/shared/components/ui/button";
 import type { UseFormReturn } from "react-hook-form";
 import { Textarea } from "@/shared/components/ui/textarea";
-import type { Option } from "../types";
+import type { Option, StaffForm } from "../types";
 
 interface StaffFormDialogProps {
   open: boolean;
   isEdit: boolean;
-  form: UseFormReturn<any>;
+  form: UseFormReturn<StaffForm>;
   onClose: () => void;
-  onSubmit: (data: any) => void;
+  onSubmit: (data: StaffForm) => void;
   options: Option[];
   pending: boolean;
 }
@@ -71,7 +71,7 @@ export function StaffFormDialog({
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name={"firstName" as any}
+                name={"firstName"}
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Jméno *</FormLabel>
@@ -88,7 +88,7 @@ export function StaffFormDialog({
               />
               <FormField
                 control={form.control}
-                name={"lastName" as any}
+                name={"lastName"}
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Příjmení *</FormLabel>
@@ -103,7 +103,7 @@ export function StaffFormDialog({
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name={"dateOfBirth" as any}
+                name={"dateOfBirth"}
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Datum narození *</FormLabel>
@@ -121,7 +121,7 @@ export function StaffFormDialog({
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name={"email" as any}
+                name={"email"}
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Email *</FormLabel>
@@ -138,7 +138,7 @@ export function StaffFormDialog({
               />
               <FormField
                 control={form.control}
-                name={"phone" as any}
+                name={"phone"}
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Telefon</FormLabel>
@@ -153,7 +153,7 @@ export function StaffFormDialog({
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name={"emergencyContact" as any}
+                name={"emergencyContact"}
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Nouzový kontakt</FormLabel>
@@ -166,7 +166,7 @@ export function StaffFormDialog({
               />
               <FormField
                 control={form.control}
-                name={"emergencyPhone" as any}
+                name={"emergencyPhone"}
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Nouzový Telefon</FormLabel>
@@ -181,7 +181,7 @@ export function StaffFormDialog({
 
             <FormField
               control={form.control}
-              name={"address" as any}
+              name={"address"}
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Adresa</FormLabel>
@@ -194,7 +194,7 @@ export function StaffFormDialog({
             />
             <FormField
               control={form.control}
-              name={"position" as any}
+              name={"position"}
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Role / pozice *</FormLabel>
@@ -221,10 +221,10 @@ export function StaffFormDialog({
             />
             <FormField
               control={form.control}
-              name={"hourlyRate" as any}
+              name={"hourlyRate"}
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Hodinová sazba (Kč)</FormLabel>
+                  <FormLabel>Hodinová sazba</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
@@ -247,10 +247,10 @@ export function StaffFormDialog({
             />
             <FormField
               control={form.control}
-              name={"fixedRate" as any}
+              name={"fixedRate"}
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Fixní sazba (Kč)</FormLabel>
+                  <FormLabel>Fixní sazba</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
@@ -274,7 +274,7 @@ export function StaffFormDialog({
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name={"isGroup" as any}
+                name={"isGroup"}
                 render={({ field }) => (
                   <FormItem className="flex items-center justify-between">
                     <FormLabel>Skupina / kapela</FormLabel>
@@ -291,7 +291,7 @@ export function StaffFormDialog({
               {form.watch("isGroup") && (
                 <FormField
                   control={form.control}
-                  name={"groupSize" as any}
+                  name={"groupSize"}
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Počet členů</FormLabel>
@@ -319,7 +319,7 @@ export function StaffFormDialog({
             </div>
             <FormField
               control={form.control}
-              name={"isActive" as any}
+              name={"isActive"}
               render={({ field }) => (
                 <FormItem className="flex items-center justify-between">
                   <FormLabel>Aktivní</FormLabel>

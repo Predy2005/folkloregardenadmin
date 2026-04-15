@@ -42,13 +42,12 @@ export default function EventDetailsSection({ form, existingTags, eventId }: Eve
     queryFn: () => api.get("/api/venue/buildings"),
   });
 
-  // Build space options from buildings/rooms
+  // Build space options from buildings/rooms — use unique slug per building
   const roomOptions = useMemo(() => {
     const options: { value: string; label: string }[] = [];
     buildings.forEach((b) => {
-      (b.rooms ?? []).filter(r => r.isActive).forEach((r) => {
-        options.push({ value: r.slug, label: `${b.name} — ${r.name}` });
-      });
+      // Add building-level option (selects the whole building)
+      options.push({ value: b.slug, label: b.name });
     });
     // Always include "cely_areal" fallback
     if (!options.some(o => o.value === "cely_areal")) {
@@ -414,14 +413,14 @@ export default function EventDetailsSection({ form, existingTags, eventId }: Eve
             <FormItem>
               <FormLabel>Prostory *</FormLabel>
               <div className="grid grid-cols-2 gap-2">
-                {spaceOptions.map(({ value, label }) => (
-                  <label key={value} className="flex items-center space-x-2 cursor-pointer">
+                {spaceOptions.map(({ value, label }, idx) => (
+                  <label key={`${value}-${idx}`} className="flex items-center space-x-2 cursor-pointer">
                     <Checkbox
-                      checked={field.value?.includes(value as any)}
+                      checked={field.value?.includes(value)}
                       onCheckedChange={(checked) => {
                         const current = new Set(field.value || []);
-                        if (checked) current.add(value as any);
-                        else current.delete(value as any);
+                        if (checked) current.add(value);
+                        else current.delete(value);
                         field.onChange(Array.from(current));
                       }}
                     />

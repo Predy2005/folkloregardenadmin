@@ -146,7 +146,7 @@ export function SettlementCard({ settlement, cashbox, eventId }: SettlementCardP
                 Zadejte skutečnou hotovost v kase. Částka bude převedena do hlavní kasy.
               </p>
               <div>
-                <Label>Skutečná hotovost (Kč)</Label>
+                <Label>Skutečná hotovost</Label>
                 <Input
                   type="number"
                   step="0.01"

@@ -58,10 +58,10 @@ export default function BulkActionDialog({
   };
 
   const bulkUpdateMutation = useMutation({
-    mutationFn: async (data: { guestIds: number[]; updates: Record<string, any> }) => {
+    mutationFn: async (data: { guestIds: number[]; updates: Record<string, string | boolean> }) => {
       return await api.put(`/api/events/${eventId}/guests/bulk-update`, data);
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { count: number }) => {
       invalidateQueries();
       onOpenChange(false);
       onSuccess();
@@ -78,7 +78,7 @@ export default function BulkActionDialog({
         data: { guestIds },
       });
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { count: number }) => {
       invalidateQueries();
       onOpenChange(false);
       onSuccess();
@@ -97,7 +97,7 @@ export default function BulkActionDialog({
       return;
     }
 
-    const updates: Record<string, any> = {};
+    const updates: Record<string, string | boolean> = {};
     switch (actionType) {
       case "nationality":
         updates.nationality = value;

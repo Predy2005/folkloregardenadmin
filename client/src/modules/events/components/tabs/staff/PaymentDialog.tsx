@@ -4,6 +4,9 @@ import { queryClient } from "@/shared/lib/queryClient";
 import { api } from "@/shared/lib/api";
 import type { EventStaffAssignment, StaffMember } from "@shared/types";
 import { translateStaffRole } from "@modules/staff/utils/staffRoles";
+import { getCurrencySymbol } from "@/shared/lib/formatting";
+import { useCurrency } from "@/shared/contexts/CurrencyContext";
+import { CurrencySelect } from "@/shared/components/CurrencySelect";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
@@ -44,6 +47,7 @@ export default function PaymentDialog({
   staffMember,
   eventDurationMinutes,
 }: PaymentDialogProps) {
+  const { defaultCurrency } = useCurrency();
   const [hoursWorked, setHoursWorked] = useState(0);
   const [paymentAmount, setPaymentAmount] = useState(0);
   const [notes, setNotes] = useState("");
@@ -222,7 +226,7 @@ export default function PaymentDialog({
                 onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
                 className="min-h-[44px] text-lg font-mono"
               />
-              <span className="text-muted-foreground font-medium shrink-0">Kč</span>
+              <CurrencySelect value={defaultCurrency} onChange={() => {}} className="w-24" />
             </div>
             {/* Quick amount buttons */}
             {hasHourlyRate && !hasFixedRate && (

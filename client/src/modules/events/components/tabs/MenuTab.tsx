@@ -8,6 +8,7 @@ import { useToggleSet } from "@/shared/hooks/useToggleSet";
 import type { EventMenu } from "@shared/types";
 import type { ReservationInfo, MenuGroup } from "../../types";
 import { invalidateGuestSummary } from "../../hooks/useGuestSummary";
+import { formatCurrency } from "@/shared/lib/formatting";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
@@ -15,7 +16,6 @@ import { Skeleton } from "@/shared/components/ui/skeleton";
 import { Badge } from "@/shared/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/shared/components/ui/collapsible";
 import { ChevronDown, ChevronRight, UtensilsCrossed, ExternalLink, RefreshCw, Loader2 } from "lucide-react";
-import { formatCurrency } from "@/shared/lib/formatting";
 
 export interface MenuTabProps {
   eventId: number;
@@ -32,7 +32,7 @@ export default function MenuTab({ eventId, eventType, menu, isLoading }: MenuTab
     mutationFn: async () => {
       return await api.post(`/api/events/${eventId}/guests/from-reservations`);
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { guestsCount?: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
       invalidateGuestSummary(eventId);
       successToast(`Synchronizováno ${data.guestsCount ?? ""} hostů z rezervací`);
@@ -121,8 +121,8 @@ export default function MenuTab({ eventId, eventType, menu, isLoading }: MenuTab
           <TableRow key={item.id}>
             <TableCell className="font-medium">{item.menuName}</TableCell>
             <TableCell>{item.quantity}</TableCell>
-            <TableCell>{item.pricePerUnit ? `${item.pricePerUnit} Kč` : "-"}</TableCell>
-            <TableCell className="font-medium">{item.totalPrice ? `${item.totalPrice} Kč` : "-"}</TableCell>
+            <TableCell>{item.pricePerUnit ? formatCurrency(item.pricePerUnit) : "-"}</TableCell>
+            <TableCell className="font-medium">{item.totalPrice ? formatCurrency(item.totalPrice) : "-"}</TableCell>
             {isWedding && <TableCell>{item.servingTime || "-"}</TableCell>}
             <TableCell className="text-muted-foreground text-sm">{item.notes || "-"}</TableCell>
           </TableRow>

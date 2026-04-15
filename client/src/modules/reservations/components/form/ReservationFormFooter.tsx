@@ -4,16 +4,20 @@ import { FormField, FormItem, FormLabel, FormControl } from '@/shared/components
 import { Button } from '@/shared/components/ui/button';
 import { DialogFooter } from '@/shared/components/ui/dialog';
 import { formatCurrency } from '@/shared/lib/formatting';
+import { useCurrency } from '@/shared/contexts/CurrencyContext';
 
 type Props = {
   totalPrice: number;
+  currency?: string;
   onCancel: () => void;
   saving: boolean;
   editing: boolean;
 };
 
-export function ReservationFormFooter({ totalPrice, onCancel, saving, editing }: Props) {
+export function ReservationFormFooter({ totalPrice, currency, onCancel, saving, editing }: Props) {
   const form = useFormContext();
+  const { defaultCurrency } = useCurrency();
+  const cur = currency ?? defaultCurrency;
   return (
     <div className="space-y-4 border-t pt-4">
       <FormField
@@ -32,7 +36,7 @@ export function ReservationFormFooter({ totalPrice, onCancel, saving, editing }:
       <div className="flex items-center justify-between p-4 bg-muted/50 rounded-md">
         <span className="text-lg font-semibold">Celková cena:</span>
         <span className="text-2xl font-bold font-mono text-primary">
-          {formatCurrency(Math.round(totalPrice))}
+          {formatCurrency(Math.round(totalPrice), cur)}
         </span>
       </div>
 

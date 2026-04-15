@@ -48,7 +48,7 @@ export default function BulkAddCard({ eventId }: BulkAddCardProps) {
     }) => {
       return await api.post(`/api/events/${eventId}/guests/bulk`, data);
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { count: number }) => {
       invalidateQueries();
       successToast(`Přidáno ${data.count} hostů`);
       setBulkCount(1);

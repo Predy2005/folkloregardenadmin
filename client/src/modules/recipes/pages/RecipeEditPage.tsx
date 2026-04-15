@@ -104,7 +104,7 @@ export default function RecipeEditPage() {
       successToast("Receptura vytvořena");
       navigate("/recipes");
     },
-    onError: (err: any) => errorToast(err?.response?.data?.error || err.message),
+    onError: (err: Error) => errorToast(err.message),
   });
 
   // Update mutation
@@ -115,7 +115,7 @@ export default function RecipeEditPage() {
       successToast("Receptura uložena");
       navigate("/recipes");
     },
-    onError: (err: any) => errorToast(err?.response?.data?.error || err.message),
+    onError: (err: Error) => errorToast(err.message),
   });
 
   const isPending = createMutation.isPending || updateMutation.isPending;

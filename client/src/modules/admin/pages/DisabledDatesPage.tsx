@@ -89,10 +89,10 @@ export default function DisabledDates() {
 
   const createMutation = useMutation({
     mutationFn: (data: DisabledDateForm) => {
-      const payload: any = {
+      const payload: { dateFrom: string; reason: string; project: string; dateTo?: string } = {
         dateFrom: data.dateFrom,
-        reason: data.reason,
-        project: data.project,
+        reason: data.reason || '',
+        project: data.project || 'reservations',
       };
       if (data.dateTo) {
         payload.dateTo = data.dateTo;

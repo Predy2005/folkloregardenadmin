@@ -11,6 +11,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/shared/component
 import { Separator } from "@/shared/components/ui/separator";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import { useToast } from "@/shared/hooks/use-toast";
+import { useIsTouchDevice } from "@/hooks/use-mobile";
+import { formatCurrency } from "@/shared/lib/formatting";
+import { useCurrency } from "@/shared/contexts/CurrencyContext";
+import { CurrencySelect } from "@/shared/components/CurrencySelect";
 import type { EventTable, EventGuest, TableExpense, TableExpenseCategory } from "@shared/types";
 
 interface TableDetailPopoverProps {
@@ -23,15 +27,12 @@ interface TableDetailPopoverProps {
 }
 
 export function TableDetailPopover({
-  isOpen,
-  onClose,
-  table,
-  guests,
-  eventId,
-  onUnassignGuest,
+  isOpen, onClose, table, guests, eventId, onUnassignGuest,
 }: TableDetailPopoverProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const isTouch = useIsTouchDevice();
+  const { defaultCurrency } = useCurrency();
   const [newDesc, setNewDesc] = useState("");
   const [newQty, setNewQty] = useState(1);
   const [newPrice, setNewPrice] = useState("");
@@ -44,7 +45,7 @@ export function TableDetailPopover({
   });
 
   const addExpense = useMutation({
-    mutationFn: (data: any) => api.post(`/api/events/${eventId}/tables/${table!.id}/expenses`, data),
+    mutationFn: (data: { description: string; quantity: number; unitPrice: number; category?: string }) => api.post(`/api/events/${eventId}/tables/${table!.id}/expenses`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["table-expenses", eventId, table?.id] });
       setNewDesc("");
@@ -81,12 +82,7 @@ export function TableDetailPopover({
       toast({ title: "Vyplňte popis a platnou cenu", variant: "destructive" });
       return;
     }
-    addExpense.mutate({
-      description: newDesc,
-      category: newCategory,
-      quantity: newQty,
-      unitPrice: price,
-    });
+    addExpense.mutate({ description: newDesc, category: newCategory, quantity: newQty, unitPrice: price });
   };
 
   const categoryLabels: Record<TableExpenseCategory, string> = {
@@ -96,23 +92,35 @@ export function TableDetailPopover({
     other: "Ostatní",
   };
 
+  const inputH = isTouch ? "h-10" : "h-8";
+  const btnH = isTouch ? "h-10 min-w-[44px]" : "h-8";
+
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-[400px] sm:max-w-[400px]">
+      <SheetContent
+        side={isTouch ? "bottom" : "right"}
+        className={isTouch ? "h-[70vh] w-full rounded-t-xl" : "w-[400px] sm:max-w-[400px]"}
+      >
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             {table.tableName}
             <Badge variant="outline">{tableGuests.length}/{table.capacity}</Badge>
+            {unpaid > 0 && (
+              <Button variant="outline" size="sm" className={btnH} onClick={() => settleTable.mutate()} disabled={settleTable.isPending}>
+                <Check className="h-3 w-3 mr-1" />
+                Vyrovnat ({formatCurrency(unpaid, defaultCurrency)})
+              </Button>
+            )}
           </SheetTitle>
         </SheetHeader>
 
-        <ScrollArea className="h-[calc(100vh-80px)] mt-4">
+        <ScrollArea className={isTouch ? "h-[calc(70vh-80px)] mt-3" : "h-[calc(100vh-80px)] mt-4"}>
           {/* Guests section */}
           <div className="space-y-2 mb-4">
             <Label className="text-xs uppercase text-muted-foreground">Hosté u stolu</Label>
             {tableGuests.length === 0 && <p className="text-sm text-muted-foreground">Nikdo</p>}
             {tableGuests.map((g) => (
-              <div key={g.id} className="flex items-center justify-between text-sm p-2 rounded bg-muted/50">
+              <div key={g.id} className={`flex items-center justify-between text-sm p-2 rounded bg-muted/50 ${isTouch ? "min-h-[44px]" : ""}`}>
                 <div>
                   <span className="font-medium">
                     {g.firstName || g.lastName ? `${g.firstName ?? ""} ${g.lastName ?? ""}` : `Host #${g.id}`}
@@ -123,7 +131,7 @@ export function TableDetailPopover({
                     {g.isPaid && <Badge className="text-[10px] bg-green-100 text-green-800">Placeno</Badge>}
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => onUnassignGuest(g.id)}>
+                <Button variant="ghost" size="sm" className={btnH} onClick={() => onUnassignGuest(g.id)}>
                   Odebrat
                 </Button>
               </div>
@@ -134,69 +142,64 @@ export function TableDetailPopover({
 
           {/* Expenses section */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs uppercase text-muted-foreground">Výdaje / Účet</Label>
-              {unpaid > 0 && (
-                <Button variant="outline" size="sm" onClick={() => settleTable.mutate()} disabled={settleTable.isPending}>
-                  <Check className="h-3 w-3 mr-1" />
-                  Vyrovnat ({unpaid.toFixed(0)} Kč)
-                </Button>
-              )}
-            </div>
+            <Label className="text-xs uppercase text-muted-foreground">Výdaje / Účet</Label>
 
-            {/* Add expense form */}
-            <div className="grid grid-cols-12 gap-2 items-end">
-              <div className="col-span-5">
-                <Input
-                  placeholder="Popis"
-                  value={newDesc}
-                  onChange={(e) => setNewDesc(e.target.value)}
-                  className="h-8 text-sm"
-                />
+            {/* Add expense form — stacked on touch, grid on desktop */}
+            {isTouch ? (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <Input placeholder="Popis" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} className={`flex-1 ${inputH} text-sm`} />
+                  <Select value={newCategory} onValueChange={(v) => setNewCategory(v as TableExpenseCategory)}>
+                    <SelectTrigger className={`w-24 ${inputH} text-xs`}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(categoryLabels).map(([k, v]) => (
+                        <SelectItem key={k} value={k}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex gap-2">
+                  <Input type="number" min={1} value={newQty} onChange={(e) => setNewQty(Math.max(1, parseInt(e.target.value) || 1))} className={`w-16 ${inputH} text-sm`} placeholder="Ks" />
+                  <Input type="number" min={0.01} step="0.01" placeholder="Cena" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} className={`flex-1 ${inputH} text-sm`} />
+                  <CurrencySelect value={defaultCurrency} onChange={() => {}} className="w-20" />
+                  <Button className={`${btnH} px-4`} onClick={handleAddExpense} disabled={addExpense.isPending}>
+                    <Plus className="h-4 w-4 mr-1" /> Přidat
+                  </Button>
+                </div>
               </div>
-              <div className="col-span-2">
-                <Select value={newCategory} onValueChange={(v) => setNewCategory(v as TableExpenseCategory)}>
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(categoryLabels).map(([k, v]) => (
-                      <SelectItem key={k} value={k}>{v}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            ) : (
+              <div className="grid grid-cols-12 gap-2 items-end">
+                <div className="col-span-5">
+                  <Input placeholder="Popis" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} className="h-8 text-sm" />
+                </div>
+                <div className="col-span-2">
+                  <Select value={newCategory} onValueChange={(v) => setNewCategory(v as TableExpenseCategory)}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(categoryLabels).map(([k, v]) => (
+                        <SelectItem key={k} value={k}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="col-span-1">
+                  <Input type="number" min={1} value={newQty} onChange={(e) => setNewQty(Math.max(1, parseInt(e.target.value) || 1))} className="h-8 text-sm" />
+                </div>
+                <div className="col-span-2">
+                  <Input type="number" min={0.01} step="0.01" placeholder="Cena" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} className="h-8 text-sm" />
+                </div>
+                <div className="col-span-2">
+                  <Button size="sm" className="h-8 w-full" onClick={handleAddExpense} disabled={addExpense.isPending}>
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
               </div>
-              <div className="col-span-1">
-                <Input
-                  type="number"
-                  min={1}
-                  value={newQty}
-                  onChange={(e) => setNewQty(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="h-8 text-sm"
-                />
-              </div>
-              <div className="col-span-2">
-                <Input
-                  type="number"
-                  min={0.01}
-                  step="0.01"
-                  placeholder="Kč"
-                  value={newPrice}
-                  onChange={(e) => setNewPrice(e.target.value)}
-                  className="h-8 text-sm"
-                />
-              </div>
-              <div className="col-span-2">
-                <Button size="sm" className="h-8 w-full" onClick={handleAddExpense} disabled={addExpense.isPending}>
-                  <Plus className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
+            )}
 
             {/* Expense list */}
             <div className="space-y-1">
               {expenses.map((expense) => (
-                <div key={expense.id} className="flex items-center justify-between text-sm p-2 rounded bg-muted/30">
+                <div key={expense.id} className={`flex items-center justify-between text-sm p-2 rounded bg-muted/30 ${isTouch ? "min-h-[44px]" : ""}`}>
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <span>{expense.description}</span>
@@ -204,13 +207,13 @@ export function TableDetailPopover({
                       {expense.isPaid && <Badge className="text-[10px] bg-green-100 text-green-800">Zaplaceno</Badge>}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {expense.quantity}x {expense.unitPrice} Kč
+                      {expense.quantity}x {formatCurrency(expense.unitPrice, defaultCurrency)}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-medium">{expense.totalPrice} Kč</span>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => deleteExpense.mutate(expense.id)}>
-                      <Trash2 className="h-3 w-3 text-destructive" />
+                    <span className="font-medium">{formatCurrency(expense.totalPrice, defaultCurrency)}</span>
+                    <Button variant="ghost" size="icon" className={isTouch ? "h-10 w-10" : "h-6 w-6"} onClick={() => deleteExpense.mutate(expense.id)}>
+                      <Trash2 className={isTouch ? "h-4 w-4 text-destructive" : "h-3 w-3 text-destructive"} />
                     </Button>
                   </div>
                 </div>
@@ -224,7 +227,7 @@ export function TableDetailPopover({
                   <DollarSign className="h-4 w-4" />
                   Celkem
                 </div>
-                <span>{total.toFixed(0)} Kč</span>
+                <span>{formatCurrency(total, defaultCurrency)}</span>
               </div>
             )}
           </div>

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
+import { errorToast } from "@/shared/lib/toast-helpers";
 import type { FloorPlanTemplate } from "@shared/types";
 
 export function useTemplates() {
@@ -22,6 +23,7 @@ export function useCreateTemplate() {
   return useMutation({
     mutationFn: (data: Partial<FloorPlanTemplate>) => api.post("/api/venue/templates", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["floor-plan-templates"] }),
+    onError: (error: Error) => errorToast(error),
   });
 }
 
@@ -31,6 +33,7 @@ export function useUpdateTemplate() {
     mutationFn: ({ id, ...data }: Partial<FloorPlanTemplate> & { id: number }) =>
       api.put(`/api/venue/templates/${id}`, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["floor-plan-templates"] }),
+    onError: (error: Error) => errorToast(error),
   });
 }
 
@@ -39,6 +42,7 @@ export function useDeleteTemplate() {
   return useMutation({
     mutationFn: (id: number) => api.delete(`/api/venue/templates/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["floor-plan-templates"] }),
+    onError: (error: Error) => errorToast(error),
   });
 }
 
@@ -47,5 +51,6 @@ export function useDuplicateTemplate() {
   return useMutation({
     mutationFn: (id: number) => api.post(`/api/venue/templates/${id}/duplicate`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["floor-plan-templates"] }),
+    onError: (error: Error) => errorToast(error),
   });
 }

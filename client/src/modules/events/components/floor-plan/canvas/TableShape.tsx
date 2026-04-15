@@ -1,15 +1,23 @@
-import { useRef, useEffect } from "react";
-import { Group, Rect, Circle, Ellipse, Text, Transformer } from "react-konva";
+import { useRef, forwardRef, useImperativeHandle } from "react";
+import { Group, Rect, Circle, Ellipse, Text } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type Konva from "konva";
 import type { EventTable, EventGuest } from "@shared/types";
+import { getSeatGrid } from "../constants";
 
 const TABLE_COLORS = {
-  empty: "#e5e7eb",
-  partial: "#fbbf24",
-  full: "#ef4444",
+  empty: "#f5f5f0",       // light beige like PDF
+  partial: "#fef3c7",     // warm yellow
+  full: "#fecaca",        // soft red
   selected: "#3b82f6",
+  seatStroke: "#c8c4b8",  // seat border - soft brown/gray like PDF
+  seatFill: "#ffffff",    // white seat fill
+  seatOccupied: "#e8e4d8", // occupied seat - slightly darker
 };
+
+export interface TableShapeHandle {
+  getNode: () => Konva.Group | null;
+}
 
 interface TableShapeProps {
   table: EventTable;
@@ -24,7 +32,7 @@ interface TableShapeProps {
   onTransformEnd?: (id: number, attrs: { width: number; height: number; rotation: number; x: number; y: number }) => void;
 }
 
-export function TableShape({
+export const TableShape = forwardRef<TableShapeHandle, TableShapeProps>(function TableShape({
   table,
   guests,
   isSelected,
@@ -35,38 +43,25 @@ export function TableShape({
   onDragEnd,
   onDoubleClick,
   onTransformEnd,
-}: TableShapeProps) {
+}, ref) {
   const groupRef = useRef<Konva.Group>(null);
-  const trRef = useRef<Konva.Transformer>(null);
+
+  useImperativeHandle(ref, () => ({
+    getNode: () => groupRef.current,
+  }));
 
   const x = table.positionX ?? 100;
   const y = table.positionY ?? 100;
-  const w = table.widthPx ?? (table.shape === "round" ? 80 : 120);
-  const h = table.heightPx ?? (table.shape === "round" ? 80 : 80);
+  const w = table.widthPx ?? (table.shape === "round" ? 60 : 60);
+  const h = table.heightPx ?? (table.shape === "round" ? 60 : 100);
   const guestCount = guests.length;
   const fillRatio = table.capacity > 0 ? guestCount / table.capacity : 0;
 
-  const fillColor = table.color
-    ? table.color
-    : fillRatio === 0
-    ? TABLE_COLORS.empty
-    : fillRatio < 1
-    ? TABLE_COLORS.partial
-    : TABLE_COLORS.full;
-
-  const strokeColor = isDropTarget ? "#22c55e" : hasCollision ? "#ef4444" : isSelected ? TABLE_COLORS.selected : "#d1d5db";
-  const strokeWidth = isDropTarget ? 1.5 : hasCollision ? 1.5 : isSelected ? 1.5 : 0.75;
+  const borderColor = isDropTarget ? "#22c55e" : hasCollision ? "#ef4444" : isSelected ? TABLE_COLORS.selected : TABLE_COLORS.seatStroke;
+  const borderWidth = isDropTarget ? 2 : hasCollision ? 2 : isSelected ? 2 : 1;
 
   const locked = table.isLocked;
   const snapToGrid = (val: number) => Math.round(val / gridSize) * gridSize;
-
-  // Attach transformer when selected
-  useEffect(() => {
-    if (isSelected && trRef.current && groupRef.current && !locked) {
-      trRef.current.nodes([groupRef.current]);
-      trRef.current.getLayer()?.batchDraw();
-    }
-  }, [isSelected, locked]);
 
   const handleDragEnd = (e: KonvaEventObject<DragEvent>) => {
     const newX = snapToGrid(e.target.x());
@@ -92,15 +87,12 @@ export function TableShape({
 
     const scaleX = node.scaleX();
     const scaleY = node.scaleY();
-
-    // Reset scale, apply to width/height
     node.scaleX(1);
     node.scaleY(1);
 
     let newW = Math.max(40, Math.round(w * scaleX));
     let newH = Math.max(40, Math.round(h * scaleY));
 
-    // Keep round/square aspect ratio
     if (table.shape === "round" || table.shape === "square") {
       const size = Math.max(newW, newH);
       newW = size;
@@ -116,11 +108,9 @@ export function TableShape({
     });
   };
 
-  // Show just the number — extract digits from tableName if no tableNumber set
   const label = table.tableNumber
     ? `${table.tableNumber}`
     : table.tableName.replace(/\D+/g, '') || table.tableName;
-  const capacityLabel = `${guestCount}/${table.capacity}`;
 
   // Get dominant nationality
   const nationalities: Record<string, number> = {};
@@ -130,159 +120,188 @@ export function TableShape({
     }
   });
   const topNat = Object.entries(nationalities).sort((a, b) => b[1] - a[1])[0];
-
-  // Children at this table
   const hasChildren = guests.some((g) => g.type === "child");
+
+  // Render seat grid for rectangular tables
+  const renderSeatGrid = () => {
+    const grid = getSeatGrid(table.capacity, table.shape);
+    if (grid.cols === 0) return null;
+
+    const padding = 3;
+    const gap = 2;
+    const availW = w - padding * 2;
+    const availH = h - padding * 2;
+    const seatW = (availW - gap * (grid.cols - 1)) / grid.cols;
+    const seatH = (availH - gap * (grid.rows - 1)) / grid.rows;
+
+    const seats: JSX.Element[] = [];
+    let seatIdx = 0;
+
+    for (let row = 0; row < grid.rows; row++) {
+      for (let col = 0; col < grid.cols; col++) {
+        const sx = padding + col * (seatW + gap);
+        const sy = padding + row * (seatH + gap);
+        const isOccupied = seatIdx < guestCount;
+
+        seats.push(
+          <Rect
+            key={`seat-${row}-${col}`}
+            x={sx}
+            y={sy}
+            width={seatW}
+            height={seatH}
+            fill={isOccupied ? TABLE_COLORS.seatOccupied : TABLE_COLORS.seatFill}
+            stroke={TABLE_COLORS.seatStroke}
+            strokeWidth={0.5}
+            cornerRadius={1}
+            listening={false}
+          />
+        );
+        seatIdx++;
+      }
+    }
+
+    return seats;
+  };
 
   const renderShape = () => {
     switch (table.shape) {
       case "round":
         return (
-          <Circle
-            x={w / 2}
-            y={h / 2}
-            radius={Math.min(w, h) / 2}
-            fill={fillColor}
-            stroke={strokeColor}
-            strokeWidth={strokeWidth}
-            opacity={0.9}
-          />
+          <>
+            <Circle
+              x={w / 2}
+              y={h / 2}
+              radius={Math.min(w, h) / 2}
+              fill={fillRatio === 0 ? TABLE_COLORS.empty : fillRatio < 1 ? TABLE_COLORS.partial : TABLE_COLORS.full}
+              stroke={borderColor}
+              strokeWidth={borderWidth}
+              dash={[4, 3]}
+            />
+            <Text
+              x={0}
+              y={h / 2 - 6}
+              width={w}
+              text={label}
+              fontSize={11}
+              fontStyle="bold"
+              fill="#4b5563"
+              align="center"
+              listening={false}
+            />
+          </>
         );
       case "oval":
         return (
-          <Ellipse
-            x={w / 2}
-            y={h / 2}
-            radiusX={w / 2}
-            radiusY={h / 2}
-            fill={fillColor}
-            stroke={strokeColor}
-            strokeWidth={strokeWidth}
-            opacity={0.9}
-          />
+          <>
+            <Ellipse
+              x={w / 2}
+              y={h / 2}
+              radiusX={w / 2}
+              radiusY={h / 2}
+              fill={fillRatio === 0 ? TABLE_COLORS.empty : fillRatio < 1 ? TABLE_COLORS.partial : TABLE_COLORS.full}
+              stroke={borderColor}
+              strokeWidth={borderWidth}
+              dash={[4, 3]}
+            />
+            <Text
+              x={0}
+              y={h / 2 - 6}
+              width={w}
+              text={label}
+              fontSize={11}
+              fontStyle="bold"
+              fill="#4b5563"
+              align="center"
+              listening={false}
+            />
+          </>
         );
       case "rectangle":
       case "square":
       default:
         return (
-          <Rect
-            x={0}
-            y={0}
-            width={w}
-            height={h}
-            fill={fillColor}
-            stroke={strokeColor}
-            strokeWidth={strokeWidth}
-            cornerRadius={4}
-            opacity={0.9}
-          />
+          <>
+            <Rect
+              x={0}
+              y={0}
+              width={w}
+              height={h}
+              fill={TABLE_COLORS.empty}
+              stroke={borderColor}
+              strokeWidth={borderWidth}
+              dash={[4, 3]}
+              cornerRadius={2}
+            />
+            {renderSeatGrid()}
+          </>
         );
     }
   };
 
   return (
-    <>
-      <Group
-        ref={groupRef}
-        x={x}
-        y={y}
-        draggable={!locked}
-        rotation={table.rotation || 0}
-        onClick={handleClick}
-        onTap={handleClick}
-        onDblClick={handleDblClick}
-        onDblTap={handleDblClick}
-        onDragEnd={handleDragEnd}
-        onDragStart={() => !locked && onSelect(table.id)}
-        onTransformEnd={handleTransformEnd}
-      >
-        {renderShape()}
+    <Group
+      ref={groupRef}
+      x={x}
+      y={y}
+      draggable={!locked}
+      rotation={table.rotation || 0}
+      onClick={handleClick}
+      onTap={handleClick}
+      onDblClick={handleDblClick}
+      onDblTap={handleDblClick}
+      onDragEnd={handleDragEnd}
+      onDragStart={() => !locked && onSelect(table.id)}
+      onTransformEnd={handleTransformEnd}
+    >
+      {renderShape()}
 
-        {/* Table label */}
+      {table.shape !== "round" && table.shape !== "oval" && (
         <Text
           x={0}
-          y={h / 2 - 14}
+          y={h + 2}
           width={w}
-          text={label}
-          fontSize={12}
-          fontStyle="bold"
-          fill="#1f2937"
-          align="center"
-          listening={false}
-        />
-
-        {/* Capacity badge */}
-        <Text
-          x={0}
-          y={h / 2 + 2}
-          width={w}
-          text={capacityLabel}
-          fontSize={10}
+          text={`${label} (${guestCount}/${table.capacity})`}
+          fontSize={8}
           fill="#6b7280"
           align="center"
           listening={false}
         />
+      )}
 
-        {/* Nationality indicator */}
-        {topNat && (
-          <Text
-            x={0}
-            y={h / 2 + 16}
-            width={w}
-            text={topNat[0]}
-            fontSize={9}
-            fill="#9ca3af"
-            align="center"
-            listening={false}
-          />
-        )}
-
-        {/* Children indicator */}
-        {hasChildren && (
-          <Text
-            x={2}
-            y={2}
-            text="👶"
-            fontSize={10}
-            listening={false}
-          />
-        )}
-
-        {/* Lock indicator */}
-        {locked && (
-          <Text
-            x={w - 14}
-            y={2}
-            text="🔒"
-            fontSize={10}
-            listening={false}
-          />
-        )}
-      </Group>
-
-      {/* Transformer for resize/rotate when selected and not locked */}
-      {isSelected && !locked && (
-        <Transformer
-          ref={trRef}
-          rotateEnabled
-          anchorSize={7}
-          anchorStroke="#3b82f6"
-          anchorFill="#ffffff"
-          anchorCornerRadius={2}
-          borderStroke="#3b82f6"
-          borderStrokeWidth={1}
-          enabledAnchors={
-            table.shape === "round" || table.shape === "square"
-              ? ["top-left", "top-right", "bottom-left", "bottom-right"]
-              : ["top-left", "top-right", "bottom-left", "bottom-right", "middle-left", "middle-right", "top-center", "bottom-center"]
-          }
-          keepRatio={table.shape === "round" || table.shape === "square"}
-          boundBoxFunc={(oldBox, newBox) => {
-            if (newBox.width < 40 || newBox.height < 40) return oldBox;
-            return newBox;
-          }}
+      {(table.shape === "round" || table.shape === "oval") && (
+        <Text
+          x={0}
+          y={h / 2 + 6}
+          width={w}
+          text={`${guestCount}/${table.capacity}`}
+          fontSize={9}
+          fill="#6b7280"
+          align="center"
+          listening={false}
         />
       )}
-    </>
+
+      {topNat && (
+        <Text
+          x={0}
+          y={table.shape === "round" || table.shape === "oval" ? h / 2 + 18 : h + 12}
+          width={w}
+          text={topNat[0]}
+          fontSize={8}
+          fill="#9ca3af"
+          align="center"
+          listening={false}
+        />
+      )}
+
+      {hasChildren && (
+        <Text x={2} y={-10} text="👶" fontSize={9} listening={false} />
+      )}
+
+      {locked && (
+        <Text x={w - 12} y={-10} text="🔒" fontSize={9} listening={false} />
+      )}
+    </Group>
   );
-}
+});

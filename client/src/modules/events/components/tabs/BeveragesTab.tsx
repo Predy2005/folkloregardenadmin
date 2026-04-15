@@ -15,6 +15,8 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import { Skeleton } from "@/shared/components/ui/skeleton";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { useCurrency } from "@/shared/contexts/CurrencyContext";
+import { CurrencySelect } from "@/shared/components/CurrencySelect";
 
 const beverageSchema = z.object({
   beverageName: z.string().min(1, "Zadejte název nápoje"),
@@ -34,6 +36,8 @@ export interface BeveragesTabProps {
 }
 
 export default function BeveragesTab({ eventId, beverages, isLoading }: BeveragesTabProps) {
+  const { defaultCurrency } = useCurrency();
+  const [beverageCurrency, setBeverageCurrency] = useState(defaultCurrency);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<EventBeverage | null>(null);
 
@@ -264,6 +268,10 @@ export default function BeveragesTab({ eventId, beverages, isLoading }: Beverage
                 />
               </div>
 
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-sm text-muted-foreground">Měna:</span>
+                <CurrencySelect value={beverageCurrency} onChange={setBeverageCurrency} className="w-24" />
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}

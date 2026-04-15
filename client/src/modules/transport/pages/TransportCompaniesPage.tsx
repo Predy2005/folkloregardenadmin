@@ -33,6 +33,7 @@ import { Plus, Pencil, Trash2, Search, Truck, ChevronDown, Power, PowerOff } fro
 import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
 import { useToast } from "@/shared/hooks/use-toast";
+import { errorToast } from "@/shared/lib/toast-helpers";
 import { formatCurrency } from "@/shared/lib/formatting";
 
 export default function TransportCompaniesPage() {
@@ -66,6 +67,7 @@ export default function TransportCompaniesPage() {
       };
       toast({ title: `Hromadna akce: ${variables.ids.length} dopravcu ${labels[variables.action]}` });
     },
+    onError: (error: Error) => errorToast(error),
   });
 
   const filteredCompanies = companies?.filter((company) =>

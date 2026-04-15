@@ -76,7 +76,7 @@ export default function StockReceiving() {
         })),
         supplier,
       }),
-    onSuccess: (data: any) => {
+    onSuccess: (data: { count: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/stock-items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stock-movements"] });
       successToast(`Přijato ${data.count} položek`);

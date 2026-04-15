@@ -1,4 +1,4 @@
-import type { Ref } from "react";
+import type { Ref, Dispatch, SetStateAction } from "react";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Checkbox } from "@/shared/components/ui/checkbox";
@@ -15,25 +15,25 @@ import type { CompanySearchResult } from "@modules/contacts/utils/companySearch"
 import { parseCompanyData } from "@modules/contacts/utils/companySearch";
 
 export interface BillingSectionProps {
-  sharedContact: SharedContact;
-  setSharedContact: React.Dispatch<React.SetStateAction<SharedContact>>;
+  readonly sharedContact: SharedContact;
+  readonly setSharedContact: Dispatch<SetStateAction<SharedContact>>;
   // Company search
-  companyQuery: string;
-  setCompanyQuery: (value: string) => void;
-  companyResults: CompanySearchResult[];
-  isCompanyDropdownOpen: boolean;
-  setIsCompanyDropdownOpen: (value: boolean) => void;
-  isCompanySearching: boolean;
-  companyBoxRef: Ref<HTMLDivElement>;
-  applyCompanyToForm: (company: CompanySearchResult) => void;
+  readonly companyQuery: string;
+  readonly setCompanyQuery: (value: string) => void;
+  readonly companyResults: readonly CompanySearchResult[];
+  readonly isCompanyDropdownOpen: boolean;
+  readonly setIsCompanyDropdownOpen: (value: boolean) => void;
+  readonly isCompanySearching: boolean;
+  readonly companyBoxRef: Ref<HTMLDivElement>;
+  readonly applyCompanyToForm: (company: CompanySearchResult) => void;
   // Auto-invoice (create mode only)
-  isEdit: boolean;
-  autoCreateInvoice: boolean;
-  setAutoCreateInvoice: (value: boolean) => void;
-  autoInvoiceType: "DEPOSIT" | "FINAL";
-  setAutoInvoiceType: (value: "DEPOSIT" | "FINAL") => void;
-  autoInvoicePercent: number;
-  setAutoInvoicePercent: (value: number) => void;
+  readonly isEdit: boolean;
+  readonly autoCreateInvoice: boolean;
+  readonly setAutoCreateInvoice: (value: boolean) => void;
+  readonly autoInvoiceType: "DEPOSIT" | "FINAL";
+  readonly setAutoInvoiceType: (value: "DEPOSIT" | "FINAL") => void;
+  readonly autoInvoicePercent: number;
+  readonly setAutoInvoicePercent: (value: number) => void;
 }
 
 export function BillingSection({

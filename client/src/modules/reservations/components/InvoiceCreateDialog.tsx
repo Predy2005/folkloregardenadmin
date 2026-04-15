@@ -33,6 +33,7 @@ interface InvoiceCreateDialogProps {
   reservationId: number;
   invoiceType: "DEPOSIT" | "FINAL";
   depositPercent?: number;
+  currency?: string;
   onSuccess?: () => void;
 }
 
@@ -42,6 +43,7 @@ export function InvoiceCreateDialog({
   reservationId,
   invoiceType,
   depositPercent = 25,
+  currency: cur,
   onSuccess,
 }: InvoiceCreateDialogProps) {
   const [items, setItems] = useState<InvoiceItem[]>([]);
@@ -84,7 +86,7 @@ export function InvoiceCreateDialog({
           ? `/api/invoices/create-deposit/${reservationId}`
           : `/api/invoices/create-final/${reservationId}`;
 
-      const payload: any = { customItems: items };
+      const payload: { customItems: typeof items; percent?: number } = { customItems: items };
       if (invoiceType === "DEPOSIT") {
         payload.percent = selectedPercent;
       }
@@ -181,7 +183,7 @@ export function InvoiceCreateDialog({
                 {preview?.totalPrice && (
                   <span className="text-sm text-muted-foreground">
                     z celkové ceny{" "}
-                    {formatCurrency(Math.round(preview.totalPrice))}
+                    {formatCurrency(Math.round(preview.totalPrice), cur)}
                   </span>
                 )}
               </div>
@@ -191,7 +193,7 @@ export function InvoiceCreateDialog({
             {invoiceType === "FINAL" && preview?.paidDeposits && preview.paidDeposits > 0 && (
               <div className="p-3 bg-blue-50 text-blue-700 rounded-lg text-sm">
                 Odečteny zaplacené zálohy:{" "}
-                {formatCurrency(Math.round(preview.paidDeposits))}
+                {formatCurrency(Math.round(preview.paidDeposits), cur)}
               </div>
             )}
 
@@ -254,7 +256,7 @@ export function InvoiceCreateDialog({
                       Celkem
                     </Label>
                     <div className="mt-1 h-9 px-3 py-2 text-sm font-medium bg-muted rounded-md">
-                      {formatCurrency(Math.round(item.total))}
+                      {formatCurrency(Math.round(item.total), cur)}
                     </div>
                   </div>
                   <div className="col-span-1 flex items-end justify-center pb-1">
@@ -276,21 +278,21 @@ export function InvoiceCreateDialog({
               <div className="flex justify-between text-sm">
                 <span>Mezisoučet:</span>
                 <span className="font-mono">
-                  {formatCurrency(Math.round(calculateSubtotal()))}
+                  {formatCurrency(Math.round(calculateSubtotal()), cur)}
                 </span>
               </div>
               {preview?.vatRate && preview.vatRate > 0 && (
                 <div className="flex justify-between text-sm text-muted-foreground">
                   <span>DPH ({preview.vatRate}%):</span>
                   <span className="font-mono">
-                    {formatCurrency(Math.round(calculateVat()))}
+                    {formatCurrency(Math.round(calculateVat()), cur)}
                   </span>
                 </div>
               )}
               <div className="flex justify-between text-lg font-bold">
                 <span>Celkem:</span>
                 <span className="font-mono">
-                  {formatCurrency(Math.round(calculateTotal()))}
+                  {formatCurrency(Math.round(calculateTotal()), cur)}
                 </span>
               </div>
             </div>

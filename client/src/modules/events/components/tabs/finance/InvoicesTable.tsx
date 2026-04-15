@@ -46,7 +46,7 @@ export default function InvoicesTable({ invoices }: InvoicesTableProps) {
                   <TableCell className="font-mono text-primary">{inv.invoiceNumber}</TableCell>
                   <TableCell>{getInvoiceTypeBadge(inv.invoiceType)}</TableCell>
                   <TableCell>{inv.customerName}</TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrency(inv.total)}</TableCell>
+                  <TableCell className="text-right font-medium">{formatCurrency(inv.total, inv.currency)}</TableCell>
                   <TableCell>{inv.dueDate || "-"}</TableCell>
                   <TableCell>
                     {getInvoiceStatusBadge(inv.status)}

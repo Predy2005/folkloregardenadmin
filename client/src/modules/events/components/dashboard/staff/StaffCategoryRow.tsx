@@ -101,8 +101,8 @@ export function StaffCategoryRow({
                 className="w-14 h-6 text-center text-sm p-1"
                 autoFocus
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSave(e as any);
-                  if (e.key === "Escape") handleCancel(e as any);
+                  if (e.key === "Enter") handleSave(e as unknown as React.MouseEvent);
+                  if (e.key === "Escape") handleCancel(e as unknown as React.MouseEvent);
                 }}
               />
               <Button

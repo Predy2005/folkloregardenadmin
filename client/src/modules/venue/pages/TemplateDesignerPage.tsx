@@ -5,7 +5,8 @@ import { Badge } from "@/shared/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/components/ui/select";
 import {
   Save, Circle, Square, Music, Disc, Wine, ChefHat, DoorOpen, Loader2,
-  Lock, Unlock, Trash2, PenTool, ArrowLeft,
+  Lock, Unlock, Trash2, PenTool, ArrowLeft, Plus, Minus, Copy,
+  Guitar, Camera, Footprints, LogOut, TreePalm, Building2,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import { useToast } from "@/shared/hooks/use-toast";
@@ -67,6 +68,13 @@ export function TemplateDesignerPage() {
       if (template.roomId) setSelectedRoomId(template.roomId);
     }
   }, [template]);
+
+  // Auto-select first room when rooms load
+  useEffect(() => {
+    if (allRooms.length > 0 && selectedRoomId === null && !template?.roomId) {
+      setSelectedRoomId(allRooms[0].id);
+    }
+  }, [allRooms, selectedRoomId, template?.roomId]);
 
   // Warn before leaving
   useEffect(() => {
@@ -150,19 +158,20 @@ export function TemplateDesignerPage() {
     setIsDirty(true);
   }, []);
 
-  const handleAddTable = (shape: TableShape = "round") => {
+  const handleAddTable = (shapeKey: string = "round") => {
+    const actualShape: TableShape = shapeKey === "rectangle6" ? "rectangle" : (shapeKey as TableShape);
     const newTable: EventTable = {
       id: getTempId(),
       eventId: 0,
       tableName: `Stůl ${tables.length + 1}`,
-      room: (selectedRoom?.slug as any) ?? "cely_areal",
+      room: selectedRoom?.slug ?? "cely_areal",
       roomId: selectedRoomId ?? undefined,
-      capacity: DEFAULT_CAPACITY[shape] ?? 6,
+      capacity: DEFAULT_CAPACITY[shapeKey] ?? DEFAULT_CAPACITY[actualShape] ?? 6,
       positionX: 100 + Math.random() * 200,
       positionY: 100 + Math.random() * 200,
-      shape,
-      widthPx: DEFAULT_TABLE_SIZE[shape]?.width ?? 80,
-      heightPx: DEFAULT_TABLE_SIZE[shape]?.height ?? 80,
+      shape: actualShape,
+      widthPx: DEFAULT_TABLE_SIZE[shapeKey]?.width ?? DEFAULT_TABLE_SIZE[actualShape]?.width ?? 60,
+      heightPx: DEFAULT_TABLE_SIZE[shapeKey]?.height ?? DEFAULT_TABLE_SIZE[actualShape]?.height ?? 100,
       rotation: 0,
       isLocked: false,
       sortOrder: tables.length,
@@ -194,6 +203,23 @@ export function TemplateDesignerPage() {
     setIsDirty(true);
   };
 
+  const handleDuplicateTable = (id: number) => {
+    const source = tables.find((t) => t.id === id);
+    if (!source) return;
+    const copy: EventTable = {
+      ...source,
+      id: getTempId(),
+      tableName: `Stůl ${tables.length + 1}`,
+      positionX: (source.positionX ?? 100) + 40,
+      positionY: (source.positionY ?? 100) + 40,
+      isLocked: false,
+      guests: [],
+    };
+    setTables((prev) => [...prev, copy]);
+    setSelectedTableId(copy.id);
+    setIsDirty(true);
+  };
+
   const handleDeleteSelected = () => {
     if (selectedTableId) {
       const t = tables.find((t) => t.id === selectedTableId);
@@ -220,11 +246,38 @@ export function TemplateDesignerPage() {
     }
   };
 
+  const handleTableResize = useCallback((id: number, delta: number) => {
+    setTables((prev) =>
+      prev.map((t) => {
+        if (t.id !== id) return t;
+        const w = t.widthPx ?? 80;
+        const h = t.heightPx ?? 80;
+        if (t.shape === "round" || t.shape === "square") {
+          const size = Math.max(40, w + delta);
+          return { ...t, widthPx: size, heightPx: size };
+        }
+        return { ...t, widthPx: Math.max(40, w + delta), heightPx: Math.max(40, h + delta) };
+      })
+    );
+    setIsDirty(true);
+  }, []);
+
   const handleElementTransform = useCallback(
     (id: number, attrs: { width: number; height: number; rotation: number; x: number; y: number }) => {
       setElements((prev) =>
         prev.map((e) =>
           e.id === id ? { ...e, widthPx: attrs.width, heightPx: attrs.height, rotation: attrs.rotation, positionX: attrs.x, positionY: attrs.y } : e
+        )
+      );
+      setIsDirty(true);
+    }, []
+  );
+
+  const handleTableTransform = useCallback(
+    (id: number, attrs: { width: number; height: number; rotation: number; x: number; y: number }) => {
+      setTables((prev) =>
+        prev.map((t) =>
+          t.id === id ? { ...t, widthPx: attrs.width, heightPx: attrs.height, rotation: attrs.rotation, positionX: attrs.x, positionY: attrs.y } : t
         )
       );
       setIsDirty(true);
@@ -251,28 +304,38 @@ export function TemplateDesignerPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-80px)] min-h-[500px]">
       {/* Toolbar */}
-      <div className="flex items-center justify-between p-3 border-b bg-card">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-y-1 justify-between p-2 border-b bg-card flex-shrink-0">
+        <div className="flex items-center gap-1 flex-wrap">
           <Button variant="ghost" size="sm" onClick={() => navigate("/venue/templates")}>
             <ArrowLeft className="h-4 w-4 mr-1" />
             Zpět
           </Button>
 
           <div className="h-6 border-l mx-1" />
-
           <span className="font-semibold text-sm">{template.name}</span>
-
           <div className="h-6 border-l mx-1" />
 
+          {/* Room selector */}
           {allRooms.length > 0 && (
-            <Select value={selectedRoomId?.toString() ?? "all"} onValueChange={(v) => setSelectedRoomId(v === "all" ? null : parseInt(v))}>
-              <SelectTrigger className="w-48 h-8">
-                <SelectValue placeholder="Všechny místnosti" />
+            <Select
+              value={selectedRoomId?.toString() ?? ""}
+              onValueChange={(v) => setSelectedRoomId(parseInt(v))}
+            >
+              <SelectTrigger className="w-52 h-8">
+                <SelectValue placeholder="Vyberte místnost" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Všechny místnosti</SelectItem>
-                {allRooms.map((room) => (
-                  <SelectItem key={room.id} value={room.id.toString()}>{room.name}</SelectItem>
+                {buildings.map((building: Building) => (
+                  <div key={building.id}>
+                    <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      {building.name}
+                    </div>
+                    {(building.rooms ?? []).map((room) => (
+                      <SelectItem key={room.id} value={room.id.toString()}>
+                        {room.name}
+                      </SelectItem>
+                    ))}
+                  </div>
                 ))}
               </SelectContent>
             </Select>
@@ -280,40 +343,88 @@ export function TemplateDesignerPage() {
 
           <div className="h-6 border-l mx-1" />
 
-          <Button variant="outline" size="sm" onClick={() => handleAddTable("round")}>
-            <Circle className="h-3 w-3 mr-1" />
-            Kulatý
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => handleAddTable("rectangle")}>
+          {/* Preset table buttons */}
+          <Button variant="outline" size="sm" onClick={() => handleAddTable("rectangle")} title="Obdélníkový stůl (8 míst)">
             <Square className="h-3 w-3 mr-1" />
-            Obdélník
+            Stůl 8
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => handleAddTable("rectangle6")} title="Obdélníkový stůl (6 míst)">
+            <Square className="h-3 w-3 mr-1" />
+            Stůl 6
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => handleAddTable("round")} title="Kulatý stůl (4 místa)">
+            <Circle className="h-3 w-3 mr-1" />
+            Kulatý 4
           </Button>
 
           <div className="h-6 border-l mx-1" />
 
-          <Button variant="ghost" size="sm" onClick={() => handleAddElement("stage")} title="Podium">
+          {/* Element buttons */}
+          <Button variant="ghost" size="sm" onClick={() => handleAddElement("stage")} title="Stage">
             <Music className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => handleAddElement("dance_floor")} title="Parket">
-            <Disc className="h-4 w-4" />
+          <Button variant="ghost" size="sm" onClick={() => handleAddElement("band")} title="Band">
+            <Guitar className="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="sm" onClick={() => handleAddElement("bar")} title="Bar">
             <Wine className="h-4 w-4" />
           </Button>
+          <Button variant="ghost" size="sm" onClick={() => handleAddElement("entrance")} title="Entrance">
+            <DoorOpen className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => handleAddElement("exit")} title="Exit">
+            <LogOut className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => handleAddElement("stairs")} title="Stairs">
+            <Footprints className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => handleAddElement("terrace")} title="Terrace">
+            <TreePalm className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => handleAddElement("balcony")} title="Balkon">
+            <Building2 className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => handleAddElement("photo")} title="Photo">
+            <Camera className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => handleAddElement("dance_floor")} title="Taneční parket">
+            <Disc className="h-4 w-4" />
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => handleAddElement("buffet")} title="Bufet">
             <ChefHat className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => handleAddElement("entrance")} title="Vchod">
-            <DoorOpen className="h-4 w-4" />
-          </Button>
 
+          <div className="h-6 border-l mx-1" />
+
+          {/* Selection actions */}
           {selectedItem && (
             <>
-              <div className="h-6 border-l mx-1" />
               <Button variant={isSelectedLocked ? "default" : "outline"} size="sm" onClick={handleToggleLock}>
                 {isSelectedLocked ? <Lock className="h-3 w-3 mr-1" /> : <Unlock className="h-3 w-3 mr-1" />}
                 {isSelectedLocked ? "Zamčeno" : "Zamknout"}
               </Button>
+
+              {selectedTableId && !isSelectedLocked && (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => handleTableResize(selectedTableId!, -20)} title="Zmenšit">
+                    <Minus className="h-3 w-3" />
+                  </Button>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {(selectedItem as EventTable).widthPx ?? 80}x{(selectedItem as EventTable).heightPx ?? 80}
+                  </span>
+                  <Button variant="outline" size="sm" onClick={() => handleTableResize(selectedTableId!, 20)} title="Zvětšit">
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </>
+              )}
+
+              {selectedTableId && (
+                <Button variant="outline" size="sm" onClick={() => handleDuplicateTable(selectedTableId!)} title="Duplikovat">
+                  <Copy className="h-3 w-3 mr-1" />
+                  Duplikovat
+                </Button>
+              )}
+
               {selectedElementId && (
                 <Button variant="outline" size="sm" onClick={() => { setPolygonTargetId(selectedElementId); setPolygonDrawerOpen(true); }}>
                   <PenTool className="h-3 w-3 mr-1" />
@@ -341,7 +452,7 @@ export function TemplateDesignerPage() {
       </div>
 
       {/* Canvas */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden relative">
         <FloorPlanEditor
           tables={tables}
           elements={elements}
@@ -351,13 +462,14 @@ export function TemplateDesignerPage() {
           canvasHeight={600}
           selectedTableId={selectedTableId}
           selectedElementId={selectedElementId}
-          onSelectTable={setSelectedTableId}
-          onSelectElement={setSelectedElementId}
+          onSelectTable={(id) => { setSelectedTableId(id); setSelectedElementId(null); }}
+          onSelectElement={(id) => { setSelectedElementId(id); setSelectedTableId(null); }}
           onTableMove={handleTableMove}
           onElementMove={handleElementMove}
           onTableDoubleClick={() => {}}
           onElementDoubleClick={(id) => { setPolygonTargetId(id); setPolygonDrawerOpen(true); }}
           onElementTransform={handleElementTransform}
+          onTableTransform={handleTableTransform}
         />
       </div>
 

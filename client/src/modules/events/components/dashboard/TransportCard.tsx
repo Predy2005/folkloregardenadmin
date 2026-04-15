@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Car, Phone, Mail, Users, ChevronDown, ChevronRight, MapPin, Truck, DollarSign } from "lucide-react";
 import { Badge } from "@/shared/components/ui/badge";
 import type { TransportSummary, TaxiReservation, DashboardEventTransport } from "@shared/types";
+import { formatCurrency } from "@/shared/lib/formatting";
 
 const PAYMENT_LABELS: Record<string, string> = {
   PENDING: "Nezaplaceno",
@@ -55,7 +56,7 @@ export function TransportCard({ transport }: TransportCardProps) {
               </span>
             </div>
             <span className="text-sm font-medium text-blue-600">
-              {eventTransports.reduce((s, a) => s + (parseFloat(a.price ?? "0")), 0).toLocaleString("cs-CZ")} Kč
+              {formatCurrency(eventTransports.reduce((s, a) => s + (parseFloat(a.price ?? "0")), 0))}
             </span>
           </button>
 
@@ -156,7 +157,7 @@ function EventTransportItem({ assignment: a }: { assignment: DashboardEventTrans
         {a.price && (
           <span className="flex items-center gap-1">
             <DollarSign className="h-3 w-3" />
-            {parseFloat(a.price).toLocaleString("cs-CZ")} Kč
+            {formatCurrency(parseFloat(a.price))}
           </span>
         )}
         {a.invoiceNumber && <span>Faktura: {a.invoiceNumber}</span>}

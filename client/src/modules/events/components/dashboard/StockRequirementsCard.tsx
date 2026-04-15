@@ -31,7 +31,7 @@ export function StockRequirementsCard({ eventId }: StockRequirementsCardProps) {
   const deficits = data.items.filter((i) => i.status === "DEFICIT");
   const topDeficits = deficits.slice(0, 5);
 
-  const formatNumber = (n: number) =>
+  const formatNum = (n: number) =>
     n.toLocaleString("cs-CZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
@@ -74,10 +74,10 @@ export function StockRequirementsCard({ eventId }: StockRequirementsCardProps) {
               </span>
               <div className="flex items-center gap-2 text-xs font-mono shrink-0">
                 <span className="text-muted-foreground">
-                  {formatNumber(item.available)}/{formatNumber(item.required)} {item.unit}
+                  {formatNum(item.available)}/{formatNum(item.required)} {item.unit}
                 </span>
                 <span className="text-red-600 font-semibold">
-                  -{formatNumber(item.deficit)}
+                  -{formatNum(item.deficit)}
                 </span>
               </div>
             </div>
@@ -102,7 +102,7 @@ export function StockRequirementsCard({ eventId }: StockRequirementsCardProps) {
                 {item.stockItemName}
               </span>
               <span className="font-mono text-xs">
-                {formatNumber(item.required)} {item.unit}
+                {formatNum(item.required)} {item.unit}
               </span>
             </div>
           ))}

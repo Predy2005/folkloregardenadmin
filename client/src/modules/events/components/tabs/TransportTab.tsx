@@ -2,6 +2,9 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
+import { formatCurrency } from "@/shared/lib/formatting";
+import { useCurrency } from "@/shared/contexts/CurrencyContext";
+import { CurrencySelect } from "@/shared/components/CurrencySelect";
 import type {
   EventTransport, TransportCompany,
 } from "@shared/types";
@@ -70,6 +73,8 @@ const emptyForm: AssignmentForm = {
 
 export function TransportTab({ eventId }: TransportTabProps) {
   const qc = useQueryClient();
+  const { defaultCurrency } = useCurrency();
+  const [transportCurrency, setTransportCurrency] = useState(defaultCurrency);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<AssignmentForm>(emptyForm);
@@ -90,11 +95,15 @@ export function TransportTab({ eventId }: TransportTabProps) {
   });
 
   // Fetch reservation transfers for this event (from dashboard API)
-  const { data: dashboardData } = useQuery<any>({
+  interface ReservationTransfer { personCount: number; address?: string; transportCompanyName?: string; transportVehiclePlate?: string; transportDriverName?: string }
+  interface ReservationWithTaxi { reservationId: number; contactName: string; passengerCount: number; pickupAddress?: string; hasTaxi: boolean; transfers?: ReservationTransfer[] }
+  interface DashboardTransport { reservationsWithTaxi?: ReservationWithTaxi[] }
+
+  const { data: dashboardData } = useQuery<{ transport?: DashboardTransport }>({
     queryKey: ["event-dashboard", eventId],
     queryFn: () => api.get(`/api/events/${eventId}/manager-dashboard`),
   });
-  const reservationTransfers = dashboardData?.transport?.reservationsWithTaxi?.filter((r: any) => r.hasTaxi) ?? [];
+  const reservationTransfers = dashboardData?.transport?.reservationsWithTaxi?.filter((r) => r.hasTaxi) ?? [];
 
   const saveMutation = useMutation({
     mutationFn: async (data: AssignmentForm) => {
@@ -164,8 +173,8 @@ export function TransportTab({ eventId }: TransportTabProps) {
   const selectedCompany = companies.find((c) => c.id === parseInt(form.companyId));
 
   // Summary
-  const totalPrice = assignments.reduce((s, a) => s + (parseFloat(a.price as any) || 0), 0);
-  const pendingPrice = assignments.filter((a) => a.paymentStatus !== "PAID").reduce((s, a) => s + (parseFloat(a.price as any) || 0), 0);
+  const totalPrice = assignments.reduce((s, a) => s + (parseFloat(String(a.price ?? 0)) || 0), 0);
+  const pendingPrice = assignments.filter((a) => a.paymentStatus !== "PAID").reduce((s, a) => s + (parseFloat(String(a.price ?? 0)) || 0), 0);
 
   return (
     <div className="space-y-4">
@@ -181,14 +190,14 @@ export function TransportTab({ eventId }: TransportTabProps) {
         <Card>
           <CardContent className="pt-4 text-center">
             <DollarSign className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
-            <div className="text-2xl font-bold">{totalPrice.toLocaleString("cs-CZ")} Kč</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalPrice, defaultCurrency)}</div>
             <div className="text-xs text-muted-foreground">Celková cena</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 text-center">
             <Clock className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
-            <div className="text-2xl font-bold">{pendingPrice.toLocaleString("cs-CZ")} Kč</div>
+            <div className="text-2xl font-bold">{formatCurrency(pendingPrice, defaultCurrency)}</div>
             <div className="text-xs text-muted-foreground">Nezaplaceno</div>
           </CardContent>
         </Card>
@@ -237,7 +246,7 @@ export function TransportTab({ eventId }: TransportTabProps) {
                     : a.pickupLocation || a.dropoffLocation || "—"}
                 </TableCell>
                 <TableCell>{a.passengerCount ?? "—"}</TableCell>
-                <TableCell>{a.price ? `${parseFloat(a.price as any).toLocaleString("cs-CZ")} Kč` : "—"}</TableCell>
+                <TableCell>{a.price ? formatCurrency(parseFloat(String(a.price ?? 0)), defaultCurrency) : "—"}</TableCell>
                 <TableCell>
                   <Badge variant={paymentBadgeVariant(a.paymentStatus)}>
                     {PAYMENT_LABELS[a.paymentStatus] || a.paymentStatus}
@@ -281,7 +290,7 @@ export function TransportTab({ eventId }: TransportTabProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {reservationTransfers.map((r: any) => {
+              {reservationTransfers.map((r) => {
                 const transfers = r.transfers ?? [];
                 if (transfers.length === 0) {
                   return (
@@ -295,7 +304,7 @@ export function TransportTab({ eventId }: TransportTabProps) {
                     </TableRow>
                   );
                 }
-                return transfers.map((t: any, i: number) => (
+                return transfers.map((t, i) => (
                   <TableRow key={`${r.reservationId}-${i}`}>
                     {i === 0 && (
                       <TableCell className="font-medium" rowSpan={transfers.length}>
@@ -393,8 +402,11 @@ export function TransportTab({ eventId }: TransportTabProps) {
               <Input value={form.dropoffLocation} onChange={(e) => setForm({ ...form, dropoffLocation: e.target.value })} className="mt-1" />
             </div>
             <div>
-              <Label>Cena (Kč)</Label>
-              <Input type="number" min={0} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="mt-1" />
+              <Label>Cena</Label>
+              <div className="flex items-center gap-2 mt-1">
+                <Input type="number" min={0} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
+                <CurrencySelect value={transportCurrency} onChange={setTransportCurrency} className="w-24" />
+              </div>
             </div>
             <div>
               <Label>Stav platby</Label>

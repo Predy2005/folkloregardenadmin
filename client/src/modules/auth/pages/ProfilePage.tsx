@@ -66,13 +66,14 @@ export default function Profile() {
       });
       successToast("Profil byl úspěšně aktualizován");
     },
-    onError: (error: any) => {
-      errorToast(error.response?.data?.message || "Nepodařilo se aktualizovat profil");
+    onError: (error: Error) => {
+      const axiosErr = error as Error & { response?: { data?: { message?: string } } };
+      errorToast(axiosErr.response?.data?.message || "Nepodařilo se aktualizovat profil");
     },
   });
 
   const onSubmit = (data: ProfileForm) => {
-    const updateData: any = {
+    const updateData: Record<string, string> = {
       username: data.username,
       email: data.email,
     };

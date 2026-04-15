@@ -92,7 +92,7 @@ export default function Contacts() {
 
   const seedMutation = useMutation({
     mutationFn: async () => api.post(`/api/contacts/seed-from-reservations`),
-    onSuccess: (res: any) => {
+    onSuccess: (res: { created?: number; updated?: number }) => {
       successToast(`Načteno z rezervací - Vytvořeno: ${res.created ?? "?"}, Aktualizováno: ${res.updated ?? "?"}`);
       invalidateContactQueries();
     },

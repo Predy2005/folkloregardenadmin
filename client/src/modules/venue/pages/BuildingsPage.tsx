@@ -4,10 +4,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Badge } from "@/shared/components/ui/badge";
 import { PageHeader } from "@/shared/components/PageHeader";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/shared/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/shared/components";
 import { useToast } from "@/shared/hooks/use-toast";
 import { useBuildings, useCreateBuilding, useUpdateBuilding, useDeleteBuilding, useCreateRoom, useUpdateRoom, useDeleteRoom } from "../hooks/useBuildings";
 import { BuildingFormDialog } from "../components/BuildingFormDialog";
@@ -37,7 +34,7 @@ export function BuildingsPage() {
     });
   };
 
-  const handleBuildingSubmit = async (data: any) => {
+  const handleBuildingSubmit = async (data: { name: string; slug?: string; [key: string]: unknown }) => {
     try {
       if (buildingDialog.building) {
         await updateBuilding.mutateAsync({ id: buildingDialog.building.id, ...data });
@@ -52,7 +49,7 @@ export function BuildingsPage() {
     }
   };
 
-  const handleRoomSubmit = async (data: any) => {
+  const handleRoomSubmit = async (data: { buildingId: number; name: string; [key: string]: unknown }) => {
     try {
       if (roomDialog.room) {
         await updateRoom.mutateAsync({ id: roomDialog.room.id, ...data });
@@ -197,23 +194,15 @@ export function BuildingsPage() {
         isLoading={createRoom.isPending || updateRoom.isPending}
       />
 
-      <AlertDialog open={deleteDialog.open} onOpenChange={(open) => !open && setDeleteDialog({ ...deleteDialog, open: false })}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Smazat {deleteDialog.type === "building" ? "budovu" : "místnost"}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Opravdu chcete smazat &quot;{deleteDialog.name}&quot;? Tato akce je nevratná.
-              {deleteDialog.type === "building" && " Budou smazány i všechny místnosti v této budově."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Zrušit</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Smazat
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => !open && setDeleteDialog({ ...deleteDialog, open: false })}
+        title={`Smazat ${deleteDialog.type === "building" ? "budovu" : "místnost"}?`}
+        description={`Opravdu chcete smazat "${deleteDialog.name}"? Tato akce je nevratná.${deleteDialog.type === "building" ? " Budou smazány i všechny místnosti v této budově." : ""}`}
+        confirmLabel="Smazat"
+        variant="destructive"
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

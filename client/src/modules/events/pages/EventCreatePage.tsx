@@ -113,12 +113,7 @@ export default function EventCreate() {
   });
 
   const spaceOptions = buildings.length > 0
-    ? buildings.flatMap((b) =>
-        (b.rooms ?? []).filter(r => r.isActive).map((r) => ({
-          value: r.slug,
-          label: `${b.name} — ${r.name}`,
-        }))
-      )
+    ? buildings.map((b) => ({ value: b.slug, label: b.name }))
     : Object.entries(EVENT_SPACE_LABELS).map(([value, label]) => ({ value, label }));
 
   const watchedType = form.watch("type");

@@ -4,25 +4,14 @@ import { api } from '@/shared/lib/api';
 import { invalidateContactQueries } from '@/shared/lib/query-helpers';
 import { successToast, errorToast } from '@/shared/lib/toast-helpers';
 import { Button } from '@/shared/components/ui/button';
-import { Badge } from '@/shared/components/ui/badge';
-import { Input } from '@/shared/components/ui/input';
-import { Label } from '@/shared/components/ui/label';
 import { Checkbox } from '@/shared/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/components/ui/table';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/shared/components/ui/dialog';
-import { Search, Edit, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Filter, X } from 'lucide-react';
+import { Edit, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import type { Contact } from '@shared/types';
 import { usePagination } from '@/shared/hooks/usePagination';
-import { PAGE_SIZE_OPTIONS } from '@/shared/lib/constants';
+import { ContactFilters } from './ContactFilters';
+import { ContactBulkActionDialog } from './ContactBulkActionDialog';
 
 type Props = {
   contacts: Contact[];
@@ -32,18 +21,6 @@ type Props = {
   onDelete: (id: number) => void;
   onNewReservation: (contact: Contact) => void;
 };
-
-const COMPANY_FILTER_OPTIONS = [
-  { value: '', label: 'Všechny kontakty' },
-  { value: 'with_company', label: 'S firmou' },
-  { value: 'without_company', label: 'Bez firmy' },
-] as const;
-
-const INVOICE_FILTER_OPTIONS = [
-  { value: '', label: 'Všechny' },
-  { value: 'with_ic', label: 'S IČO' },
-  { value: 'without_ic', label: 'Bez IČO' },
-] as const;
 
 export function ContactTable({
   contacts,
@@ -79,7 +56,6 @@ export function ContactTable({
   // Filter contacts
   const filtered = useMemo(() => {
     return (contacts || []).filter((contact) => {
-      // Text search
       const search = (searchTerm || '').toLowerCase();
       const matchesSearch =
         (contact.name || '').toLowerCase().includes(search) ||
@@ -91,26 +67,11 @@ export function ContactTable({
 
       if (!matchesSearch) return false;
 
-      // Company filter
-      if (companyFilter === 'with_company' && !contact.company) {
-        return false;
-      }
-      if (companyFilter === 'without_company' && contact.company) {
-        return false;
-      }
-
-      // Invoice filter (IČO)
-      if (invoiceFilter === 'with_ic' && !contact.invoiceIc) {
-        return false;
-      }
-      if (invoiceFilter === 'without_ic' && contact.invoiceIc) {
-        return false;
-      }
-
-      // Client source filter
-      if (clientComeFromFilter && contact.clientComeFrom !== clientComeFromFilter) {
-        return false;
-      }
+      if (companyFilter === 'with_company' && !contact.company) return false;
+      if (companyFilter === 'without_company' && contact.company) return false;
+      if (invoiceFilter === 'with_ic' && !contact.invoiceIc) return false;
+      if (invoiceFilter === 'without_ic' && contact.invoiceIc) return false;
+      if (clientComeFromFilter && contact.clientComeFrom !== clientComeFromFilter) return false;
 
       return true;
     });
@@ -119,18 +80,13 @@ export function ContactTable({
   // Pagination
   const { page, pageSize, setPage, setPageSize, paginatedData, totalPages, totalItems } = usePagination(filtered);
 
-  // Check if any filter is active
-  const hasActiveFilters = companyFilter || invoiceFilter || clientComeFromFilter;
+  const hasActiveFilters = !!(companyFilter || invoiceFilter || clientComeFromFilter);
 
   // Selection functions
   const toggleSelect = (id: number) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) { next.delete(id); } else { next.add(id); }
       return next;
     });
   };
@@ -140,18 +96,13 @@ export function ContactTable({
     const allSelected = pageIds.every((id) => selectedIds.has(id));
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (allSelected) {
-        pageIds.forEach((id) => next.delete(id));
-      } else {
-        pageIds.forEach((id) => next.add(id));
-      }
+      if (allSelected) { pageIds.forEach((id) => next.delete(id)); }
+      else { pageIds.forEach((id) => next.add(id)); }
       return next;
     });
   };
 
-  const clearSelection = () => {
-    setSelectedIds(new Set());
-  };
+  const clearSelection = () => setSelectedIds(new Set());
 
   const openBulkAction = (type: 'delete' | 'source') => {
     setBulkActionType(type);
@@ -204,9 +155,7 @@ export function ContactTable({
     setPage(1);
   };
 
-  const handlePageSizeChange = (value: string) => {
-    setPageSize(Number(value));
-  };
+  const handlePageSizeChange = (value: string) => setPageSize(Number(value));
 
   const handleCompanyFilterChange = (value: string) => {
     setCompanyFilter(value === 'all' ? '' : value);
@@ -233,179 +182,32 @@ export function ContactTable({
 
   const pageAllSelected = paginatedData.length > 0 && paginatedData.every((c) => selectedIds.has(c.id));
   const pageSomeSelected = paginatedData.some((c) => selectedIds.has(c.id)) && !pageAllSelected;
-
-  const colCount = 7; // checkbox + 6 original columns
+  const colCount = 7;
 
   return (
     <TooltipProvider>
     <div className="space-y-4">
-      {/* Header with search, filters toggle and page size */}
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-80">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Hledat kontakty..."
-                value={searchTerm}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Button
-              variant={showFilters ? "secondary" : "outline"}
-              size="icon"
-              onClick={() => setShowFilters(!showFilters)}
-              className="shrink-0"
-            >
-              <Filter className="w-4 h-4" />
-            </Button>
-            {hasActiveFilters && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearAllFilters}
-                className="shrink-0 text-muted-foreground"
-              >
-                <X className="w-4 h-4 mr-1" />
-                Zrušit filtry
-              </Button>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground whitespace-nowrap">Zobrazit:</span>
-            <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
-              <SelectTrigger className="w-[80px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PAGE_SIZE_OPTIONS.map((size) => (
-                  <SelectItem key={size} value={String(size)}>
-                    {size}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span className="text-sm text-muted-foreground whitespace-nowrap">položek</span>
-          </div>
-        </div>
-
-        {/* Filters panel */}
-        {showFilters && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-muted/50 rounded-lg border">
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Firma</Label>
-              <Select value={companyFilter || 'all'} onValueChange={handleCompanyFilterChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Všechny kontakty" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Všechny kontakty</SelectItem>
-                  {COMPANY_FILTER_OPTIONS.filter(s => s.value).map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Fakturační údaje</Label>
-              <Select value={invoiceFilter || 'all'} onValueChange={handleInvoiceFilterChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Všechny" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Všechny</SelectItem>
-                  {INVOICE_FILTER_OPTIONS.filter(s => s.value).map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Zdroj</Label>
-              <Select value={clientComeFromFilter || 'all'} onValueChange={handleClientComeFromChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Všechny zdroje" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Všechny zdroje</SelectItem>
-                  {clientSources.map((source) => (
-                    <SelectItem key={source} value={source}>
-                      {source}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        )}
-
-        {/* Active filters summary */}
-        {hasActiveFilters && (
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-muted-foreground">Aktivní filtry:</span>
-            {companyFilter && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-full text-xs">
-                Firma: {COMPANY_FILTER_OPTIONS.find(s => s.value === companyFilter)?.label}
-                <button onClick={() => { setCompanyFilter(''); setPage(1); }} className="hover:text-primary/70">
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            )}
-            {invoiceFilter && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-full text-xs">
-                IČO: {INVOICE_FILTER_OPTIONS.find(s => s.value === invoiceFilter)?.label}
-                <button onClick={() => { setInvoiceFilter(''); setPage(1); }} className="hover:text-primary/70">
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            )}
-            {clientComeFromFilter && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-full text-xs">
-                Zdroj: {clientComeFromFilter}
-                <button onClick={() => { setClientComeFromFilter(''); setPage(1); }} className="hover:text-primary/70">
-                  <X className="w-3 h-3" />
-                </button>
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Bulk action bar */}
-      {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border">
-          <Badge variant="secondary">{selectedIds.size} vybráno</Badge>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => openBulkAction('source')}
-          >
-            Změnit zdroj
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => openBulkAction('delete')}
-          >
-            Smazat
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={clearSelection}
-          >
-            Zrušit výběr
-          </Button>
-        </div>
-      )}
+      <ContactFilters
+        searchTerm={searchTerm}
+        onSearchChange={handleSearchChange}
+        showFilters={showFilters}
+        onToggleFilters={() => setShowFilters(!showFilters)}
+        companyFilter={companyFilter}
+        onCompanyFilterChange={handleCompanyFilterChange}
+        invoiceFilter={invoiceFilter}
+        onInvoiceFilterChange={handleInvoiceFilterChange}
+        clientComeFromFilter={clientComeFromFilter}
+        onClientComeFromChange={handleClientComeFromChange}
+        clientSources={clientSources}
+        hasActiveFilters={hasActiveFilters}
+        onClearAllFilters={clearAllFilters}
+        pageSize={pageSize}
+        onPageSizeChange={handlePageSizeChange}
+        selectedCount={selectedIds.size}
+        onBulkSource={() => openBulkAction('source')}
+        onBulkDelete={() => openBulkAction('delete')}
+        onClearSelection={clearSelection}
+      />
 
       {/* Table */}
       <div className="rounded-md border">
@@ -521,22 +323,10 @@ export function ContactTable({
             Zobrazeno {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalItems)} z {totalItems} kontaktů
           </div>
           <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setPage(1)}
-              disabled={page === 1}
-            >
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setPage(1)} disabled={page === 1}>
               <ChevronsLeft className="w-4 h-4" />
             </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setPage(page - 1)}
-              disabled={page === 1}
-            >
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setPage(page - 1)} disabled={page === 1}>
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <div className="flex items-center gap-1 px-2">
@@ -544,22 +334,10 @@ export function ContactTable({
                 Strana <strong>{page}</strong> z <strong>{totalPages || 1}</strong>
               </span>
             </div>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setPage(page + 1)}
-              disabled={page >= totalPages}
-            >
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setPage(page + 1)} disabled={page >= totalPages}>
               <ChevronRight className="w-4 h-4" />
             </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setPage(totalPages)}
-              disabled={page >= totalPages}
-            >
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setPage(totalPages)} disabled={page >= totalPages}>
               <ChevronsRight className="w-4 h-4" />
             </Button>
           </div>
@@ -567,54 +345,17 @@ export function ContactTable({
       )}
 
       {/* Bulk action dialog */}
-      <Dialog open={bulkActionOpen} onOpenChange={(o) => { if (!o) closeBulkAction(); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {bulkActionType === 'delete' && 'Smazat kontakty'}
-              {bulkActionType === 'source' && 'Změnit zdroj kontaktů'}
-            </DialogTitle>
-            <DialogDescription>
-              {bulkActionType === 'delete' &&
-                `Opravdu chcete smazat ${selectedIds.size} vybraných kontaktů? Tato akce je nevratná.`}
-              {bulkActionType === 'source' &&
-                `Změna zdroje pro ${selectedIds.size} vybraných kontaktů.`}
-            </DialogDescription>
-          </DialogHeader>
-
-          {bulkActionType === 'source' && (
-            <div className="space-y-2 py-2">
-              <Label>Nový zdroj</Label>
-              <Input
-                value={bulkValue}
-                onChange={(e) => setBulkValue(e.target.value)}
-                placeholder="Zadejte nový zdroj..."
-              />
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={closeBulkAction}>
-              Zrušit
-            </Button>
-            <Button
-              variant={bulkActionType === 'delete' ? 'destructive' : 'default'}
-              onClick={executeBulkAction}
-              disabled={
-                (bulkActionType === 'source' && !bulkValue.trim()) ||
-                bulkDeleteMutation.isPending ||
-                bulkUpdateMutation.isPending
-              }
-            >
-              {(bulkDeleteMutation.isPending || bulkUpdateMutation.isPending)
-                ? 'Provádím...'
-                : bulkActionType === 'delete'
-                  ? 'Smazat'
-                  : 'Uložit'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ContactBulkActionDialog
+        open={bulkActionOpen}
+        onOpenChange={(o) => { if (!o) closeBulkAction(); }}
+        actionType={bulkActionType}
+        selectedCount={selectedIds.size}
+        bulkValue={bulkValue}
+        onBulkValueChange={setBulkValue}
+        onExecute={executeBulkAction}
+        onClose={closeBulkAction}
+        isPending={bulkDeleteMutation.isPending || bulkUpdateMutation.isPending}
+      />
     </div>
     </TooltipProvider>
   );

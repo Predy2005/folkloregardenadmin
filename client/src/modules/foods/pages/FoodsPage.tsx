@@ -1,11 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
 import { queryClient } from "@/shared/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/components/ui/tooltip";
 import {
@@ -19,15 +18,28 @@ import {
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { Badge } from "@/shared/components/ui/badge";
 import { Edit, Plus, Trash2, Loader2 } from "lucide-react";
+import { SearchInput, EmptyState } from "@/shared/components";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
 import { PageHeader } from "@/shared/components/PageHeader";
 import type { ReservationFood } from "@shared/types";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { useAuth } from "@/modules/auth/contexts/AuthContext";
+import { formatCurrency } from "@/shared/lib/formatting";
+import { useCurrency } from "@/shared/contexts/CurrencyContext";
 
 export default function Foods() {
   const [, navigate] = useLocation();
   const [searchTerm, setSearchTerm] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [surchargeFilter, setSurchargeFilter] = useState<string>("all");
   const { isSuperAdmin } = useAuth();
+  const { defaultCurrency } = useCurrency();
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkActionOpen, setBulkActionOpen] = useState(false);
   const [bulkActionType, setBulkActionType] = useState<'delete' | null>(null);
@@ -80,7 +92,7 @@ export default function Foods() {
     mutationFn: async (ids: number[]) => {
       return await api.delete('/api/reservation-foods/bulk-delete', { data: { ids } });
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { count: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/reservation-foods"] });
       setBulkActionOpen(false);
       clearSelection();
@@ -97,16 +109,29 @@ export default function Foods() {
   };
 
   // Filter foods
-  const filteredFoods =
-    foods?.filter(
-      (food) =>
-        food.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        food.description?.toLowerCase().includes(searchTerm.toLowerCase())
-    ) || [];
+  const filteredFoods = useMemo(() => {
+    if (!foods) return [];
+    let result = foods;
+
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(food =>
+        food.name.toLowerCase().includes(term) ||
+        food.description?.toLowerCase().includes(term)
+      );
+    }
+    if (typeFilter !== "all") {
+      result = result.filter(food => typeFilter === "children" ? food.isChildrenMenu : !food.isChildrenMenu);
+    }
+    if (surchargeFilter !== "all") {
+      result = result.filter(food => surchargeFilter === "surcharge" ? food.surcharge > 0 : food.surcharge === 0);
+    }
+    return result;
+  }, [foods, searchTerm, typeFilter, surchargeFilter]);
 
   return (
     <div className="p-6 space-y-6">
-      <PageHeader title="Jídla" description="Správa nabídky jídel, cen a dostupnosti">
+      <PageHeader title="Jídla" description={`Správa nabídky jídel, cen a dostupnosti (${defaultCurrency})`}>
         <Button
           onClick={() => navigate("/foods/new")}
           className="bg-primary hover:bg-primary/90"
@@ -121,12 +146,33 @@ export default function Foods() {
           <CardTitle>Menu položky</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="mb-4">
-            <Input
-              placeholder="Hledat jídlo..."
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <SearchInput
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={setSearchTerm}
+              placeholder="Hledat jídlo..."
+              className="flex-1 min-w-[200px]"
             />
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Typ" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Všechny typy</SelectItem>
+                <SelectItem value="children">Dětské menu</SelectItem>
+                <SelectItem value="standard">Standardní</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={surchargeFilter} onValueChange={setSurchargeFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Příplatek" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Všechny</SelectItem>
+                <SelectItem value="surcharge">S příplatkem</SelectItem>
+                <SelectItem value="included">V ceně</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {isSuperAdmin && selectedIds.size > 0 && (
@@ -184,11 +230,11 @@ export default function Foods() {
                       <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
                         {food.description || "-"}
                       </TableCell>
-                      <TableCell className="font-mono">{food.price} Kč</TableCell>
+                      <TableCell className="font-mono">{formatCurrency(food.price, defaultCurrency)}</TableCell>
                       <TableCell>
                         {food.surcharge > 0 ? (
                           <span className="inline-flex items-center rounded-full bg-orange-500/15 text-orange-600 px-2 py-1 text-xs font-medium border border-orange-500/30">
-                            +{food.surcharge} Kč
+                            +{formatCurrency(food.surcharge, defaultCurrency)}
                           </span>
                         ) : (
                           <span className="text-muted-foreground text-sm">v ceně</span>
@@ -247,9 +293,7 @@ export default function Foods() {
               </Table>
             </div>
           ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              Žádná jídla nenalezena
-            </div>
+            <EmptyState title="Žádná jídla nenalezena" />
           )}
         </CardContent>
       </Card>

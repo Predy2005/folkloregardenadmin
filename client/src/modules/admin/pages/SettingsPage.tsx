@@ -4,9 +4,9 @@ import { api } from "@/shared/lib/api";
 import { queryClient } from "@/shared/lib/queryClient";
 import { Button } from "@/shared/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
-import { Building2, CreditCard, FileText, Save, Loader2 } from "lucide-react";
+import { Building2, CreditCard, FileText, Coins, Save, Loader2 } from "lucide-react";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
-import { CompanySettingsTab, BankSettingsTab, InvoiceSettingsTab } from "../components/settings";
+import { CompanySettingsTab, BankSettingsTab, InvoiceSettingsTab, CurrencySettingsTab } from "../components/settings";
 import type { CompanySettings } from "@shared/types";
 import { PageHeader } from "@/shared/components/PageHeader";
 
@@ -39,7 +39,7 @@ export default function Settings() {
     },
   });
 
-  const handleChange = (field: keyof CompanySettings, value: string | number | boolean) => {
+  const handleChange = (field: keyof CompanySettings, value: string | number | boolean | string[] | undefined) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -62,7 +62,7 @@ export default function Settings() {
 
       <form onSubmit={handleSubmit}>
         <Tabs defaultValue="company" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="company" className="flex items-center gap-2">
               <Building2 className="w-4 h-4" />
               Firma
@@ -74,6 +74,10 @@ export default function Settings() {
             <TabsTrigger value="invoice" className="flex items-center gap-2">
               <FileText className="w-4 h-4" />
               Fakturace
+            </TabsTrigger>
+            <TabsTrigger value="currency" className="flex items-center gap-2">
+              <Coins className="w-4 h-4" />
+              Měny
             </TabsTrigger>
           </TabsList>
 
@@ -91,6 +95,10 @@ export default function Settings() {
 
           <TabsContent value="invoice">
             <InvoiceSettingsTab formData={formData} handleChange={handleChange} />
+          </TabsContent>
+
+          <TabsContent value="currency">
+            <CurrencySettingsTab formData={formData} handleChange={handleChange} />
           </TabsContent>
         </Tabs>
 

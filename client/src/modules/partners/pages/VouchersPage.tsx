@@ -1,17 +1,11 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
+import { queryClient } from "@/shared/lib/queryClient";
 import type { Voucher, Partner } from "@shared/types";
 import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/components/ui/table";
+import { useAuth } from "@/modules/auth/contexts/AuthContext";
+import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import {
   Card,
   CardContent,
@@ -19,22 +13,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/shared/components/ui/form";
 import {
   Select,
   SelectContent,
@@ -45,14 +23,16 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/components/ui/tooltip";
-import { Plus, Pencil, Trash2, Search, Ticket, QrCode } from "lucide-react";
+import { Plus, Ticket } from "lucide-react";
+import { SearchInput } from "@/shared/components";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
-import { Switch } from "@/shared/components/ui/switch";
 import dayjs from "dayjs";
 import { useFormDialog } from "@/shared/hooks/useFormDialog";
 import { useCrudMutations } from "@/shared/hooks/useCrudMutations";
+import { VouchersTable } from "../components/VouchersTable";
+import { VoucherDialog } from "../components/VoucherDialog";
+import { RedemptionsSection } from "../components/RedemptionsSection";
 
 const voucherSchema = z.object({
   code: z.string().min(3, "Kód musí mít alespoň 3 znaky"),
@@ -68,6 +48,12 @@ type VoucherForm = z.infer<typeof voucherSchema>;
 
 export default function Vouchers() {
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [partnerFilter, setPartnerFilter] = useState<string>("all");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkActionOpen, setBulkActionOpen] = useState(false);
+  const [bulkActionType, setBulkActionType] = useState<'activate' | 'deactivate' | 'delete' | null>(null);
+  const { isSuperAdmin } = useAuth();
   const dialog = useFormDialog<Voucher>();
 
   const { data: vouchers, isLoading } = useQuery<Voucher[]>({
@@ -99,9 +85,30 @@ export default function Vouchers() {
     onDeleteSuccess: () => dialog.close(),
   });
 
-  const filteredVouchers = vouchers?.filter((voucher) =>
-    voucher.code.toLowerCase().includes(search.toLowerCase())
-  );
+  const getVoucherStatus = (voucher: Voucher) => {
+    if (!voucher.active) return { label: "Neaktivní", variant: "secondary" as const, key: "inactive" };
+    const now = dayjs();
+    const validTo = dayjs(voucher.validTo);
+    if (validTo.isBefore(now)) return { label: "Vypršel", variant: "destructive" as const, key: "expired" };
+    return { label: "Aktivní", variant: "default" as const, key: "active" };
+  };
+
+  const filteredVouchers = useMemo(() => {
+    return vouchers?.filter((voucher) => {
+      const matchesSearch = voucher.code.toLowerCase().includes(search.toLowerCase());
+      const status = getVoucherStatus(voucher);
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "active" && status.key === "active") ||
+        (statusFilter === "inactive" && status.key === "inactive") ||
+        (statusFilter === "expired" && status.key === "expired");
+      const matchesPartner =
+        partnerFilter === "all" ||
+        (partnerFilter === "none" && !voucher.partnerId) ||
+        (voucher.partnerId && String(voucher.partnerId) === partnerFilter);
+      return matchesSearch && matchesStatus && matchesPartner;
+    });
+  }, [vouchers, search, statusFilter, partnerFilter]);
 
   const handleEdit = (voucher: Voucher) => {
     dialog.openEdit(voucher);
@@ -122,12 +129,54 @@ export default function Vouchers() {
     }
   };
 
-  const getVoucherStatus = (voucher: Voucher) => {
-    if (!voucher.active) return { label: "Neaktivní", variant: "secondary" as const };
-    const now = dayjs();
-    const validTo = dayjs(voucher.validTo);
-    if (validTo.isBefore(now)) return { label: "Vypršel", variant: "destructive" as const };
-    return { label: "Aktivní", variant: "default" as const };
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = () => {
+    const allIds = (filteredVouchers || []).map(v => v.id);
+    if (allIds.every(id => selectedIds.has(id))) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allIds));
+    }
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const bulkMutation = useMutation({
+    mutationFn: async (data: { ids: number[]; action: string }) => {
+      return await api.post('/api/vouchers/bulk', data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vouchers"] });
+      setBulkActionOpen(false);
+      clearSelection();
+      successToast(`Hromadná akce provedena`);
+    },
+    onError: (error: Error) => errorToast(error),
+  });
+
+  const executeBulkAction = () => {
+    const ids = Array.from(selectedIds);
+    if (bulkActionType === 'delete') {
+      bulkMutation.mutate({ ids, action: 'delete' });
+    } else if (bulkActionType === 'activate') {
+      bulkMutation.mutate({ ids, action: 'activate' });
+    } else if (bulkActionType === 'deactivate') {
+      bulkMutation.mutate({ ids, action: 'deactivate' });
+    }
+  };
+
+  const handleFormSubmit = (data: VoucherForm) => {
+    if (dialog.isEditing && dialog.editingItem) {
+      updateMutation.mutate({ id: dialog.editingItem.id, data });
+    } else {
+      createMutation.mutate(data);
+    }
   };
 
   return (
@@ -156,278 +205,92 @@ export default function Vouchers() {
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Hledat voucher..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-10 w-64"
-                  data-testid="input-search-vouchers"
-                />
-              </div>
+              <SearchInput
+                value={search}
+                onChange={setSearch}
+                placeholder="Hledat voucher..."
+                className="w-64"
+              />
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Všechny" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Všechny</SelectItem>
+                  <SelectItem value="active">Aktivní</SelectItem>
+                  <SelectItem value="inactive">Neaktivní</SelectItem>
+                  <SelectItem value="expired">Vypršelé</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={partnerFilter} onValueChange={setPartnerFilter}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Všichni partneři" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Všichni partneři</SelectItem>
+                  <SelectItem value="none">Bez partnera</SelectItem>
+                  {partners?.map((partner) => (
+                    <SelectItem key={partner.id} value={partner.id.toString()}>
+                      {partner.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Načítání...</div>
-          ) : filteredVouchers && filteredVouchers.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Kód</TableHead>
-                  <TableHead>Sleva</TableHead>
-                  <TableHead>Platnost</TableHead>
-                  <TableHead>Využití</TableHead>
-                  <TableHead>Partner</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Akce</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredVouchers.map((voucher) => {
-                  const status = getVoucherStatus(voucher);
-                  return (
-                    <TableRow key={voucher.id} data-testid={`row-voucher-${voucher.id}`}>
-                      <TableCell className="font-mono font-medium">{voucher.code}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{voucher.discountPercent}%</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <div>{dayjs(voucher.validFrom).format("DD.MM.YYYY")}</div>
-                          <div className="text-muted-foreground">
-                            do {dayjs(voucher.validTo).format("DD.MM.YYYY")}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm">
-                          {voucher.usedCount}
-                          {voucher.usageLimit && ` / ${voucher.usageLimit}`}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        {voucher.partner?.name || "-"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={status.variant}>{status.label}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <TooltipProvider>
-                        <div className="flex items-center justify-end gap-2">
-                          {voucher.qrCodeUrl && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  data-testid={`button-qr-${voucher.id}`}
-                                >
-                                  <QrCode className="w-4 h-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Zobrazit QR kód</TooltipContent>
-                            </Tooltip>
-                          )}
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleEdit(voucher)}
-                                data-testid={`button-edit-${voucher.id}`}
-                              >
-                                <Pencil className="w-4 h-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Upravit</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleDelete(voucher.id)}
-                                data-testid={`button-delete-${voucher.id}`}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Smazat</TooltipContent>
-                          </Tooltip>
-                        </div>
-                        </TooltipProvider>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              {search ? "Žádné vouchery nenalezeny" : "Zatím žádné vouchery"}
+          {isSuperAdmin && selectedIds.size > 0 && (
+            <div className="flex items-center gap-2 p-3 mt-4 bg-primary/5 border rounded-lg">
+              <Badge variant="secondary">{selectedIds.size} vybráno</Badge>
+              <Button size="sm" variant="outline" onClick={() => { setBulkActionType('activate'); setBulkActionOpen(true); }}>
+                Aktivovat
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => { setBulkActionType('deactivate'); setBulkActionOpen(true); }}>
+                Deaktivovat
+              </Button>
+              <Button size="sm" variant="destructive" onClick={() => { setBulkActionType('delete'); setBulkActionOpen(true); }}>
+                Smazat
+              </Button>
+              <Button size="sm" variant="ghost" onClick={clearSelection}>
+                Zrušit výběr
+              </Button>
             </div>
           )}
+        </CardHeader>
+        <CardContent>
+          <VouchersTable
+            vouchers={filteredVouchers}
+            isLoading={isLoading}
+            isSuperAdmin={isSuperAdmin}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+            onToggleSelectAll={toggleSelectAll}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            getVoucherStatus={getVoucherStatus}
+            hasFilters={search !== "" || statusFilter !== "all" || partnerFilter !== "all"}
+          />
         </CardContent>
       </Card>
 
-      {/* Create/Edit Form Dialog */}
-      <Dialog open={dialog.isOpen} onOpenChange={(open) => { if (!open) dialog.close(); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{dialog.isEditing ? "Upravit voucher" : "Nový voucher"}</DialogTitle>
-            <DialogDescription>
-              {dialog.isEditing ? "Upravte údaje voucheru" : "Vytvořte nový slevový voucher"}
-            </DialogDescription>
-          </DialogHeader>
-          <Form {...form}>
-            <form
-              onSubmit={form.handleSubmit((data) =>
-                dialog.isEditing && dialog.editingItem
-                  ? updateMutation.mutate({ id: dialog.editingItem.id, data })
-                  : createMutation.mutate(data)
-              )}
-              className="space-y-4"
-            >
-              <FormField
-                control={form.control}
-                name="code"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Kód *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="SUMMER2025" data-testid="input-code" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="discountPercent"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Sleva (%) *</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.1"
-                        {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="validFrom"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Platnost od *</FormLabel>
-                      <FormControl>
-                        <Input type="date" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="validTo"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Platnost do *</FormLabel>
-                      <FormControl>
-                        <Input type="date" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <FormField
-                control={form.control}
-                name="usageLimit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Limit použití</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min="0"
-                        placeholder="Neomezeno"
-                        {...field}
-                        onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="partnerId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Partner</FormLabel>
-                    <Select
-                      onValueChange={(value) => field.onChange(value === "0" ? undefined : parseInt(value))}
-                      value={field.value?.toString() || "0"}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Vyberte partnera (volitelné)" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="0">Bez partnera</SelectItem>
-                        {partners?.map((partner) => (
-                          <SelectItem key={partner.id} value={partner.id.toString()}>
-                            {partner.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="active"
-                render={({ field }) => (
-                  <FormItem className="flex items-center justify-between">
-                    <FormLabel>Aktivní</FormLabel>
-                    <FormControl>
-                      <Switch checked={field.value} onCheckedChange={field.onChange} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={dialog.close}>
-                  Zrušit
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={isPending}
-                  className="bg-primary hover:bg-primary/90"
-                >
-                  {isPending ? "Ukládání..." : dialog.isEditing ? "Uložit" : "Vytvořit"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+      <RedemptionsSection
+        isOpen={bulkActionOpen}
+        onOpenChange={setBulkActionOpen}
+        bulkActionType={bulkActionType}
+        selectedCount={selectedIds.size}
+        isPending={bulkMutation.isPending}
+        onExecute={executeBulkAction}
+      />
+
+      <VoucherDialog
+        isOpen={dialog.isOpen}
+        isEditing={dialog.isEditing}
+        editingItemId={dialog.editingItem?.id}
+        onClose={dialog.close}
+        form={form}
+        partners={partners}
+        isPending={isPending}
+        onSubmit={handleFormSubmit}
+      />
     </div>
   );
 }

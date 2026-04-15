@@ -5,7 +5,7 @@ import { Textarea } from '@/shared/components/ui/textarea';
 type Props = {
   aiInput: string;
   setAiInput: (val: string) => void;
-  aiJson: any | null;
+  aiJson: Record<string, unknown> | null;
   aiError: string | null;
   aiLoading: boolean;
   onAnalyze: () => void;

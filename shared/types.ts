@@ -59,6 +59,7 @@ export interface Payment {
   status: "PAID" | "CANCELLED" | "AUTHORIZED" | "PENDING" | "CREATED";
   reservationReference: string;
   amount: number;
+  currency?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -117,6 +118,7 @@ export interface Reservation {
   reservationType?: { id: number; name: string; code: string; color: string } | null;
 
   // Payment fields
+  currency?: string;
   source?: ReservationSource;
   paymentMethod?: ReservationPaymentMethod;
   paymentStatus?: ReservationPaymentStatus;
@@ -459,6 +461,7 @@ export interface Partner {
   email?: string;
   phone?: string;
   address?: string;
+  currency?: string;
   commissionRate: string;
   commissionAmount: string;
   paymentMethod?: string;
@@ -698,7 +701,7 @@ export interface FloorPlanElementData {
 }
 
 export type TableShape = "round" | "rectangle" | "oval" | "square";
-export type FloorPlanElementType = "stage" | "dance_floor" | "bar" | "buffet" | "entrance" | "wall" | "decoration" | "custom";
+export type FloorPlanElementType = "stage" | "dance_floor" | "bar" | "buffet" | "entrance" | "exit" | "wall" | "decoration" | "custom" | "band" | "photo" | "stairs" | "terrace" | "balcony";
 
 export interface FloorPlanElement {
   id: number;
@@ -859,7 +862,7 @@ export interface EventGuest {
   firstName?: string;
   lastName?: string;
   nationality?: string;
-  type: "adult" | "child";
+  type: "adult" | "child" | "infant" | "driver" | "guide";
   isPaid: boolean;
   isPresent: boolean;
   menuItemId?: number;
@@ -1423,6 +1426,7 @@ export interface PaymentSummary {
   remainingAmount: number;
   depositPercent: number;
   depositAmount: number;
+  currency?: string;
   paymentStatus: ReservationPaymentStatus;
   paymentMethod?: ReservationPaymentMethod;
   isFullyPaid: boolean;
@@ -1465,8 +1469,20 @@ export interface CompanySettings {
   invoiceFooterText?: string;
   registrationInfo?: string;
   isVatPayer: boolean;
+  defaultCurrency: string;
+  enabledCurrencies: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ExchangeRate {
+  id: number;
+  baseCurrency: string;
+  targetCurrency: string;
+  rate: number;
+  effectiveDate: string;
+  source?: string;
+  createdAt: string;
 }
 
 // Waiter View types
@@ -1783,6 +1799,7 @@ export interface ReservationPaymentSummary {
   totalPrice: number;
   paidAmount: number;
   remainingAmount: number;
+  currency?: string;
   paymentStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
   paymentMethod: string | null;
   paymentNote: string | null;
@@ -1792,9 +1809,10 @@ export interface ReservationPaymentSummary {
 export interface ReservationInvoiceSummary {
   id: number;
   invoiceNumber: string;
-  invoiceType: string; // 'DEPOSIT' | 'FINAL' | 'PARTIAL'
-  status: string; // 'DRAFT' | 'SENT' | 'PAID' | 'CANCELLED'
+  invoiceType: string;
+  status: string;
   total: number;
+  currency?: string;
   dueDate: string | null;
 }
 
@@ -1814,6 +1832,7 @@ export interface EventInvoiceSummary {
   invoiceType: string;
   status: string;
   total: number;
+  currency?: string;
   customerName: string;
   reservationId: number | null;
   dueDate: string | null;
@@ -1841,6 +1860,8 @@ export interface Cashbox {
   currency: string;
   initialBalance: string;
   currentBalance: string;
+  totalIncome?: string;
+  totalExpense?: string;
   eventId?: number | null;
   eventName?: string | null;
   openedAt: string;
@@ -2105,6 +2126,7 @@ export interface ReservationGuestData {
   totalPrice: number;
   paidAmount: number;
   paidPercentage: number;
+  currency?: string;
   // Menu breakdown for this reservation
   menuBreakdown: MenuBreakdownItem[];
   // Current space assignment
@@ -2171,7 +2193,7 @@ export interface CashboxAuditLogEntry {
   action: string;
   entityType: string;
   entityId?: number | null;
-  changeData?: Record<string, any> | null;
+  changeData?: Record<string, unknown> | null;
   description?: string | null;
   ipAddress?: string | null;
   createdAt: string;

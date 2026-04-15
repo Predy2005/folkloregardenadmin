@@ -47,8 +47,9 @@ export default function ResetPasswordPage() {
         newPassword: data.newPassword,
       });
       setStatus("success");
-    } catch (error: any) {
-      const msg = error.response?.data?.error || "Nepodařilo se obnovit heslo";
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { error?: string } } };
+      const msg = axiosErr.response?.data?.error || "Nepodařilo se obnovit heslo";
       setErrorMessage(msg);
       setStatus("error");
     } finally {

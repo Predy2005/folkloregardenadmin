@@ -45,6 +45,8 @@ import {
   Trash2,
   Users,
   Loader2,
+  Filter,
+  X,
 } from "lucide-react";
 
 export default function StaffMembers() {
@@ -55,6 +57,14 @@ export default function StaffMembers() {
   const [bulkActionOpen, setBulkActionOpen] = useState(false);
   const [bulkActionType, setBulkActionType] = useState<"status" | "position" | "delete" | null>(null);
   const [bulkValue, setBulkValue] = useState<string>("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [positionFilter, setPositionFilter] = useState<string>("all");
+  const [rateTypeFilter, setRateTypeFilter] = useState<string>("all");
+  const [groupFilter, setGroupFilter] = useState<string>("all");
+
+  const activeFilterCount = [statusFilter, positionFilter, rateTypeFilter, groupFilter].filter(f => f !== "all").length;
+  const clearFilters = () => { setStatusFilter("all"); setPositionFilter("all"); setRateTypeFilter("all"); setGroupFilter("all"); };
 
   const toggleSelect = (id: number) => {
     setSelectedIds((prev) => {
@@ -80,6 +90,12 @@ export default function StaffMembers() {
     queryFn: () => api.get("/api/staff"),
   });
 
+  const uniquePositions = useMemo(() => {
+    if (!staff) return [];
+    const positions = new Set(staff.map(m => m.position).filter(Boolean) as string[]);
+    return Array.from(positions).sort((a, b) => translateStaffRole(a).localeCompare(translateStaffRole(b), "cs"));
+  }, [staff]);
+
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/api/staff/${id}`),
     onSuccess: () => {
@@ -90,9 +106,9 @@ export default function StaffMembers() {
   });
 
   const bulkUpdateMutation = useMutation({
-    mutationFn: (payload: { ids: number[]; updates: Record<string, any> }) =>
+    mutationFn: (payload: { ids: number[]; updates: Record<string, string | boolean> }) =>
       api.put("/api/staff/bulk-update", payload),
-    onSuccess: (data: any) => {
+    onSuccess: (data: { count: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
       successToast(`Aktualizováno ${data.count} členů`);
       clearSelection();
@@ -104,7 +120,7 @@ export default function StaffMembers() {
   const bulkDeleteMutation = useMutation({
     mutationFn: (ids: number[]) =>
       api.delete("/api/staff/bulk-delete", { data: { ids } }),
-    onSuccess: (data: any) => {
+    onSuccess: (data: { count: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
       successToast(`Smazáno ${data.count} členů`);
       clearSelection();
@@ -115,14 +131,39 @@ export default function StaffMembers() {
 
   const filtered = useMemo(() => {
     if (!staff) return [];
-    if (!search) return staff;
-    const term = search.toLowerCase();
-    return staff.filter((m) =>
-      `${m.firstName} ${m.lastName}`.toLowerCase().includes(term) ||
-      m.email?.toLowerCase().includes(term) ||
-      m.position?.toLowerCase().includes(term)
-    );
-  }, [staff, search]);
+    let result = staff;
+
+    if (search) {
+      const term = search.toLowerCase();
+      result = result.filter((m) =>
+        `${m.firstName} ${m.lastName}`.toLowerCase().includes(term) ||
+        m.email?.toLowerCase().includes(term) ||
+        m.phone?.toLowerCase().includes(term) ||
+        m.position?.toLowerCase().includes(term)
+      );
+    }
+
+    if (statusFilter !== "all") {
+      result = result.filter(m => statusFilter === "active" ? m.isActive : !m.isActive);
+    }
+    if (positionFilter !== "all") {
+      result = result.filter(m => m.position === positionFilter);
+    }
+    if (rateTypeFilter !== "all") {
+      result = result.filter(m => {
+        const hourly = m.hourlyRate ? parseFloat(String(m.hourlyRate)) : 0;
+        const fixed = m.fixedRate ? parseFloat(String(m.fixedRate)) : 0;
+        if (rateTypeFilter === "hourly") return hourly > 0;
+        if (rateTypeFilter === "fixed") return fixed > 0;
+        return hourly === 0 && fixed === 0;
+      });
+    }
+    if (groupFilter !== "all") {
+      result = result.filter(m => groupFilter === "group" ? m.isGroup : !m.isGroup);
+    }
+
+    return result;
+  }, [staff, search, statusFilter, positionFilter, rateTypeFilter, groupFilter]);
 
   return (
     <div className="p-6 space-y-6">
@@ -165,16 +206,83 @@ export default function StaffMembers() {
 
       <Card>
         <CardContent className="pt-6">
-          {/* Search */}
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Hledat personál..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
+          {/* Search + Filter toggle */}
+          <div className="flex items-center gap-2 mb-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Hledat jméno, email, telefon, pozici..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Button
+              variant={showFilters ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <Filter className="w-4 h-4 mr-1" />
+              Filtry
+              {activeFilterCount > 0 && (
+                <Badge variant="default" className="ml-1 h-5 px-1.5 text-xs">{activeFilterCount}</Badge>
+              )}
+            </Button>
+            {activeFilterCount > 0 && (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                <X className="w-4 h-4 mr-1" />
+                Zrušit filtry
+              </Button>
+            )}
           </div>
+
+          {/* Filter bar */}
+          {showFilters && (
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Stav" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Všechny stavy</SelectItem>
+                  <SelectItem value="active">Aktivní</SelectItem>
+                  <SelectItem value="inactive">Neaktivní</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={positionFilter} onValueChange={setPositionFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Pozice" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Všechny pozice</SelectItem>
+                  {uniquePositions.map(pos => (
+                    <SelectItem key={pos} value={pos}>{translateStaffRole(pos)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={rateTypeFilter} onValueChange={setRateTypeFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Typ sazby" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Všechny sazby</SelectItem>
+                  <SelectItem value="hourly">Hodinová</SelectItem>
+                  <SelectItem value="fixed">Fixní</SelectItem>
+                  <SelectItem value="none">Bez sazby</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={groupFilter} onValueChange={setGroupFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Typ" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Všechny typy</SelectItem>
+                  <SelectItem value="individual">Jednotlivec</SelectItem>
+                  <SelectItem value="group">Skupina</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {isLoading ? (
             <div className="flex justify-center py-8">
@@ -182,7 +290,7 @@ export default function StaffMembers() {
             </div>
           ) : filtered.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              {search ? "Žádní členové nenalezeni" : "Zatím žádní členové"}
+              {search || activeFilterCount > 0 ? "Žádní členové nenalezeni" : "Zatím žádní členové"}
             </div>
           ) : (
             <div className="rounded-md border">

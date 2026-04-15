@@ -30,6 +30,7 @@ import {
 } from "@/shared/components/ui/popover";
 import { Plus, Trash2, FileText } from "lucide-react";
 import { successToast } from "@/shared/lib/toast-helpers";
+import { formatCurrency, getCurrencySymbol } from "@/shared/lib/formatting";
 import type { InvoiceItem, Reservation } from "@shared/types";
 import type { InvoiceFormData } from "@modules/invoices/types";
 
@@ -47,6 +48,7 @@ interface InvoiceItemsEditorProps {
   vatAmount: number;
   total: number;
   disableItems?: boolean;
+  currency?: string;
 }
 
 export default function InvoiceItemsEditor({
@@ -56,7 +58,9 @@ export default function InvoiceItemsEditor({
   vatAmount,
   total,
   disableItems,
+  currency,
 }: InvoiceItemsEditorProps) {
+  const cur = currency || formData.currency || "CZK";
   // Reservation selection state
   const [reservationOpen, setReservationOpen] = useState(false);
   const [reservationSearch, setReservationSearch] = useState("");
@@ -203,10 +207,8 @@ export default function InvoiceItemsEditor({
                                 </span>
                               </div>
                               <span className="font-mono text-sm">
-                                {reservation.persons
-                                  ?.reduce((sum, p) => sum + (Number(p.price) || 0), 0)
-                                  .toLocaleString("cs-CZ")}{" "}
-                                Kč
+                                {formatCurrency(reservation.persons
+                                  ?.reduce((sum, p) => sum + (Number(p.price) || 0), 0), cur)}
                               </span>
                             </div>
                           </CommandItem>
@@ -266,7 +268,7 @@ export default function InvoiceItemsEditor({
                     />
                   </TableCell>
                   <TableCell className="text-right font-mono">
-                    {item.total.toLocaleString("cs-CZ")} Kč
+                    {formatCurrency(item.total, cur)}
                   </TableCell>
                   <TableCell>
                     <Button
@@ -289,17 +291,17 @@ export default function InvoiceItemsEditor({
             <div className="w-64 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Základ</span>
-                <span className="font-mono">{subtotal.toLocaleString("cs-CZ")} Kč</span>
+                <span className="font-mono">{formatCurrency(subtotal, cur)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">DPH {formData.vatRate}%</span>
-                <span className="font-mono">{vatAmount.toLocaleString("cs-CZ")} Kč</span>
+                <span className="font-mono">{formatCurrency(vatAmount, cur)}</span>
               </div>
               <Separator />
               <div className="flex justify-between font-semibold">
                 <span>Celkem</span>
                 <span className="font-mono text-lg">
-                  {total.toLocaleString("cs-CZ")} {formData.currency}
+                  {formatCurrency(total, formData.currency)}
                 </span>
               </div>
             </div>

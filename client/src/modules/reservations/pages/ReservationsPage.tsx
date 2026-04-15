@@ -34,6 +34,7 @@ const personSchema = z.object({
 // Main reservation schema
 const reservationSchema = z.object({
   date: z.string().min(1, "Datum je povinné"),
+  currency: z.string().default("CZK"),
   contactName: z.string().min(1, "Jméno je povinné"),
   contactEmail: z.string().email("Neplatný email"),
   contactPhone: z.string().min(1, "Telefon je povinný"),
@@ -260,8 +261,8 @@ export default function Reservations() {
     try {
       const result = await parseReservationWithAI({ text: aiInput, foods });
       setAiJson(result);
-    } catch (e: any) {
-      setAiError(e?.message || "Chyba při volání AI");
+    } catch (e: unknown) {
+      setAiError(e instanceof Error ? e.message : "Chyba při volání AI");
     } finally {
       setAiLoading(false);
     }
@@ -373,7 +374,7 @@ export default function Reservations() {
       };
 
       if (Array.isArray(aiJson.menus) && aiJson.menus.length > 0) {
-        aiJson.menus.forEach((m: any) => {
+        aiJson.menus.forEach((m: { menuName: string; count?: number; unitPrice?: number }) => {
           const unitPrice =
             typeof m.unitPrice === "number" ? m.unitPrice : undefined;
           const food = resolveMenuToFoodId(m.menuName, foods);
@@ -433,8 +434,8 @@ export default function Reservations() {
       form.setValue("persons", persons);
 
       successToast("AI návrh načten do formuláře");
-    } catch (e: any) {
-      errorToast(e?.message || "Chyba při aplikaci AI dat");
+    } catch (e: unknown) {
+      errorToast(e instanceof Error ? e.message : "Chyba při aplikaci AI dat");
     }
   };
 

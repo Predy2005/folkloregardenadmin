@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import { StatusBadge } from '@/shared/components/StatusBadge';
+import { formatCurrency } from '@/shared/lib/formatting';
 import type { Reservation } from '@shared/types';
 import { PERSON_TYPE_LABELS } from '@shared/types';
 
@@ -8,6 +9,8 @@ type Props = {
 };
 
 export function PersonListSection({ reservation }: Props) {
+  const cur = reservation.currency;
+
   return (
     <>
       {reservation.persons && reservation.persons.length > 0 && (
@@ -25,7 +28,7 @@ export function PersonListSection({ reservation }: Props) {
                     <p className="text-sm text-muted-foreground">Menu: {person.menu || 'Bez jídla'}</p>
                   </div>
                 </div>
-                <p className="font-mono font-medium">{Math.round(Number(person.price)).toLocaleString('cs-CZ')} Kč</p>
+                <p className="font-mono font-medium">{formatCurrency(person.price, cur)}</p>
               </div>
             ))}
           </div>
@@ -45,7 +48,7 @@ export function PersonListSection({ reservation }: Props) {
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <p className="font-mono font-medium">{payment.amount} Kč</p>
+                  <p className="font-mono font-medium">{formatCurrency(payment.amount, payment.currency ?? cur)}</p>
                   <StatusBadge status={payment.status} type="payment" />
                 </div>
               </div>

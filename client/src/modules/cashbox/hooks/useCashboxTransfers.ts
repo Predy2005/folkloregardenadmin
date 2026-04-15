@@ -31,6 +31,7 @@ export function useCancelTransfer() {
     onSuccess: () => {
       invalidateTransfers();
     },
+    onError: (error: Error) => errorToast(error),
   });
 }
 

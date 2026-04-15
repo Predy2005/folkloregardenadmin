@@ -1,22 +1,13 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import type { StockItem, Recipe } from "@shared/types";
-import { STOCK_UNIT_LABELS } from "@shared/types";
 import { api } from "@/shared/lib/api";
 import { queryClient } from "@/shared/lib/queryClient";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
-import { Checkbox } from "@/shared/components/ui/checkbox";
 import { useAuth } from "@/modules/auth/contexts/AuthContext";
+import { useCurrency } from "@/shared/contexts/CurrencyContext";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/components/ui/table";
 import {
   Card,
   CardContent,
@@ -32,118 +23,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/shared/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/shared/components/ui/form";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/shared/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Pencil, Trash2, Search, Package, AlertTriangle, Loader2, ClipboardList } from "lucide-react";
+import { Plus, AlertTriangle, Loader2, ClipboardList } from "lucide-react";
 import { useLocation } from "wouter";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
-import { cn } from "@/shared/lib/utils";
 import { useFormDialog } from "@/shared/hooks/useFormDialog";
 import { useCrudMutations } from "@/shared/hooks/useCrudMutations";
+import type { Suggestion } from "@/shared/components/AutocompleteInput";
+import { StockFilters } from "../components/StockFilters";
+import { StockTable } from "../components/StockTable";
+import { StockFormDialog } from "../components/StockFormDialog";
+import { useBulkSelection } from "@/shared/hooks/useBulkSelection";
 
-// --- Autocomplete dropdown component ---
-interface Suggestion {
-  value: string;
-  label: string;
-  description?: string;
-}
-
-function AutocompleteInput({
-  value,
-  onChange,
-  suggestions,
-  placeholder,
-  onSelect,
-  "data-testid": testId,
-}: {
-  value: string;
-  onChange: (val: string) => void;
-  suggestions: Suggestion[];
-  placeholder?: string;
-  onSelect?: (suggestion: Suggestion) => void;
-  "data-testid"?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-
-  const filtered = useMemo(() => {
-    if (!value) return suggestions.slice(0, 15);
-    const lower = value.toLowerCase();
-    return suggestions.filter((s) => s.value.toLowerCase().includes(lower)).slice(0, 15);
-  }, [value, suggestions]);
-
-  // Close on outside click
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
-  return (
-    <div ref={wrapperRef} className="relative">
-      <Input
-        value={value}
-        onChange={(e) => {
-          onChange(e.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        placeholder={placeholder}
-        autoComplete="off"
-        data-testid={testId}
-      />
-      {open && filtered.length > 0 && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-md border bg-popover shadow-md max-h-60 overflow-y-auto">
-          {filtered.map((s) => (
-            <button
-              key={s.value}
-              type="button"
-              className={cn(
-                "w-full text-left px-3 py-2 text-sm hover:bg-accent cursor-pointer",
-                value === s.value && "bg-accent"
-              )}
-              onMouseDown={(e) => {
-                e.preventDefault(); // prevent blur before click
-                onChange(s.value);
-                onSelect?.(s);
-                setOpen(false);
-              }}
-            >
-              <div className="font-medium">{s.label}</div>
-              {s.description && (
-                <div className="text-xs text-muted-foreground">{s.description}</div>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// --- Schema ---
-const stockItemSchema = z.object({
+// --- Schema (exported for StockFormDialog) ---
+export const stockItemSchema = z.object({
   name: z.string().min(1, "Zadejte název položky"),
   description: z.string().optional(),
   unit: z.string().min(1, "Vyberte jednotku"),
@@ -158,8 +54,12 @@ type StockItemForm = z.infer<typeof stockItemSchema>;
 export default function StockItems() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
+  const [unitFilter, setUnitFilter] = useState<string>("all");
+  const [supplierFilter, setSupplierFilter] = useState<string>("all");
+  const [stockLevelFilter, setStockLevelFilter] = useState<string>("all");
   const { isSuperAdmin } = useAuth();
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const { defaultCurrency } = useCurrency();
+  const [currency, setCurrency] = useState(defaultCurrency);
   const [bulkActionOpen, setBulkActionOpen] = useState(false);
   const [bulkActionType, setBulkActionType] = useState<'supplier' | 'delete' | null>(null);
   const [bulkSupplierValue, setBulkSupplierValue] = useState("");
@@ -187,11 +87,8 @@ export default function StockItems() {
         }
       });
     });
-
     const existingNames = new Set(stockItems?.map((si) => si.name) ?? []);
-
     const suggestions: Suggestion[] = [];
-
     namesFromRecipes.forEach(({ recipeName, unit }, name) => {
       const exists = existingNames.has(name);
       suggestions.push({
@@ -200,38 +97,33 @@ export default function StockItems() {
         description: `Receptura: ${recipeName}${unit ? ` (${unit})` : ""}${exists ? " — již ve skladu" : ""}`,
       });
     });
-
     stockItems?.forEach((si) => {
       if (!namesFromRecipes.has(si.name)) {
-        suggestions.push({
-          value: si.name,
-          label: si.name,
-          description: `Skladová položka (${si.unit})`,
-        });
+        suggestions.push({ value: si.name, label: si.name, description: `Skladová položka (${si.unit})` });
       }
     });
-
     return suggestions.sort((a, b) => a.value.localeCompare(b.value, "cs"));
   }, [recipes, stockItems]);
 
-  // Build unique supplier suggestions from existing stock items
   const supplierSuggestions = useMemo((): Suggestion[] => {
     const suppliers = new Map<string, number>();
     stockItems?.forEach((si) => {
-      if (si.supplier) {
-        suppliers.set(si.supplier, (suppliers.get(si.supplier) || 0) + 1);
-      }
+      if (si.supplier) suppliers.set(si.supplier, (suppliers.get(si.supplier) || 0) + 1);
     });
     return Array.from(suppliers.entries())
       .map(([name, count]) => ({
-        value: name,
-        label: name,
+        value: name, label: name,
         description: `${count} ${count === 1 ? "položka" : count < 5 ? "položky" : "položek"}`,
       }))
       .sort((a, b) => a.value.localeCompare(b.value, "cs"));
   }, [stockItems]);
 
-  // Unit lookup from ingredient suggestions for auto-fill
+  const uniqueSuppliers = useMemo(() => {
+    const suppliers = new Set<string>();
+    stockItems?.forEach((si) => { if (si.supplier) suppliers.add(si.supplier); });
+    return Array.from(suppliers).sort((a, b) => a.localeCompare(b, "cs"));
+  }, [stockItems]);
+
   const ingredientUnitMap = useMemo(() => {
     const map = new Map<string, string>();
     recipes?.forEach((recipe) => {
@@ -241,23 +133,13 @@ export default function StockItems() {
         if (name && unit && !map.has(name)) map.set(name, unit);
       });
     });
-    stockItems?.forEach((si) => {
-      if (!map.has(si.name)) map.set(si.name, si.unit);
-    });
+    stockItems?.forEach((si) => { if (!map.has(si.name)) map.set(si.name, si.unit); });
     return map;
   }, [recipes, stockItems]);
 
   const form = useForm<StockItemForm>({
     resolver: zodResolver(stockItemSchema),
-    defaultValues: {
-      name: "",
-      description: "",
-      unit: "kg",
-      quantityAvailable: 0,
-      minQuantity: null,
-      pricePerUnit: null,
-      supplier: "",
-    },
+    defaultValues: { name: "", description: "", unit: "kg", quantityAvailable: 0, minQuantity: null, pricePerUnit: null, supplier: "" },
   });
 
   const { createMutation, updateMutation, deleteMutation, isPending } = useCrudMutations<StockItemForm>({
@@ -268,72 +150,40 @@ export default function StockItems() {
     onUpdateSuccess: () => dialog.close(),
   });
 
-  const filteredItems = stockItems?.filter((item) =>
-    item.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredItems = stockItems?.filter((item) => {
+    const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase());
+    const matchesUnit = unitFilter === "all" || item.unit === unitFilter;
+    const matchesSupplier = supplierFilter === "all" || (item.supplier || "") === supplierFilter;
+    const isLowStock = item.minQuantity && item.quantityAvailable < item.minQuantity;
+    const matchesStockLevel = stockLevelFilter === "all" || (stockLevelFilter === "low" && isLowStock) || (stockLevelFilter === "sufficient" && !isLowStock);
+    return matchesSearch && matchesUnit && matchesSupplier && matchesStockLevel;
+  });
 
-  // Selection helpers
-  const toggleSelect = (id: number) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-  const toggleSelectAll = () => {
-    const allIds = (filteredItems || []).map(i => i.id);
-    if (allIds.every(id => selectedIds.has(id))) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(allIds));
-    }
-  };
-  const clearSelection = () => setSelectedIds(new Set());
+  const getId = useCallback((item: StockItem) => item.id, []);
+  const { selectedIds, toggleSelect, toggleSelectAll, clearSelection } = useBulkSelection({ items: filteredItems || [], getId });
 
-  // Bulk mutations
   const bulkUpdateMutation = useMutation({
-    mutationFn: async (data: { ids: number[]; updates: Record<string, any> }) => {
-      return await api.put('/api/stock-items/bulk-update', data);
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/stock-items"] });
-      setBulkActionOpen(false);
-      clearSelection();
-      setBulkSupplierValue("");
-      successToast(`Aktualizováno ${data.count} položek`);
-    },
+    mutationFn: async (data: { ids: number[]; updates: Record<string, string | boolean> }) => await api.put('/api/stock-items/bulk-update', data),
+    onSuccess: (data: { count: number }) => { queryClient.invalidateQueries({ queryKey: ["/api/stock-items"] }); setBulkActionOpen(false); clearSelection(); setBulkSupplierValue(""); successToast(`Aktualizováno ${data.count} položek`); },
     onError: (error: Error) => errorToast(error),
   });
 
   const bulkDeleteMutation = useMutation({
-    mutationFn: async (ids: number[]) => {
-      return await api.delete('/api/stock-items/bulk-delete', { data: { ids } });
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/stock-items"] });
-      setBulkActionOpen(false);
-      clearSelection();
-      successToast(`Smazáno ${data.count} položek`);
-    },
+    mutationFn: async (ids: number[]) => await api.delete('/api/stock-items/bulk-delete', { data: { ids } }),
+    onSuccess: (data: { count: number }) => { queryClient.invalidateQueries({ queryKey: ["/api/stock-items"] }); setBulkActionOpen(false); clearSelection(); successToast(`Smazáno ${data.count} položek`); },
     onError: (error: Error) => errorToast(error),
   });
 
   const executeBulkAction = () => {
     const ids = Array.from(selectedIds);
-    if (bulkActionType === 'delete') {
-      bulkDeleteMutation.mutate(ids);
-    } else if (bulkActionType === 'supplier') {
-      bulkUpdateMutation.mutate({ ids, updates: { supplier: bulkSupplierValue } });
-    }
+    if (bulkActionType === 'delete') bulkDeleteMutation.mutate(ids);
+    else if (bulkActionType === 'supplier') bulkUpdateMutation.mutate({ ids, updates: { supplier: bulkSupplierValue } });
   };
 
   const handleEdit = (item: StockItem) => {
     dialog.openEdit(item);
     form.reset({
-      name: item.name,
-      description: item.description || "",
-      unit: item.unit,
+      name: item.name, description: item.description || "", unit: item.unit,
       quantityAvailable: parseFloat(String(item.quantityAvailable)) || 0,
       minQuantity: item.minQuantity != null ? parseFloat(String(item.minQuantity)) : null,
       pricePerUnit: item.pricePerUnit != null ? parseFloat(String(item.pricePerUnit)) : null,
@@ -342,14 +192,10 @@ export default function StockItems() {
   };
 
   const handleDelete = (id: number) => {
-    if (confirm("Opravdu chcete smazat tuto skladovou položku?")) {
-      deleteMutation.mutate(id);
-    }
+    if (confirm("Opravdu chcete smazat tuto skladovou položku?")) deleteMutation.mutate(id);
   };
 
-  const lowStockItems = stockItems?.filter(
-    (item) => item.minQuantity && item.quantityAvailable < item.minQuantity
-  );
+  const lowStockItems = stockItems?.filter((item) => item.minQuantity && item.quantityAvailable < item.minQuantity);
 
   return (
     <div className="p-6 space-y-6">
@@ -358,11 +204,7 @@ export default function StockItems() {
           <ClipboardList className="w-4 h-4 mr-2" />
           Příjem zboží
         </Button>
-        <Button
-          onClick={() => { dialog.openCreate(); form.reset(); }}
-          className="bg-primary hover:bg-primary/90"
-          data-testid="button-create-stock-item"
-        >
+        <Button onClick={() => { dialog.openCreate(); form.reset(); }} className="bg-primary hover:bg-primary/90" data-testid="button-create-stock-item">
           <Plus className="w-4 h-4 mr-2" />
           Nová položka
         </Button>
@@ -375,22 +217,15 @@ export default function StockItems() {
               <AlertTriangle className="w-5 h-5" />
               Nízké zásoby
             </CardTitle>
-            <CardDescription>
-              {lowStockItems.length} položek má zásoby pod minimem
-            </CardDescription>
+            <CardDescription>{lowStockItems.length} položek má zásoby pod minimem</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
               {lowStockItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between p-3 bg-white dark:bg-card rounded-lg border"
-                >
+                <div key={item.id} className="flex items-center justify-between p-3 bg-white dark:bg-card rounded-lg border">
                   <div>
                     <p className="font-medium">{item.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      Skladem: {item.quantityAvailable} {item.unit} (minimum: {item.minQuantity} {item.unit})
-                    </p>
+                    <p className="text-sm text-muted-foreground">Skladem: {item.quantityAvailable} {item.unit} (minimum: {item.minQuantity} {item.unit})</p>
                   </div>
                   <Badge variant="destructive">Nízké zásoby</Badge>
                 </div>
@@ -401,134 +236,24 @@ export default function StockItems() {
       )}
 
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Package className="w-5 h-5" />
-                Skladové položky
-              </CardTitle>
-              <CardDescription>
-                Celkem: {stockItems?.length || 0} položek
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Hledat položku..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-10 w-64"
-                  data-testid="input-search-stock-items"
-                />
-              </div>
-            </div>
-          </div>
-          {isSuperAdmin && selectedIds.size > 0 && (
-            <div className="flex items-center gap-2 p-3 mt-4 bg-primary/5 border rounded-lg">
-              <Badge variant="secondary">{selectedIds.size} vybráno</Badge>
-              <Button size="sm" variant="outline" onClick={() => { setBulkActionType('supplier'); setBulkSupplierValue(''); setBulkActionOpen(true); }}>
-                Změnit dodavatele
-              </Button>
-              <Button size="sm" variant="destructive" onClick={() => { setBulkActionType('delete'); setBulkActionOpen(true); }}>
-                Smazat
-              </Button>
-              <Button size="sm" variant="ghost" onClick={clearSelection}>
-                Zrušit výběr
-              </Button>
-            </div>
-          )}
-        </CardHeader>
+        <StockFilters
+          search={search} setSearch={setSearch}
+          unitFilter={unitFilter} setUnitFilter={setUnitFilter}
+          supplierFilter={supplierFilter} setSupplierFilter={setSupplierFilter}
+          stockLevelFilter={stockLevelFilter} setStockLevelFilter={setStockLevelFilter}
+          uniqueSuppliers={uniqueSuppliers} totalCount={stockItems?.length || 0}
+          isSuperAdmin={isSuperAdmin} selectedIds={selectedIds}
+          onBulkChangeSupplier={() => { setBulkActionType('supplier'); setBulkSupplierValue(''); setBulkActionOpen(true); }}
+          onBulkDelete={() => { setBulkActionType('delete'); setBulkActionOpen(true); }}
+          onClearSelection={clearSelection}
+        />
         <CardContent>
-          {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Načítání...</div>
-          ) : filteredItems && filteredItems.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {isSuperAdmin && (
-                    <TableHead className="w-[40px]">
-                      <Checkbox
-                        checked={(filteredItems?.length ?? 0) > 0 && (filteredItems ?? []).every(i => selectedIds.has(i.id))}
-                        onCheckedChange={toggleSelectAll}
-                      />
-                    </TableHead>
-                  )}
-                  <TableHead>Název</TableHead>
-                  <TableHead>Skladem</TableHead>
-                  <TableHead>Minimum</TableHead>
-                  <TableHead>Cena/jednotka</TableHead>
-                  <TableHead>Dodavatel</TableHead>
-                  <TableHead className="text-right">Akce</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredItems.map((item) => (
-                  <TableRow key={item.id} data-testid={`row-stock-item-${item.id}`} className={selectedIds.has(item.id) ? 'bg-primary/5' : ''}>
-                    {isSuperAdmin && (
-                      <TableCell className="w-[40px]">
-                        <Checkbox
-                          checked={selectedIds.has(item.id)}
-                          onCheckedChange={() => toggleSelect(item.id)}
-                        />
-                      </TableCell>
-                    )}
-                    <TableCell>
-                      <div>
-                        <p className="font-medium">{item.name}</p>
-                        {item.description && (
-                          <p className="text-sm text-muted-foreground">{item.description}</p>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          item.minQuantity && item.quantityAvailable < item.minQuantity
-                            ? "destructive"
-                            : "secondary"
-                        }
-                      >
-                        {item.quantityAvailable} {item.unit}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {item.minQuantity ? `${item.minQuantity} ${item.unit}` : "-"}
-                    </TableCell>
-                    <TableCell>
-                      {item.pricePerUnit ? `${item.pricePerUnit} Kč/${item.unit}` : "-"}
-                    </TableCell>
-                    <TableCell>{item.supplier || "-"}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEdit(item)}
-                          data-testid={`button-edit-${item.id}`}
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(item.id)}
-                          data-testid={`button-delete-${item.id}`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              {search ? "Žádné položky nenalezeny" : "Zatím žádné skladové položky"}
-            </div>
-          )}
+          <StockTable
+            items={filteredItems || []} isLoading={isLoading} search={search}
+            isSuperAdmin={isSuperAdmin} selectedIds={selectedIds} defaultCurrency={defaultCurrency}
+            onToggleSelect={toggleSelect} onToggleSelectAll={toggleSelectAll}
+            onEdit={handleEdit} onDelete={handleDelete}
+          />
         </CardContent>
       </Card>
 
@@ -537,23 +262,15 @@ export default function StockItems() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {bulkActionType === 'delete'
-                ? `Smazat ${selectedIds.size} položek?`
-                : `Změnit dodavatele (${selectedIds.size} položek)`}
+              {bulkActionType === 'delete' ? `Smazat ${selectedIds.size} položek?` : `Změnit dodavatele (${selectedIds.size} položek)`}
             </DialogTitle>
             <DialogDescription>
-              {bulkActionType === 'delete'
-                ? 'Tato akce je nevratná.'
-                : 'Zadejte nového dodavatele pro všechny označené položky.'}
+              {bulkActionType === 'delete' ? 'Tato akce je nevratná.' : 'Zadejte nového dodavatele pro všechny označené položky.'}
             </DialogDescription>
           </DialogHeader>
           {bulkActionType === 'supplier' && (
             <div className="py-4">
-              <Input
-                placeholder="Název dodavatele"
-                value={bulkSupplierValue}
-                onChange={(e) => setBulkSupplierValue(e.target.value)}
-              />
+              <Input placeholder="Název dodavatele" value={bulkSupplierValue} onChange={(e) => setBulkSupplierValue(e.target.value)} />
             </div>
           )}
           <DialogFooter>
@@ -563,196 +280,20 @@ export default function StockItems() {
               onClick={executeBulkAction}
               disabled={bulkUpdateMutation.isPending || bulkDeleteMutation.isPending || (bulkActionType === 'supplier' && !bulkSupplierValue)}
             >
-              {(bulkUpdateMutation.isPending || bulkDeleteMutation.isPending) && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
+              {(bulkUpdateMutation.isPending || bulkDeleteMutation.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {bulkActionType === 'delete' ? 'Smazat' : 'Aplikovat'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Create/Edit Dialog */}
-      <Dialog open={dialog.isOpen} onOpenChange={(open) => { if (!open) dialog.close(); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {dialog.isEditing ? "Upravit skladovou položku" : "Nová skladová položka"}
-            </DialogTitle>
-            <DialogDescription>
-              {dialog.isEditing ? "Upravte detaily skladové položky" : "Přidejte novou položku do skladu"}
-            </DialogDescription>
-          </DialogHeader>
-          <Form {...form}>
-            <form
-              onSubmit={form.handleSubmit((data) =>
-                dialog.isEditing && dialog.editingItem
-                  ? updateMutation.mutate({ id: dialog.editingItem.id, data })
-                  : createMutation.mutate(data)
-              )}
-              className="space-y-4"
-            >
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Název *</FormLabel>
-                    <FormControl>
-                      <AutocompleteInput
-                        value={field.value}
-                        onChange={(val) => field.onChange(val)}
-                        suggestions={ingredientSuggestions}
-                        placeholder={dialog.isEditing ? "Název položky" : "Např. Mouka hladká"}
-                        data-testid="input-name"
-                        onSelect={(s) => {
-                          const unit = ingredientUnitMap.get(s.value);
-                          if (unit) form.setValue("unit", unit);
-                        }}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Popis</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Popis položky" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="unit"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Jednotka *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-unit">
-                            <SelectValue placeholder="Vyberte jednotku" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {Object.entries(STOCK_UNIT_LABELS).map(([value, label]) => (
-                            <SelectItem key={value} value={value}>
-                              {label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="quantityAvailable"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Množství skladem *</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0"
-                          value={field.value ?? ""}
-                          onChange={(e) => field.onChange(e.target.value === "" ? 0 : parseFloat(e.target.value))}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="minQuantity"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Minimální zásoba</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder=""
-                          value={field.value ?? ""}
-                          onChange={(e) => field.onChange(e.target.value === "" ? null : parseFloat(e.target.value))}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="pricePerUnit"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Cena za jednotku (Kč)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder=""
-                          value={field.value ?? ""}
-                          onChange={(e) => field.onChange(e.target.value === "" ? null : parseFloat(e.target.value))}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <FormField
-                control={form.control}
-                name="supplier"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Dodavatel</FormLabel>
-                    <FormControl>
-                      <AutocompleteInput
-                        value={field.value ?? ""}
-                        onChange={(val) => field.onChange(val)}
-                        suggestions={supplierSuggestions}
-                        placeholder="Název dodavatele"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => dialog.close()}
-                >
-                  Zrušit
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={isPending}
-                  className="bg-primary hover:bg-primary/90"
-                >
-                  {dialog.isEditing
-                    ? (isPending ? "Ukládání..." : "Uložit")
-                    : (isPending ? "Vytváření..." : "Vytvořit")}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+      <StockFormDialog
+        isOpen={dialog.isOpen} isEditing={dialog.isEditing} editingItem={dialog.editingItem}
+        form={form} isPending={isPending} currency={currency} setCurrency={setCurrency}
+        ingredientSuggestions={ingredientSuggestions} supplierSuggestions={supplierSuggestions} ingredientUnitMap={ingredientUnitMap}
+        onClose={() => dialog.close()}
+        onSubmit={(data) => dialog.isEditing && dialog.editingItem ? updateMutation.mutate({ id: dialog.editingItem.id, data }) : createMutation.mutate(data)}
+      />
     </div>
   );
 }

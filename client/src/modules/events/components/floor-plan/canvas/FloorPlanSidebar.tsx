@@ -5,6 +5,7 @@ import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/components/ui/select";
+import { useIsTouchDevice } from "@/hooks/use-mobile";
 import type { EventGuest, EventTable, Room } from "@shared/types";
 
 type GroupMode = "reservation" | "nationality";
@@ -173,9 +174,18 @@ export function FloorPlanSidebar({
     };
   }, [guests, tables]);
 
+  const isTouch = useIsTouchDevice();
+
   const handleDragStart = (e: React.DragEvent, guestId: number) => {
     e.dataTransfer.setData("guestId", String(guestId));
     e.dataTransfer.effectAllowed = "move";
+  };
+
+  // On touch: tap guest to assign to selected table
+  const handleGuestTap = (guestId: number) => {
+    if (isTouch && selectedTable && selectedTableGuests.length < selectedTable.capacity) {
+      onAssignGuest(guestId, selectedTable.id);
+    }
   };
 
   return (
@@ -366,36 +376,48 @@ export function FloorPlanSidebar({
                 {/* Individual guests */}
                 {!isCollapsed && (
                   <div className="px-1.5 pb-1.5 space-y-0.5">
-                    {group.guests.map((guest) => (
-                      <div
-                        key={guest.id}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, guest.id)}
-                        className="flex items-center gap-1.5 px-1.5 py-1 rounded bg-muted/30 hover:bg-muted cursor-grab active:cursor-grabbing text-xs group"
-                      >
-                        <div className="flex-1 min-w-0 truncate">
-                          {guest.firstName || guest.lastName
-                            ? `${guest.firstName ?? ""} ${guest.lastName ?? ""}`.trim()
-                            : `#${guest.id}`}
+                    {group.guests.map((guest) => {
+                      const canAssign = selectedTable && selectedTableGuests.length < selectedTable.capacity;
+                      return (
+                        <div
+                          key={guest.id}
+                          draggable={!isTouch}
+                          onDragStart={!isTouch ? (e) => handleDragStart(e, guest.id) : undefined}
+                          onClick={() => handleGuestTap(guest.id)}
+                          className={`flex items-center gap-1.5 px-1.5 rounded text-xs group ${
+                            isTouch
+                              ? `py-2 min-h-[44px] bg-muted/30 ${canAssign ? "active:bg-primary/20 cursor-pointer" : ""}`
+                              : "py-1 bg-muted/30 hover:bg-muted cursor-grab active:cursor-grabbing"
+                          }`}
+                        >
+                          <div className="flex-1 min-w-0 truncate">
+                            {guest.firstName || guest.lastName
+                              ? `${guest.firstName ?? ""} ${guest.lastName ?? ""}`.trim()
+                              : `#${guest.id}`}
+                          </div>
+                          {guest.type === "child" && (
+                            <Badge variant="outline" className="text-[9px] px-0.5 h-3.5 shrink-0">
+                              dítě
+                            </Badge>
+                          )}
+                          {/* Quick assign button — desktop only (touch uses tap) */}
+                          {!isTouch && canAssign && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-4 w-4 shrink-0 opacity-0 group-hover:opacity-100"
+                              onClick={() => onAssignGuest(guest.id, selectedTable!.id)}
+                            >
+                              +
+                            </Button>
+                          )}
+                          {/* Touch indicator */}
+                          {isTouch && canAssign && (
+                            <span className="text-[10px] text-primary shrink-0">+ přiřadit</span>
+                          )}
                         </div>
-                        {guest.type === "child" && (
-                          <Badge variant="outline" className="text-[9px] px-0.5 h-3.5 shrink-0">
-                            dítě
-                          </Badge>
-                        )}
-                        {/* Quick assign */}
-                        {selectedTable && selectedTableGuests.length < selectedTable.capacity && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-4 w-4 shrink-0 opacity-0 group-hover:opacity-100"
-                            onClick={() => onAssignGuest(guest.id, selectedTable.id)}
-                          >
-                            +
-                          </Button>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
 import { queryClient } from "@/shared/lib/queryClient";
+import { errorToast } from "@/shared/lib/toast-helpers";
 import type { CashMovementCategory } from "@shared/types";
 
 export function useCashMovementCategories(type?: "INCOME" | "EXPENSE") {
@@ -41,6 +42,7 @@ export function useCreateCategory() {
         queryKey: ["/api/cash-movement-categories"],
       });
     },
+    onError: (error: Error) => errorToast(error),
   });
 }
 
@@ -59,6 +61,7 @@ export function useUpdateCategory() {
         queryKey: ["/api/cash-movement-categories"],
       });
     },
+    onError: (error: Error) => errorToast(error),
   });
 }
 
@@ -71,5 +74,6 @@ export function useDeleteCategory() {
         queryKey: ["/api/cash-movement-categories"],
       });
     },
+    onError: (error: Error) => errorToast(error),
   });
 }

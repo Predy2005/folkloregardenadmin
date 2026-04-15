@@ -112,7 +112,7 @@ export default function GuestsTab({ eventId, eventType, guests, isLoading }: Gue
     mutationFn: async () => {
       return await api.post(`/api/events/${eventId}/guests/from-reservations`);
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { guestsCount: number }) => {
       invalidateQueries();
       successToast(`Načteno ${data.guestsCount} hostů z rezervací`);
     },

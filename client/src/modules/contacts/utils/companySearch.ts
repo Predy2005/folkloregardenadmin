@@ -143,20 +143,20 @@ export function parseCompanyData(result: CompanySearchResult): ParsedCompanyData
 
   // Extract registration info from dalsiUdaje (vr = veřejný rejstřík)
   let registrationInfo: string | undefined;
-  const dalsiUdaje = (result.originaldata as any)?.dalsiUdaje;
+  const dalsiUdaje = (result.originaldata as Record<string, unknown>)?.dalsiUdaje;
   if (Array.isArray(dalsiUdaje)) {
-    const vrData = dalsiUdaje.find((d: any) => d.datovyZdroj === 'vr' && d.spisovaZnacka);
+    const vrData = dalsiUdaje.find((d: { datovyZdroj?: string; spisovaZnacka?: string }) => d.datovyZdroj === 'vr' && d.spisovaZnacka);
     if (vrData?.spisovaZnacka) {
       registrationInfo = parseRegistrationInfo(vrData.spisovaZnacka);
     }
   }
 
   // Get legal form name
-  const pravniFormaKod = result.originaldata?.pravniForma || (result as any).pravniForma;
+  const pravniFormaKod = result.originaldata?.pravniForma || (result as unknown as Record<string, unknown>).pravniForma as string | undefined;
   const legalForm = pravniFormaKod ? legalForms[pravniFormaKod] : undefined;
 
   // Get founded date
-  const foundedDate = result.originaldata?.datumVzniku || (result as any).datumVzniku;
+  const foundedDate = result.originaldata?.datumVzniku || (result as unknown as Record<string, unknown>).datumVzniku as string | undefined;
 
   return {
     name: result.obchodniJmeno || result.originaldata?.obchodniJmeno || result.name,
@@ -179,8 +179,8 @@ export function parseCompanyData(result: CompanySearchResult): ParsedCompanyData
 /**
  * Check if response is an error
  */
-function isErrorResponse(data: any): data is CompanySearchError {
-  return data && typeof data === 'object' && 'error' in data;
+function isErrorResponse(data: unknown): data is CompanySearchError {
+  return data !== null && data !== undefined && typeof data === 'object' && 'error' in data;
 }
 
 /**

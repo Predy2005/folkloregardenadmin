@@ -2,12 +2,30 @@
 import { Label } from "@/shared/components/ui/label";
 import { Input } from "@/shared/components/ui/input";
 
+export interface ContactFormData {
+  name: string;
+  email: string;
+  phone: string;
+  company: string;
+  note: string;
+  invoiceName: string;
+  invoiceEmail: string;
+  invoicePhone: string;
+  invoiceIc: string;
+  invoiceDic: string;
+  clientComeFrom: string;
+  billingStreet: string;
+  billingCity: string;
+  billingZip: string;
+  billingCountry: string;
+}
+
 export default function ContactForm({
   form,
   setForm,
 }: {
-  form: any;
-  setForm: (f: any) => void;
+  form: ContactFormData;
+  setForm: (f: ContactFormData) => void;
 }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

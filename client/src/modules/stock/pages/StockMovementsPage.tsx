@@ -66,6 +66,9 @@ type StockMovementForm = z.infer<typeof stockMovementSchema>;
 export default function StockMovements() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+  const [stockItemFilter, setStockItemFilter] = useState<string>("all");
   const dialog = useFormDialog<StockMovement>();
 
   const { data: movements, isLoading } = useQuery<StockMovement[]>({
@@ -99,7 +102,10 @@ export default function StockMovements() {
     const itemName = movement.stockItemName || '';
     const matchesSearch = !search || itemName.toLowerCase().includes(search.toLowerCase());
     const matchesType = typeFilter === "all" || movement.movementType === typeFilter;
-    return matchesSearch && matchesType;
+    const matchesDateFrom = !dateFrom || dayjs(movement.createdAt).isSame(dateFrom, 'day') || dayjs(movement.createdAt).isAfter(dayjs(dateFrom).startOf('day'));
+    const matchesDateTo = !dateTo || dayjs(movement.createdAt).isSame(dateTo, 'day') || dayjs(movement.createdAt).isBefore(dayjs(dateTo).endOf('day'));
+    const matchesStockItem = stockItemFilter === "all" || String(movement.stockItemId) === stockItemFilter;
+    return matchesSearch && matchesType && matchesDateFrom && matchesDateTo && matchesStockItem;
   });
 
   const getMovementIcon = (type: StockMovement['movementType']) => {
@@ -173,6 +179,39 @@ export default function StockMovements() {
               </div>
             </div>
           </div>
+          <div className="flex items-center gap-2 mt-4 flex-wrap">
+            <Select value={stockItemFilter} onValueChange={setStockItemFilter}>
+              <SelectTrigger className="w-52">
+                <SelectValue placeholder="Všechny položky" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Všechny položky</SelectItem>
+                {stockItems?.map((item) => (
+                  <SelectItem key={item.id} value={item.id.toString()}>
+                    {item.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex items-center gap-1">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">Od:</span>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="w-40"
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">Do:</span>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="w-40"
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -235,7 +274,7 @@ export default function StockMovements() {
             </Table>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
-              {search || typeFilter !== "all" ? "Žádné pohyby nenalezeny" : "Zatím žádné pohyby"}
+              {search || typeFilter !== "all" || dateFrom || dateTo || stockItemFilter !== "all" ? "Žádné pohyby nenalezeny" : "Zatím žádné pohyby"}
             </div>
           )}
         </CardContent>

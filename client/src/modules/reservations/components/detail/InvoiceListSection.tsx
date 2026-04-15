@@ -47,7 +47,7 @@ export function InvoiceListSection({ invoices, isLoading, markInvoicePaidMutatio
               </div>
               <div className="flex items-center gap-3">
                 <p className="font-mono font-medium">
-                  {formatCurrency(invoice.total)} {invoice.currency}
+                  {formatCurrency(invoice.total, invoice.currency)}
                 </p>
                 <StatusBadge status={invoice.status} type="invoice" />
                 {invoice.status !== 'PAID' && invoice.status !== 'CANCELLED' && (

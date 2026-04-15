@@ -85,7 +85,7 @@ export default function GuestFormDialog({
           firstName: editingGuest.firstName || "",
           lastName: editingGuest.lastName || "",
           nationality: editingGuest.nationality || "",
-          type: editingGuest.type as any,
+          type: editingGuest.type as "adult" | "child" | "infant" | "driver" | "guide",
           isPaid: editingGuest.isPaid,
           isPresent: editingGuest.isPresent,
           notes: editingGuest.notes || "",

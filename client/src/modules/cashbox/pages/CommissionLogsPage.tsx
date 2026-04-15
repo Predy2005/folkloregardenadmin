@@ -32,6 +32,7 @@ import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
 import dayjs from "dayjs";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
+import { formatCurrency } from "@/shared/lib/formatting";
 
 export default function CommissionLogs() {
   const [search, setSearch] = useState("");
@@ -85,7 +86,7 @@ export default function CommissionLogs() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-destructive">
-              {totalUnpaid.toLocaleString()} Kč
+              {formatCurrency(totalUnpaid)}
             </div>
           </CardContent>
         </Card>
@@ -95,7 +96,7 @@ export default function CommissionLogs() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-primary">
-              {totalPaid.toLocaleString()} Kč
+              {formatCurrency(totalPaid)}
             </div>
           </CardContent>
         </Card>
@@ -105,7 +106,7 @@ export default function CommissionLogs() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {(totalUnpaid + totalPaid).toLocaleString()} Kč
+              {formatCurrency(totalUnpaid + totalPaid)}
             </div>
           </CardContent>
         </Card>
@@ -180,10 +181,10 @@ export default function CommissionLogs() {
                       {log.partner?.name || `ID: ${log.partnerId}`}
                     </TableCell>
                     <TableCell className="text-right">
-                      {log.amount.toLocaleString()} Kč
+                      {formatCurrency(log.amount)}
                     </TableCell>
                     <TableCell className="text-right font-medium text-primary">
-                      {log.commissionAmount.toLocaleString()} Kč
+                      {formatCurrency(log.commissionAmount)}
                     </TableCell>
                     <TableCell>
                       {log.voucher?.code || "-"}

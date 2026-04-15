@@ -55,8 +55,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('auth_token', response.token);
       await refreshUser();
       successToast('Vítejte zpět!');
-    } catch (error: any) {
-      errorToast(error.response?.data?.message || 'Nepodařilo se přihlásit');
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      errorToast(axiosErr.response?.data?.message || 'Nepodařilo se přihlásit');
       throw error;
     }
   };
@@ -67,8 +68,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('auth_token', response.token);
       await refreshUser();
       successToast('Váš účet byl vytvořen');
-    } catch (error: any) {
-      errorToast(error.response?.data?.message || 'Nepodařilo se zaregistrovat');
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      errorToast(axiosErr.response?.data?.message || 'Nepodařilo se zaregistrovat');
       throw error;
     }
   };

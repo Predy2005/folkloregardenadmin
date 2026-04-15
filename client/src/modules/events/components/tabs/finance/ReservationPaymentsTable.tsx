@@ -122,13 +122,13 @@ export default function ReservationPaymentsTable({
                           {getPaymentMethodBadge(res.paymentMethod)}
                         </TableCell>
                         <TableCell className="text-right font-medium">
-                          {formatCurrency(res.totalPrice)}
+                          {formatCurrency(res.totalPrice, res.currency)}
                         </TableCell>
                         <TableCell className="text-right text-green-600">
-                          {formatCurrency(res.paidAmount)}
+                          {formatCurrency(res.paidAmount, res.currency)}
                         </TableCell>
                         <TableCell className="text-right text-red-600">
-                          {res.remainingAmount > 0 ? formatCurrency(res.remainingAmount) : "-"}
+                          {res.remainingAmount > 0 ? formatCurrency(res.remainingAmount, res.currency) : "-"}
                         </TableCell>
                         <TableCell className="text-center">
                           {getPaymentStatusBadge(res.paymentStatus)}
@@ -257,7 +257,7 @@ export default function ReservationPaymentsTable({
                                           <ExternalLink className="h-3 w-3 text-muted-foreground" />
                                         </div>
                                         <div className="flex items-center gap-2">
-                                          <span className="font-medium">{formatCurrency(inv.total)}</span>
+                                          <span className="font-medium">{formatCurrency(inv.total, inv.currency)}</span>
                                           {getInvoiceStatusBadge(inv.status)}
                                         </div>
                                       </button>

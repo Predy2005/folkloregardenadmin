@@ -24,9 +24,9 @@ import GuestsTab from "../components/GuestsTab";
 import { MenuTab, BeveragesTab, ScheduleTab, TablesTab, StaffTab, VouchersTab, FinanceTab } from "../components/tabs";
 import { TransportTab } from "../components/tabs/TransportTab";
 
-// Notes panel
+// Notes & floating action bar
 import { EventNotesProvider } from "../contexts/EventNotesContext";
-import FloatingNotesPanel from "../components/FloatingNotesPanel";
+import FloatingActionBar from "../components/FloatingActionBar";
 
 export default function EventEdit() {
   const [, setLocation] = useLocation();
@@ -153,8 +153,10 @@ export default function EventEdit() {
           </div>
         </div>
 
-        <div className="flex gap-6">
-          <Card className="flex-1">
+        <FloatingActionBar />
+
+        <div>
+          <Card>
             <CardHeader>
               <CardTitle>Editace události</CardTitle>
               <CardDescription>{event.name}</CardDescription>
@@ -266,7 +268,6 @@ export default function EventEdit() {
             </CardContent>
           </Card>
 
-          <FloatingNotesPanel />
         </div>
       </div>
     </EventNotesProvider>

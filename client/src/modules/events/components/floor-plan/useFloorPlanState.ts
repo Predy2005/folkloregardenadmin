@@ -31,7 +31,7 @@ export function useFloorPlanState(eventId: number) {
     queryFn: () => api.get("/api/venue/templates"),
   });
 
-  const { data: allEventGuests = [] } = useQuery<EventGuest[]>({
+  const { data: allEventGuests = [], isSuccess: guestsLoaded } = useQuery<EventGuest[]>({
     queryKey: ["event-guests", eventId],
     queryFn: () => api.get(`/api/events/${eventId}/guests`),
   });
@@ -60,34 +60,39 @@ export function useFloorPlanState(eventId: number) {
     setSelectedElementId(null);
   }, []);
 
+  // Auto-select first room when rooms load and none is selected
+  useEffect(() => {
+    if (allRooms.length > 0 && selectedRoomId === null) {
+      setSelectedRoomId(allRooms[0].id);
+    }
+  }, [allRooms, selectedRoomId]);
+
   // Initialize from API data
   useEffect(() => {
     if (floorPlan) {
       setTables(floorPlan.tables ?? []);
       setElements(floorPlan.elements ?? []);
-      const allGuests = floorPlan.tables?.flatMap((t: EventTable) => t.guests ?? []) ?? [];
-      setGuests(allGuests);
+      // Reset local guest overrides — allEventGuests is the authoritative source
+      setGuests([]);
+      isInitialized.current = true;
+      setIsDirty(false); // fresh data from server = not dirty
     }
   }, [floorPlan]);
 
-  // Merge: use allEventGuests as the authoritative list, overlay table assignments
+  // Merge guests: allEventGuests (from API, has eventTableId) + local overrides (from user actions)
+  // Local `guests` state only holds changes made since last save/load
   const mergedGuests = useMemo(() => {
-    const tableAssignments = new Map<number, number>();
-    tables.forEach((t) => {
-      (t.guests ?? []).forEach((g) => {
-        tableAssignments.set(g.id, t.id);
-      });
-    });
+    // Local overrides: guest assignments changed by user but not yet saved
+    const localOverrides = new Map<number, number | undefined>();
     guests.forEach((g) => {
-      if (g.eventTableId) {
-        tableAssignments.set(g.id, g.eventTableId);
-      }
+      localOverrides.set(g.id, g.eventTableId);
     });
+
     return allEventGuests.map((g) => ({
       ...g,
-      eventTableId: tableAssignments.get(g.id) ?? g.eventTableId,
+      eventTableId: localOverrides.has(g.id) ? localOverrides.get(g.id) : g.eventTableId,
     }));
-  }, [allEventGuests, tables, guests]);
+  }, [allEventGuests, guests]);
 
   // Filter by selected room
   // Filter strictly by selected room — only show items belonging to that room
@@ -99,16 +104,30 @@ export function useFloorPlanState(eventId: number) {
     ? elements.filter((e) => e.roomId === selectedRoomId)
     : elements;
 
+  // ── Auto-save state ──
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const autoSaveRef = useRef(false); // true = current save is auto (silent)
+  const isInitialized = useRef(false); // prevent auto-save before first data load
+
   // ── Mutations ──
   const saveMutation = useMutation({
-    mutationFn: (data: any) => api.put(`/api/events/${eventId}/floor-plan`, data),
+    mutationFn: (data: Record<string, unknown>) => api.put(`/api/events/${eventId}/floor-plan`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["floor-plan", eventId] });
       qc.invalidateQueries({ queryKey: ["event-guests", eventId] });
       setIsDirty(false);
-      toast({ title: "Plánek uložen" });
+      setLastSavedAt(new Date());
+      if (!autoSaveRef.current) {
+        toast({ title: "Plánek uložen" });
+      }
+      autoSaveRef.current = false;
     },
-    onError: () => toast({ title: "Chyba při ukládání", variant: "destructive" }),
+    onError: () => {
+      if (!autoSaveRef.current) {
+        toast({ title: "Chyba při ukládání", variant: "destructive" });
+      }
+      autoSaveRef.current = false;
+    },
   });
 
   const applyTemplateMutation = useMutation({
@@ -134,7 +153,12 @@ export function useFloorPlanState(eventId: number) {
   });
 
   // ── Handlers ──
-  const handleSave = () => {
+  const doSave = useCallback((silent: boolean) => {
+    if (saveMutation.isPending) return;
+    // Never save before guest data is loaded — would wipe assignments
+    if (!guestsLoaded) return;
+    autoSaveRef.current = silent;
+
     const assignments = mergedGuests
       .filter((g) => g.eventTableId)
       .map((g) => ({ guestId: g.id, tableId: g.eventTableId }));
@@ -176,7 +200,20 @@ export function useFloorPlanState(eventId: number) {
       })),
       assignments,
     });
-  };
+  }, [tables, elements, mergedGuests, guestsLoaded, saveMutation]);
+
+  const handleSave = () => doSave(false);
+
+  // ── Auto-save: every 5 seconds when dirty (only after initial data load) ──
+  useEffect(() => {
+    if (!isDirty || !isInitialized.current || !guestsLoaded) return;
+    const timer = setInterval(() => {
+      if (isDirty && !saveMutation.isPending && isInitialized.current && guestsLoaded) {
+        doSave(true);
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [isDirty, doSave, guestsLoaded, saveMutation.isPending]);
 
   const handleTableMove = useCallback((id: number, x: number, y: number) => {
     setTables((prev) => prev.map((t) => (t.id === id ? { ...t, positionX: x, positionY: y } : t)));
@@ -188,19 +225,21 @@ export function useFloorPlanState(eventId: number) {
     setIsDirty(true);
   }, []);
 
-  const handleAddTable = (shape: TableShape = "round") => {
+  const handleAddTable = (shapeKey: string = "round") => {
+    // "rectangle6" is a preset shortcut → rectangle shape with 6 capacity
+    const actualShape: TableShape = shapeKey === "rectangle6" ? "rectangle" : (shapeKey as TableShape);
     const newTable: EventTable = {
       id: getTempId(),
       eventId,
       tableName: `Stůl ${tables.length + 1}`,
-      room: (selectedRoom?.slug as any) ?? "cely_areal",
+      room: selectedRoom?.slug ?? "cely_areal",
       roomId: selectedRoomId ?? undefined,
-      capacity: DEFAULT_CAPACITY[shape] ?? 6,
+      capacity: DEFAULT_CAPACITY[shapeKey] ?? DEFAULT_CAPACITY[actualShape] ?? 6,
       positionX: 100 + Math.random() * 200,
       positionY: 100 + Math.random() * 200,
-      shape,
-      widthPx: DEFAULT_TABLE_SIZE[shape]?.width ?? 80,
-      heightPx: DEFAULT_TABLE_SIZE[shape]?.height ?? 80,
+      shape: actualShape,
+      widthPx: DEFAULT_TABLE_SIZE[shapeKey]?.width ?? DEFAULT_TABLE_SIZE[actualShape]?.width ?? 60,
+      heightPx: DEFAULT_TABLE_SIZE[shapeKey]?.height ?? DEFAULT_TABLE_SIZE[actualShape]?.height ?? 100,
       rotation: 0,
       isLocked: false,
       sortOrder: tables.length,
@@ -363,8 +402,9 @@ export function useFloorPlanState(eventId: number) {
       }
     });
 
-    // Sort tables: prefer selected room tables, then by available capacity desc
-    const sortedTables = [...tables]
+    // Only seat into tables in the selected room (or all if no room selected)
+    const targetTables = selectedRoomId ? tables.filter((t) => t.roomId === selectedRoomId) : tables;
+    const sortedTables = [...targetTables]
       .filter((t) => !t.isLocked)
       .map((t) => ({
         id: t.id,
@@ -422,14 +462,14 @@ export function useFloorPlanState(eventId: number) {
     } else {
       toast({ title: `Usazeno ${seated} hostů` });
     }
-  }, [tables, mergedGuests, eventId, toast]);
+  }, [tables, mergedGuests, eventId, selectedRoomId, toast]);
 
   const handleUnassignGuest = (guestId: number) => {
     setGuests((prev) => prev.map((g) => (g.id === guestId ? { ...g, eventTableId: undefined } : g)));
     setIsDirty(true);
   };
 
-  const handleUpdateTable = (id: number, data: Record<string, any>) => {
+  const handleUpdateTable = (id: number, data: Record<string, unknown>) => {
     setTables((prev) => prev.map((t) => (t.id === id ? { ...t, ...data } : t)));
     setIsDirty(true);
   };
@@ -519,14 +559,14 @@ export function useFloorPlanState(eventId: number) {
       // Ctrl+C — copy (store selection for paste)
       if ((e.ctrlKey || e.metaKey) && (e.key === "c" || e.key === "C")) {
         if (selectedTableId) {
-          (window as any).__floorplan_copied_table = selectedTableId;
+          (window as unknown as Record<string, unknown>).__floorplan_copied_table = selectedTableId;
         }
         return;
       }
 
       // Ctrl+V — paste (duplicate copied table)
       if ((e.ctrlKey || e.metaKey) && (e.key === "v" || e.key === "V")) {
-        const copiedId = (window as any).__floorplan_copied_table;
+        const copiedId = (window as unknown as Record<string, unknown>).__floorplan_copied_table as number | undefined;
         if (copiedId) {
           handleDuplicateTable(copiedId);
         }
@@ -583,7 +623,7 @@ export function useFloorPlanState(eventId: number) {
     // Data
     tables, elements, guests: mergedGuests,
     filteredTables, filteredElements,
-    allRooms, selectedRoom, templates,
+    buildings, allRooms, selectedRoom, templates,
     floorPlanLoading, floorPlanError,
 
     // Selection
@@ -595,6 +635,7 @@ export function useFloorPlanState(eventId: number) {
     // State
     isDirty,
     savePending: saveMutation.isPending,
+    lastSavedAt,
 
     // Handlers
     handleSave,

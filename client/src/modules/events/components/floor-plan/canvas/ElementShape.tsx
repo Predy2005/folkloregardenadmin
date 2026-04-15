@@ -1,5 +1,5 @@
-import { useRef, useEffect } from "react";
-import { Group, Rect, Circle, Line, Text, Transformer } from "react-konva";
+import { useRef, forwardRef, useImperativeHandle } from "react";
+import { Group, Rect, Circle, Line, Text } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type Konva from "konva";
 import type { FloorPlanElement } from "@shared/types";
@@ -10,21 +10,37 @@ const ELEMENT_COLORS: Record<string, string> = {
   bar: "#f59e0b",
   buffet: "#10b981",
   entrance: "#6366f1",
+  exit: "#ef4444",
   wall: "#6b7280",
   decoration: "#a855f7",
   custom: "#78716c",
+  band: "#7c3aed",
+  photo: "#06b6d4",
+  stairs: "#64748b",
+  terrace: "#84cc16",
+  balcony: "#d97706",
 };
 
 const ELEMENT_LABELS: Record<string, string> = {
-  stage: "Podium",
+  stage: "STAGE",
   dance_floor: "Taneční parket",
-  bar: "Bar",
+  bar: "BAR",
   buffet: "Bufet",
-  entrance: "Vchod",
+  entrance: "ENTRANCE",
+  exit: "EXIT",
   wall: "Stěna",
   decoration: "Dekorace",
   custom: "Vlastní",
+  band: "BAND",
+  photo: "PHOTO",
+  stairs: "STAIRS",
+  terrace: "TERRACE",
+  balcony: "BALCONY",
 };
+
+export interface ElementShapeHandle {
+  getNode: () => Konva.Group | null;
+}
 
 interface ElementShapeProps {
   element: FloorPlanElement;
@@ -36,7 +52,7 @@ interface ElementShapeProps {
   onTransformEnd?: (id: number, attrs: { width: number; height: number; rotation: number; x: number; y: number }) => void;
 }
 
-export function ElementShape({
+export const ElementShape = forwardRef<ElementShapeHandle, ElementShapeProps>(function ElementShape({
   element,
   isSelected,
   gridSize,
@@ -44,20 +60,15 @@ export function ElementShape({
   onDragEnd,
   onDoubleClick,
   onTransformEnd,
-}: ElementShapeProps) {
+}, ref) {
   const groupRef = useRef<Konva.Group>(null);
-  const trRef = useRef<Konva.Transformer>(null);
   const color = element.color || ELEMENT_COLORS[element.elementType] || "#78716c";
   const label = element.label || ELEMENT_LABELS[element.elementType] || element.elementType;
   const locked = element.isLocked;
 
-  // Attach transformer when selected
-  useEffect(() => {
-    if (isSelected && trRef.current && groupRef.current && !locked) {
-      trRef.current.nodes([groupRef.current]);
-      trRef.current.getLayer()?.batchDraw();
-    }
-  }, [isSelected, locked]);
+  useImperativeHandle(ref, () => ({
+    getNode: () => groupRef.current,
+  }));
 
   const snapToGrid = (val: number) => Math.round(val / gridSize) * gridSize;
 
@@ -81,8 +92,6 @@ export function ElementShape({
 
     const scaleX = node.scaleX();
     const scaleY = node.scaleY();
-
-    // Reset scale, apply to width/height
     node.scaleX(1);
     node.scaleY(1);
 
@@ -98,7 +107,6 @@ export function ElementShape({
   const hasPolygonPoints = element.shapeData?.points && element.shapeData.points.length >= 6;
 
   const renderShape = () => {
-    // Custom polygon shape (L-shape, etc.)
     if (hasPolygonPoints) {
       return (
         <Line
@@ -141,63 +149,43 @@ export function ElementShape({
   };
 
   return (
-    <>
-      <Group
-        ref={groupRef}
-        x={element.positionX}
-        y={element.positionY}
-        draggable={!locked}
-        rotation={element.rotation || 0}
-        onClick={handleClick}
-        onTap={handleClick}
-        onDblClick={() => onDoubleClick(element.id)}
-        onDblTap={() => onDoubleClick(element.id)}
-        onDragEnd={handleDragEnd}
-        onDragStart={() => !locked && onSelect(element.id)}
-        onTransformEnd={handleTransformEnd}
-      >
-        {renderShape()}
+    <Group
+      ref={groupRef}
+      x={element.positionX}
+      y={element.positionY}
+      draggable={!locked}
+      rotation={element.rotation || 0}
+      onClick={handleClick}
+      onTap={handleClick}
+      onDblClick={() => onDoubleClick(element.id)}
+      onDblTap={() => onDoubleClick(element.id)}
+      onDragEnd={handleDragEnd}
+      onDragStart={() => !locked && onSelect(element.id)}
+      onTransformEnd={handleTransformEnd}
+    >
+      {renderShape()}
 
-        {/* Label */}
+      <Text
+        x={0}
+        y={hasPolygonPoints ? 10 : element.heightPx / 2 - 14}
+        width={hasPolygonPoints ? undefined : element.widthPx}
+        text={label}
+        fontSize={12}
+        fontStyle="bold"
+        fill={color}
+        align="center"
+        listening={false}
+      />
+
+      {locked && (
         <Text
-          x={0}
-          y={hasPolygonPoints ? 10 : element.heightPx / 2 - 14}
-          width={hasPolygonPoints ? undefined : element.widthPx}
-          text={label}
-          fontSize={12}
-          fontStyle="bold"
-          fill={color}
-          align="center"
+          x={element.widthPx - 16}
+          y={2}
+          text="🔒"
+          fontSize={10}
           listening={false}
         />
-
-        {/* Lock icon indicator */}
-        {locked && (
-          <Text
-            x={element.widthPx - 16}
-            y={2}
-            text="🔒"
-            fontSize={10}
-            listening={false}
-          />
-        )}
-      </Group>
-
-      {/* Transformer for resize/rotate when selected and not locked */}
-      {isSelected && !locked && (
-        <Transformer
-          ref={trRef}
-          rotateEnabled
-          enabledAnchors={[
-            "top-left", "top-right", "bottom-left", "bottom-right",
-            "middle-left", "middle-right", "top-center", "bottom-center",
-          ]}
-          boundBoxFunc={(oldBox, newBox) => {
-            if (newBox.width < 20 || newBox.height < 20) return oldBox;
-            return newBox;
-          }}
-        />
       )}
-    </>
+    </Group>
   );
-}
+});

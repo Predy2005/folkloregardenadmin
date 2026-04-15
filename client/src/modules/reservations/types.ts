@@ -33,6 +33,7 @@ export interface SharedContact {
   contactPhone: string;
   contactNationality: string;
   clientComeFrom: string;
+  currency: string;
   invoiceSameAsContact: boolean;
   invoiceName: string;
   invoiceCompany: string;

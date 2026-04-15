@@ -1,12 +1,12 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiClient } from "@/shared/lib/api";
 import type { Recipe, MenuRecipe } from "@shared/types";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { useAuth } from "@modules/auth";
+import { formatCurrency } from "@/shared/lib/formatting";
 import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
   Table,
@@ -32,9 +32,18 @@ import {
   DialogTitle,
 } from "@/shared/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/components/ui/tooltip";
-import { Search, ChefHat, Eye, Upload, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { ChefHat, Eye, Upload, Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { SearchInput, EmptyState } from "@/shared/components";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
+import { RecipeViewDialog } from "../components/RecipeViewDialog";
 
 export default function Recipes() {
   const [, navigate] = useLocation();
@@ -47,6 +56,8 @@ export default function Recipes() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkActionOpen, setBulkActionOpen] = useState(false);
   const [bulkActionType, setBulkActionType] = useState<"delete" | null>(null);
+  const [menuFilter, setMenuFilter] = useState<string>("all");
+  const [ingredientsFilter, setIngredientsFilter] = useState<string>("all");
 
   const toggleSelect = (id: number) => {
     setSelectedIds((prev) => {
@@ -96,7 +107,7 @@ export default function Recipes() {
       queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
       successToast("Receptura smazána");
     },
-    onError: (err: any) => errorToast(err?.response?.data?.error || err.message),
+    onError: (err: Error) => errorToast(err.message),
   });
 
   const importMutation = useMutation({
@@ -115,22 +126,21 @@ export default function Recipes() {
         `Import dokončen: ${data.recipes} receptur, ${data.stockItems} nových surovin, ${data.ingredients} ingrediencí`
       );
     },
-    onError: (err: any) => {
-      const msg = err?.response?.data?.error || err.message;
-      errorToast(msg);
+    onError: (err: Error) => {
+      errorToast(err.message);
     },
   });
 
   const bulkDeleteMutation = useMutation({
     mutationFn: (ids: number[]) =>
       api.delete("/api/recipes/bulk-delete", { data: { ids } }),
-    onSuccess: (data: any) => {
+    onSuccess: (data: { count: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/recipes"] });
       successToast(`Smazáno ${data.count} receptur`);
       clearSelection();
       setBulkActionOpen(false);
     },
-    onError: (err: any) => errorToast(err?.response?.data?.error || err.message),
+    onError: (err: Error) => errorToast(err.message),
   });
 
   const handleImport = () => {
@@ -151,9 +161,32 @@ export default function Recipes() {
     }
   };
 
-  const filteredRecipes = recipes?.filter((recipe) =>
-    recipe.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const uniqueMenuNames = useMemo(() => {
+    const names = new Set<string>();
+    allMenuRecipes?.forEach(mr => {
+      if (mr.reservationFood?.name) names.add(mr.reservationFood.name);
+    });
+    return Array.from(names).sort((a, b) => a.localeCompare(b, "cs"));
+  }, [allMenuRecipes]);
+
+  const filteredRecipes = useMemo(() => {
+    if (!recipes) return [];
+    let result = recipes;
+
+    if (search) {
+      const term = search.toLowerCase();
+      result = result.filter(r => r.name.toLowerCase().includes(term) || r.description?.toLowerCase().includes(term));
+    }
+    if (menuFilter !== "all") {
+      result = result.filter(r => (menusByRecipe.get(r.id) ?? []).includes(menuFilter));
+    }
+    if (ingredientsFilter !== "all") {
+      result = result.filter(r =>
+        ingredientsFilter === "with" ? (r.ingredients?.length ?? 0) > 0 : (r.ingredients?.length ?? 0) === 0
+      );
+    }
+    return result;
+  }, [recipes, search, menuFilter, ingredientsFilter, menusByRecipe]);
 
   const handleView = (recipe: Recipe) => {
     setViewingRecipe(recipe);
@@ -225,17 +258,34 @@ export default function Recipes() {
                 Celkem: {recipes?.length || 0} receptur
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Hledat recepturu..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-10 w-64"
-                  data-testid="input-search-recipes"
-                />
-              </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <SearchInput
+                value={search}
+                onChange={setSearch}
+                placeholder="Hledat recepturu..."
+                className="w-64"
+              />
+              <Select value={menuFilter} onValueChange={setMenuFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Menu" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Všechna menu</SelectItem>
+                  {uniqueMenuNames.map(name => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={ingredientsFilter} onValueChange={setIngredientsFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Ingredience" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Všechny</SelectItem>
+                  <SelectItem value="with">S ingrediencemi</SelectItem>
+                  <SelectItem value="without">Bez ingrediencí</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardHeader>
@@ -352,9 +402,7 @@ export default function Recipes() {
               </TableBody>
             </Table>
           ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              {search ? "Žádné receptury nenalezeny" : "Zatím žádné receptury"}
-            </div>
+            <EmptyState title={search ? "Žádné receptury nenalezeny" : "Zatím žádné receptury"} />
           )}
         </CardContent>
       </Card>
@@ -385,76 +433,11 @@ export default function Recipes() {
       </Dialog>
 
       {/* View Dialog */}
-      <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Detail receptury</DialogTitle>
-            <DialogDescription>Informace o receptuře a ingrediencích</DialogDescription>
-          </DialogHeader>
-          {viewingRecipe && (
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-semibold mb-1">Název</h3>
-                <p className="text-muted-foreground">{viewingRecipe.name}</p>
-              </div>
-              {viewingRecipe.description && (
-                <div>
-                  <h3 className="font-semibold mb-1">Postup</h3>
-                  <p className="text-muted-foreground whitespace-pre-wrap">{viewingRecipe.description}</p>
-                </div>
-              )}
-              <div className="flex gap-6">
-                <div>
-                  <h3 className="font-semibold mb-1">Počet porcí</h3>
-                  <Badge variant="secondary">{viewingRecipe.portions} ks</Badge>
-                </div>
-                {viewingRecipe.portionWeight && (
-                  <div>
-                    <h3 className="font-semibold mb-1">Hmotnost porce</h3>
-                    <Badge variant="secondary">{viewingRecipe.portionWeight} g</Badge>
-                  </div>
-                )}
-              </div>
-              <div>
-                <h3 className="font-semibold mb-2">Ingredience</h3>
-                {viewingRecipe.ingredients && viewingRecipe.ingredients.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Surovina</TableHead>
-                        <TableHead>Dodavatel</TableHead>
-                        <TableHead className="text-right">Množství</TableHead>
-                        <TableHead className="text-right">Cena za kg/l</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {viewingRecipe.ingredients.map((ing) => (
-                        <TableRow key={ing.id}>
-                          <TableCell>{ing.stockItem?.name || `ID: ${ing.stockItemId}`}</TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {ing.stockItem?.supplier || "-"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {ing.quantityRequired} {ing.stockItem?.unit}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {ing.stockItem?.pricePerUnit ? `${ing.stockItem.pricePerUnit} Kč` : "-"}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Zatím žádné ingredience</p>
-                )}
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button onClick={() => setIsViewOpen(false)}>Zavřít</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RecipeViewDialog
+        open={isViewOpen}
+        onOpenChange={setIsViewOpen}
+        recipe={viewingRecipe}
+      />
     </div>
   );
 }

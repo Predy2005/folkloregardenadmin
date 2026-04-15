@@ -102,7 +102,7 @@ export default function BasicInfoTab({ event, eventId }: BasicInfoTabProps) {
       status: event.status,
       guestsPaid: event.guestsPaid,
       guestsFree: event.guestsFree,
-      spaces: event.spaces?.map((s: any) => typeof s === 'string' ? s : s.spaceName) ?? [],
+      spaces: event.spaces?.map((s: string | { spaceName: string }) => typeof s === 'string' ? s : s.spaceName) ?? [],
       organizerCompany: event.organizerCompany || "",
       organizerPerson: event.organizerPerson || "",
       organizerEmail: event.organizerEmail || "",
@@ -128,8 +128,8 @@ export default function BasicInfoTab({ event, eventId }: BasicInfoTabProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/events", eventId] });
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
       successToast("Událost byla úspěšně aktualizována");
-    } catch (error: any) {
-      errorToast(error?.message || "Nepodařilo se aktualizovat událost");
+    } catch (error: unknown) {
+      errorToast(error instanceof Error ? error.message : "Nepodařilo se aktualizovat událost");
     } finally {
       setIsSubmitting(false);
     }
