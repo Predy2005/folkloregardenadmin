@@ -17,7 +17,7 @@ import {
   parseCompanyData,
   type CompanySearchResult,
 } from "@modules/contacts/utils/companySearch";
-import type { PersonEntry, TransferEntry, ReservationEntry, SharedContact } from "@modules/reservations/types";
+import type { TransferEntry, ReservationEntry, SharedContact } from "@modules/reservations/types";
 
 const defaultSharedContact: SharedContact = {
   contactName: "",
@@ -95,6 +95,7 @@ export function useReservationForm() {
     reservationId,
     contactQuery,
     contactId,
+    linkedContactEmail: isEdit ? sharedContact.contactEmail : undefined,
   });
 
   // ── Reservation helpers ──
@@ -145,8 +146,6 @@ export function useReservationForm() {
 
   // ── Invoice mutations ──
   const {
-    createDepositMutation,
-    createFinalMutation,
     markPaidMutation,
     markInvoicePaidMutation,
     isAnyPending: isAnyInvoiceMutationPending,
@@ -292,6 +291,58 @@ export function useReservationForm() {
     }));
   };
 
+  // ── Apply only billing/invoice fields from a contact (overwrite, used by button) ──
+  const applyContactBillingToForm = (c: Contact) => {
+    setSharedContact(prev => ({
+      ...prev,
+      invoiceSameAsContact: false,
+      invoiceName: c.invoiceName || c.name || prev.invoiceName,
+      invoiceCompany: c.company || prev.invoiceCompany,
+      invoiceIc: c.invoiceIc || prev.invoiceIc,
+      invoiceDic: c.invoiceDic || prev.invoiceDic,
+      invoiceEmail: c.invoiceEmail || c.email || prev.invoiceEmail,
+      invoicePhone: c.invoicePhone || c.phone || prev.invoicePhone,
+    }));
+  };
+
+  // ── Apply only billing/invoice fields from a partner (overwrite, used by button) ──
+  const applyPartnerBillingToForm = (p: Partner) => {
+    setSharedContact(prev => ({
+      ...prev,
+      invoiceSameAsContact: false,
+      invoiceName: p.contactPerson || prev.invoiceName,
+      invoiceCompany: p.invoiceCompany || p.name || prev.invoiceCompany,
+      invoiceIc: p.ic || prev.invoiceIc,
+      invoiceDic: p.dic || prev.invoiceDic,
+      invoiceEmail: p.billingEmail || p.email || prev.invoiceEmail,
+      invoicePhone: p.phone || prev.invoicePhone,
+    }));
+  };
+
+  // ── Auto-prefill billing from linked contact (edit mode, only fills empty fields) ──
+  const autoPrefilledRef = useRef(false);
+  useEffect(() => {
+    if (!isEdit || !data.linkedContact || autoPrefilledRef.current) return;
+    const c = data.linkedContact;
+    // Only prefill if we have at least one billing field on the contact
+    const hasBilling = c.invoiceName || c.company || c.invoiceIc || c.invoiceDic
+      || c.invoiceEmail || c.invoicePhone;
+    if (!hasBilling) return;
+    setSharedContact(prev => {
+      // Only fill empty fields — don't overwrite anything the user has already saved
+      return {
+        ...prev,
+        invoiceName: prev.invoiceName || c.invoiceName || c.name || "",
+        invoiceCompany: prev.invoiceCompany || c.company || "",
+        invoiceIc: prev.invoiceIc || c.invoiceIc || "",
+        invoiceDic: prev.invoiceDic || c.invoiceDic || "",
+        invoiceEmail: prev.invoiceEmail || c.invoiceEmail || "",
+        invoicePhone: prev.invoicePhone || c.invoicePhone || "",
+      };
+    });
+    autoPrefilledRef.current = true;
+  }, [isEdit, data.linkedContact]);
+
   // ── Partner detection effect ──
   useEffect(() => {
     if (!debouncedContactEmail && !debouncedContactName) {
@@ -312,14 +363,32 @@ export function useReservationForm() {
       if (!cancelled) {
         setDetectedPartner(result?.partner || null);
         if (result?.partner) {
-          setPartnerId(result.partner.id);
+          const partner = result.partner;
+          setPartnerId(partner.id);
+          // Auto-fill billing fields from partner — only fills empty fields,
+          // never overwrites anything the user has already entered/saved.
+          // Currency is only filled when creating; in edit mode the reservation
+          // already has its own saved currency.
+          setSharedContact(prev => ({
+            ...prev,
+            currency: !isEdit && partner.currency ? partner.currency : prev.currency,
+            invoiceSameAsContact: prev.invoiceSameAsContact && !(
+              partner.invoiceCompany || partner.name || partner.ic
+            ) ? prev.invoiceSameAsContact : false,
+            invoiceName: prev.invoiceName || partner.contactPerson || "",
+            invoiceCompany: prev.invoiceCompany || partner.invoiceCompany || partner.name || "",
+            invoiceIc: prev.invoiceIc || partner.ic || "",
+            invoiceDic: prev.invoiceDic || partner.dic || "",
+            invoiceEmail: prev.invoiceEmail || partner.billingEmail || partner.email || "",
+            invoicePhone: prev.invoicePhone || partner.phone || "",
+          }));
         }
       }
     }).catch(() => {
       if (!cancelled) setDetectedPartner(null);
     });
     return () => { cancelled = true; };
-  }, [debouncedContactEmail, debouncedContactName]);
+  }, [debouncedContactEmail, debouncedContactName, isEdit]);
 
   // ── Apply partner pricing to persons ──
   const applyPartnerPricing = () => {
@@ -468,6 +537,9 @@ export function useReservationForm() {
     applyBulkMenuChange: persons.applyBulkMenuChange,
     applyBulkDrinkChange: persons.applyBulkDrinkChange,
     applyContactToForm,
+    applyContactBillingToForm,
+    linkedContact: data.linkedContact,
+    applyPartnerBillingToForm,
     applyCompanyToForm,
     handleSubmitSingle: submit.handleSubmitSingle,
     handleSubmitAll: submit.handleSubmitAll,

@@ -104,6 +104,13 @@ class CompanySettings
     #[ORM\Column(name: 'main_cashbox_hidden', type: Types::BOOLEAN, options: ['default' => false])]
     private bool $mainCashboxHidden = false;
 
+    // Multi-currency support
+    #[ORM\Column(name: 'default_currency', type: Types::STRING, length: 3, options: ['default' => 'CZK'])]
+    private string $defaultCurrency = 'CZK';
+
+    #[ORM\Column(name: 'enabled_currencies', type: Types::JSON, options: ['default' => '["CZK"]'])]
+    private array $enabledCurrencies = ['CZK'];
+
     #[ORM\Column(type: Types::DATETIME_MUTABLE)]
     private \DateTimeInterface $createdAt;
 
@@ -387,6 +394,12 @@ class CompanySettings
 
     public function isMainCashboxHidden(): bool { return $this->mainCashboxHidden; }
     public function setMainCashboxHidden(bool $v): static { $this->mainCashboxHidden = $v; return $this; }
+
+    public function getDefaultCurrency(): string { return $this->defaultCurrency; }
+    public function setDefaultCurrency(string $v): static { $this->defaultCurrency = $v; return $this; }
+
+    public function getEnabledCurrencies(): array { return $this->enabledCurrencies; }
+    public function setEnabledCurrencies(array $v): static { $this->enabledCurrencies = $v; return $this; }
 
     public function getCreatedAt(): \DateTimeInterface
     {

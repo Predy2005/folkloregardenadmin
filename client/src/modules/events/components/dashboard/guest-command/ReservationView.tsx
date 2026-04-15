@@ -112,6 +112,7 @@ function ReservationDetailSheet({
     if (reservation) {
       setLocalPresent(reservation.presence.present);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reservation?.reservationId, reservation?.presence.present]);
 
   if (!reservation) return null;

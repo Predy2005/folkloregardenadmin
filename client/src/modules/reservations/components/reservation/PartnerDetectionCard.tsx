@@ -1,11 +1,6 @@
 import React from "react";
 import { Button } from "@/shared/components/ui/button";
-import type { Partner } from "@shared/types";
-
-interface PartnerDetectionCardProps {
-  detectedPartner: Partner;
-  onApplyPricing: () => void;
-}
+import type { PartnerDetectionCardProps } from "@modules/reservations/types/components/reservation/PartnerDetectionCard";
 
 export function PartnerDetectionCard({ detectedPartner, onApplyPricing }: PartnerDetectionCardProps) {
   return (

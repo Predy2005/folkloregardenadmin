@@ -1,4 +1,5 @@
 import { Button } from '@/shared/components/ui/button';
+import { SectionHeader } from '@/shared/components/SectionHeader';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/shared/components/ui/form';
 import { Input } from '@/shared/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/shared/components/ui/select';
@@ -6,21 +7,10 @@ import { Plus, Trash2 } from 'lucide-react';
 import { useFormContext } from 'react-hook-form';
 import { formatCurrency, getCurrencySymbol } from '@/shared/lib/formatting';
 import { useCurrency } from '@/shared/contexts/CurrencyContext';
-import type { ReservationFood } from '@shared/types';
 import { PERSON_TYPE_LABELS } from '@shared/types';
+import type { PersonsTabProps } from '@modules/reservations/types/components/form/PersonsTab';
 
-type PersonField = { id?: number; type: 'adult'|'child'|'infant'|'driver'|'guide'; menu: string; price: number } & { id: string };
-
-type Props = {
-  personFields: PersonField[];
-  onAdd: (type: 'adult'|'child'|'infant'|'driver'|'guide') => void;
-  onRemove: (index: number) => void;
-  foods?: ReservationFood[];
-  totalPrice: number;
-  currency?: string;
-};
-
-export function PersonsTab({ personFields, onAdd, onRemove, foods, totalPrice, currency: currencyProp }: Props) {
+export function PersonsTab({ personFields, onAdd, onRemove, foods, totalPrice, currency: currencyProp }: PersonsTabProps) {
   const form = useFormContext();
   const { defaultCurrency } = useCurrency();
   const cur = currencyProp ?? defaultCurrency;
@@ -28,7 +18,7 @@ export function PersonsTab({ personFields, onAdd, onRemove, foods, totalPrice, c
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold">Osoby a jídla</h3>
+        <SectionHeader title="Osoby a jídla" />
         <div className="flex gap-2">
           <Button type="button" size="sm" variant="outline" onClick={() => onAdd('adult')} data-testid="button-add-adult">
             <Plus className="w-4 h-4 mr-2" /> Dospělý

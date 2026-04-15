@@ -5,6 +5,7 @@ import { api } from "@/shared/lib/api";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import type { EventPaymentOverview, ReservationPaymentSummary, ManagerDashboardData } from "@shared/types";
 import { Skeleton } from "@/shared/components/ui/skeleton";
+import { SectionHeader } from "@/shared/components/SectionHeader";
 import { Separator } from "@/shared/components/ui/separator";
 import {
   FinanceSummaryCards,
@@ -144,7 +145,7 @@ export default function FinanceTab({ eventId }: FinanceTabProps) {
       {dashboardData && (
         <>
           <Separator className="my-6" />
-          <h3 className="text-lg font-semibold mb-4">Kasa eventu - Výdaje a příjmy</h3>
+          <SectionHeader title="Kasa eventu - Výdaje a příjmy" size="lg" className="mb-4" />
           <ExpenseTrackerCard
             financials={dashboardData.financials}
             eventId={eventId}
@@ -152,7 +153,7 @@ export default function FinanceTab({ eventId }: FinanceTabProps) {
           />
 
           <Separator className="my-6" />
-          <h3 className="text-lg font-semibold mb-4">Vyúčtování</h3>
+          <SectionHeader title="Vyúčtování" size="lg" className="mb-4" />
           <SettlementCard
             settlement={dashboardData.financials.settlement}
             cashbox={dashboardData.financials.cashbox}

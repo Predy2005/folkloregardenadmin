@@ -1,19 +1,13 @@
 import React from "react";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
+import { PageHeader } from "@/shared/components/PageHeader";
 import { CurrencySelect } from "@/shared/components/CurrencySelect";
 import { formatCurrency } from "@/shared/lib/formatting";
-
-interface ReservationFormHeaderProps {
-  isEdit: boolean;
-  reservationId: number | null;
-  reservationCount: number;
-  grandTotalPrice: number;
-  currency: string;
-  isSubmitting: boolean;
-  onNavigateBack: () => void;
-  onSubmitSingle: () => void;
-  onSubmitAll: () => void;
-}
+import type {
+  ReservationFormHeaderProps,
+  CurrencyHeaderProps,
+} from "@modules/reservations/types/components/reservation/ReservationFormHeader";
 
 export function ReservationFormHeader({
   isEdit,
@@ -26,45 +20,56 @@ export function ReservationFormHeader({
   onSubmitSingle,
   onSubmitAll,
 }: ReservationFormHeaderProps) {
+  let subtitle: string;
+  if (reservationCount > 1) {
+    subtitle = `${reservationCount} rezervací, celkem ${formatCurrency(grandTotalPrice, currency)}`;
+  } else if (isEdit) {
+    subtitle = "Úprava existující rezervace";
+  } else {
+    subtitle = "Vytvoření nové rezervace";
+  }
+
   return (
-    <>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-primary">
-            {isEdit ? `Upravit rezervaci #${reservationId}` : "Nová rezervace"}
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            {reservationCount > 1
-              ? `${reservationCount} rezervací, celkem ${formatCurrency(grandTotalPrice, currency)}`
-              : isEdit
-                ? "Úprava existující rezervace"
-                : "Vytvoření nové rezervace"}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={onNavigateBack}>
-            Zpět na seznam
-          </Button>
-          {reservationCount === 1 ? (
-            <Button onClick={onSubmitSingle} disabled={isSubmitting}>
-              {isSubmitting ? "Ukládám…" : isEdit ? "Uložit změny" : "Vytvořit"}
-            </Button>
-          ) : (
-            <Button onClick={onSubmitAll} disabled={isSubmitting}>
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" onClick={onNavigateBack}>
+          <ArrowLeft className="w-5 h-5" />
+        </Button>
+        <PageHeader
+          title={isEdit ? `Upravit rezervaci #${reservationId}` : "Nová rezervace"}
+          description={subtitle}
+        />
+      </div>
+      <div className="flex gap-2">
+        {reservationCount === 1 ? (
+          <>
+            {isEdit && (
+              <Button
+                variant="secondary"
+                onClick={() => onSubmitSingle({ stayOnPage: true })}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Ukládám…" : "Uložit"}
+              </Button>
+            )}
+            <Button onClick={() => onSubmitSingle()} disabled={isSubmitting}>
               {isSubmitting
                 ? "Ukládám…"
-                : `Vytvořit vše (${reservationCount})`}
+                : isEdit
+                  ? "Uložit a zpět na seznam"
+                  : "Vytvořit"}
             </Button>
-          )}
-        </div>
+          </>
+        ) : (
+          <Button onClick={onSubmitAll} disabled={isSubmitting}>
+            {isSubmitting
+              ? "Ukládám…"
+              : `Vytvořit vše (${reservationCount})`}
+          </Button>
+        )}
       </div>
-    </>
+    </div>
   );
-}
-
-interface CurrencyHeaderProps {
-  currency: string;
-  onCurrencyChange: (currency: string) => void;
 }
 
 export function CurrencyHeader({ currency, onCurrencyChange }: CurrencyHeaderProps) {

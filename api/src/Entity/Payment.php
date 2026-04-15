@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\PaymentRepository;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use App\Entity\Reservation;
 
@@ -32,6 +33,9 @@ class Payment
 
     #[ORM\Column(type: 'float')]
     private ?float $amount = null;
+
+    #[ORM\Column(type: Types::STRING, length: 3, options: ['default' => 'CZK'])]
+    private string $currency = 'CZK';
 
     #[ORM\Column(type: 'datetime', nullable: true)]
     private ?\DateTimeInterface $updatedAt = null;
@@ -99,6 +103,9 @@ class Payment
         $this->amount = $amount;
         return $this;
     }
+
+    public function getCurrency(): string { return $this->currency; }
+    public function setCurrency(string $currency): static { $this->currency = $currency; return $this; }
 
     public function getUpdatedAt(): ?\DateTimeInterface
     {

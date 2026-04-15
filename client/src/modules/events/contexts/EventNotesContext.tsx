@@ -37,7 +37,7 @@ export function EventNotesProvider({ eventId, initialNotes, children }: EventNot
   useEffect(() => {
     setNotes(initialNotes);
     setIsDirty(false);
-  }, [initialNotes.notesInternal, initialNotes.notesStaff, initialNotes.specialRequirements]);
+  }, [initialNotes]);
 
   const saveMutation = useMutation({
     mutationFn: async (notesData: NotesState) => {

@@ -16,6 +16,7 @@ function LazyPage({ component: Component }: { component: React.LazyExoticCompone
 const Dashboard = lazy(() => import("@modules/dashboard/pages/DashboardPage"));
 const Reservations = lazy(() => import("@modules/reservations/pages/ReservationsPage"));
 const ReservationEdit = lazy(() => import("@modules/reservations/pages/ReservationEditPage"));
+const ReservationImport = lazy(() => import("@modules/reservations/pages/ReservationImportPage"));
 const Events = lazy(() => import("@modules/events/pages/EventsPage"));
 const EventCreate = lazy(() => import("@modules/events/pages/EventCreatePage"));
 const EventEdit = lazy(() => import("@modules/events/pages/EventEditPage"));
@@ -75,6 +76,7 @@ export function AuthenticatedRoutes({ layout }: AuthenticatedRoutesProps) {
       <Route path="/"><P component={Dashboard} /></Route>
 
       {/* Reservations */}
+      <Route path="/reservations/import"><P component={ReservationImport} /></Route>
       <Route path="/reservations/new"><P component={ReservationEdit} /></Route>
       <Route path="/reservations/:id/edit"><P component={ReservationEdit} /></Route>
       <Route path="/reservations"><P component={Reservations} /></Route>

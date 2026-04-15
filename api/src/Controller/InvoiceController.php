@@ -5,6 +5,9 @@ namespace App\Controller;
 
 use App\Repository\InvoiceRepository;
 use App\Repository\ReservationRepository;
+use App\Service\InvoiceCalculationService;
+use App\Service\InvoiceEmailService;
+use App\Service\InvoiceLifecycleService;
 use App\Service\InvoiceService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -22,6 +25,9 @@ class InvoiceController extends AbstractController
         private InvoiceRepository $invoiceRepository,
         private ReservationRepository $reservationRepository,
         private InvoiceService $invoiceService,
+        private InvoiceLifecycleService $invoiceLifecycleService,
+        private InvoiceCalculationService $invoiceCalculationService,
+        private InvoiceEmailService $invoiceEmailService,
         private EntityManagerInterface $entityManager,
     ) {
     }
@@ -97,9 +103,9 @@ class InvoiceController extends AbstractController
                 }
 
                 match ($status) {
-                    'PAID' => $this->invoiceService->markAsPaid($invoice),
-                    'SENT' => $this->invoiceService->markAsSent($invoice),
-                    'CANCELLED' => $this->invoiceService->cancel($invoice),
+                    'PAID' => $this->invoiceLifecycleService->markAsPaid($invoice),
+                    'SENT' => $this->invoiceLifecycleService->markAsSent($invoice),
+                    'CANCELLED' => $this->invoiceLifecycleService->cancel($invoice),
                     default => (function () use ($invoice, $status) {
                         $invoice->setStatus($status);
                         $invoice->setUpdatedAt(new \DateTime());
@@ -268,7 +274,7 @@ class InvoiceController extends AbstractController
      * - percent?: float (default 25)
      */
     #[Route('/preview-deposit/{reservationId}', methods: ['GET'], requirements: ['reservationId' => '\d+'])]
-    #[IsGranted('invoices.read')]
+    #[IsGranted('invoices.create')]
     public function previewDepositInvoice(int $reservationId, Request $request): JsonResponse
     {
         $reservation = $this->reservationRepository->find($reservationId);
@@ -278,7 +284,7 @@ class InvoiceController extends AbstractController
         }
 
         $percent = (float) $request->query->get('percent', 25);
-        $preview = $this->invoiceService->getDepositInvoicePreview($reservation, $percent);
+        $preview = $this->invoiceCalculationService->getDepositInvoicePreview($reservation, $percent);
 
         return new JsonResponse($preview);
     }
@@ -287,7 +293,7 @@ class InvoiceController extends AbstractController
      * Vrátí náhled položek pro finální fakturu
      */
     #[Route('/preview-final/{reservationId}', methods: ['GET'], requirements: ['reservationId' => '\d+'])]
-    #[IsGranted('invoices.read')]
+    #[IsGranted('invoices.create')]
     public function previewFinalInvoice(int $reservationId): JsonResponse
     {
         $reservation = $this->reservationRepository->find($reservationId);
@@ -296,7 +302,7 @@ class InvoiceController extends AbstractController
             return new JsonResponse(['error' => 'Rezervace nenalezena'], Response::HTTP_NOT_FOUND);
         }
 
-        $preview = $this->invoiceService->getFinalInvoicePreview($reservation);
+        $preview = $this->invoiceCalculationService->getFinalInvoicePreview($reservation);
 
         return new JsonResponse($preview);
     }
@@ -328,7 +334,7 @@ class InvoiceController extends AbstractController
 
         try {
             $user = $this->getUser();
-            $invoice = $this->invoiceService->createDepositInvoice(
+            $invoice = $this->invoiceCalculationService->createDepositInvoice(
                 $reservation,
                 $percent,
                 $customAmount,
@@ -366,7 +372,7 @@ class InvoiceController extends AbstractController
 
         try {
             $user = $this->getUser();
-            $invoice = $this->invoiceService->createFinalInvoice(
+            $invoice = $this->invoiceCalculationService->createFinalInvoice(
                 $reservation,
                 $deductDeposit,
                 $user,
@@ -411,7 +417,7 @@ class InvoiceController extends AbstractController
         }
 
         $user = $this->getUser();
-        $invoice = $this->invoiceService->markAsSent($invoice, $user);
+        $invoice = $this->invoiceLifecycleService->markAsSent($invoice, $user);
 
         return new JsonResponse($this->invoiceService->toArray($invoice));
     }
@@ -427,7 +433,7 @@ class InvoiceController extends AbstractController
         }
 
         try {
-            $this->invoiceService->sendInvoiceEmail($invoice);
+            $this->invoiceEmailService->sendInvoiceEmail($invoice);
             return new JsonResponse($this->invoiceService->toArray($invoice));
         } catch (\RuntimeException $e) {
             return new JsonResponse(['error' => $e->getMessage()], Response::HTTP_BAD_REQUEST);
@@ -445,7 +451,7 @@ class InvoiceController extends AbstractController
         }
 
         $user = $this->getUser();
-        $invoice = $this->invoiceService->markAsPaid($invoice, $user);
+        $invoice = $this->invoiceLifecycleService->markAsPaid($invoice, $user);
 
         return new JsonResponse($this->invoiceService->toArray($invoice));
     }
@@ -461,7 +467,7 @@ class InvoiceController extends AbstractController
         }
 
         $user = $this->getUser();
-        $invoice = $this->invoiceService->cancel($invoice, $user);
+        $invoice = $this->invoiceLifecycleService->cancel($invoice, $user);
 
         return new JsonResponse($this->invoiceService->toArray($invoice));
     }
@@ -481,7 +487,7 @@ class InvoiceController extends AbstractController
 
         try {
             $user = $this->getUser();
-            $creditNote = $this->invoiceService->createCreditNote($invoice, $user, $reason);
+            $creditNote = $this->invoiceLifecycleService->createCreditNote($invoice, $user, $reason);
 
             return new JsonResponse($this->invoiceService->toArray($creditNote), Response::HTTP_CREATED);
         } catch (\RuntimeException $e) {

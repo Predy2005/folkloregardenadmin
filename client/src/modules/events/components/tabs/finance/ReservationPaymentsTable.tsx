@@ -41,10 +41,13 @@ export default function ReservationPaymentsTable({
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [invoiceReservationId, setInvoiceReservationId] = useState<number | null>(null);
   const [invoiceType, setInvoiceType] = useState<"DEPOSIT" | "FINAL">("DEPOSIT");
+  const [invoiceCurrency, setInvoiceCurrency] = useState<string | undefined>(undefined);
 
   const handleCreateInvoice = (reservationId: number, type: "DEPOSIT" | "FINAL") => {
     setInvoiceReservationId(reservationId);
     setInvoiceType(type);
+    const res = reservations.find((r) => r.reservationId === reservationId);
+    setInvoiceCurrency(res?.currency);
     setInvoiceDialogOpen(true);
   };
 
@@ -285,6 +288,7 @@ export default function ReservationPaymentsTable({
           onOpenChange={setInvoiceDialogOpen}
           reservationId={invoiceReservationId}
           invoiceType={invoiceType}
+          currency={invoiceCurrency}
           onSuccess={onInvoiceCreated}
         />
       )}

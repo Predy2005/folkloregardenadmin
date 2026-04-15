@@ -42,7 +42,7 @@ export default function CommissionLogs() {
     queryKey: ["/api/commission-logs"],
   });
 
-  const { data: partners } = useQuery<Partner[]>({
+  const { data: _partners } = useQuery<Partner[]>({
     queryKey: ["/api/partners"],
   });
 

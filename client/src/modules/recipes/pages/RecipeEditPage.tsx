@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
+import { PageHeader } from "@/shared/components/PageHeader";
 import { queryClient } from "@/shared/lib/queryClient";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { useForm, useFieldArray } from "react-hook-form";
@@ -189,14 +190,10 @@ export default function RecipeEditPage() {
           <Button variant="ghost" size="icon" onClick={() => navigate("/recipes")}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
-          <div>
-            <h1 className="text-2xl font-serif font-bold">
-              {isEdit ? `Upravit recepturu: ${recipe?.name || ""}` : "Nová receptura"}
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {isEdit ? "Úprava existující receptury" : "Vytvořte novou recepturu"}
-            </p>
-          </div>
+          <PageHeader
+            title={isEdit ? `Upravit recepturu: ${recipe?.name || ""}` : "Nová receptura"}
+            description={isEdit ? "Úprava existující receptury" : "Vytvořte novou recepturu"}
+          />
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => navigate("/recipes")}>

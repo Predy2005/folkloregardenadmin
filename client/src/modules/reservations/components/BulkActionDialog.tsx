@@ -23,31 +23,15 @@ import { RESERVATION_STATUS_LABELS } from '@shared/types';
 import type { Reservation, ReservationType } from '@shared/types';
 import { Loader2, AlertTriangle, Info } from 'lucide-react';
 
-export type BulkActionType = 'status' | 'reservationType' | 'delete';
+import type {
+  BulkActionType,
+  ReservationWarning,
+  BulkActionDialogProps,
+} from '@modules/reservations/types/components/common/BulkActionDialog';
 
-interface WarningItem {
-  type: string;
-  message: string;
-  eventId?: number;
-  eventName?: string;
-}
+export type { BulkActionType, BulkActionDialogProps };
 
-interface ReservationWarning {
-  reservationId: number;
-  contactName: string;
-  date: string;
-  warnings: WarningItem[];
-}
-
-type Props = {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  actionType: BulkActionType;
-  selectedIds: Set<number>;
-  onSuccess: () => void;
-};
-
-export function BulkActionDialog({ open, onOpenChange, actionType, selectedIds, onSuccess }: Props) {
+export function BulkActionDialog({ open, onOpenChange, actionType, selectedIds, onSuccess }: BulkActionDialogProps) {
   const [selectedStatus, setSelectedStatus] = useState<Reservation['status'] | ''>('');
   const [selectedTypeId, setSelectedTypeId] = useState<string>('');
 

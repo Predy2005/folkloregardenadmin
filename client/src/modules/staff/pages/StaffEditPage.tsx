@@ -4,15 +4,24 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
+import { PageHeader } from "@/shared/components/PageHeader";
 import { queryClient } from "@/shared/lib/queryClient";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
-import { staffRoleOptions, useStaffRoles } from "@modules/staff/utils/staffRoles";
+import {
+  staffRoleOptions,
+  useStaffRoles,
+} from "@modules/staff/utils/staffRoles";
 import { useCurrency } from "@/shared/contexts/CurrencyContext";
 import { staffSchema, type StaffForm } from "../types";
 import type { StaffMember } from "@shared/types";
 import { Button } from "@/shared/components/ui/button";
 import { Form } from "@/shared/components/ui/form";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/shared/components/ui/tabs";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
 import { StaffInfoForm } from "../components/StaffInfoForm";
 import { StaffRatesCard } from "../components/StaffRatesCard";
@@ -66,7 +75,8 @@ export default function StaffEditPage() {
         emergencyContact: member.emergencyContact || "",
         emergencyPhone: member.emergencyPhone || "",
         position: member.position || "",
-        hourlyRate: member.hourlyRate != null ? Number(member.hourlyRate) : undefined,
+        hourlyRate:
+          member.hourlyRate != null ? Number(member.hourlyRate) : undefined,
         fixedRate: member.fixedRate != null ? String(member.fixedRate) : "",
         isGroup: member.isGroup ?? false,
         groupSize: member.groupSize ?? null,
@@ -112,13 +122,27 @@ export default function StaffEditPage() {
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Left column - basic info + rates */}
           <div className="space-y-6">
-            <StaffInfoForm form={form} watchIsGroup={watchIsGroup} roleOptions={options} column="left" />
-            <StaffRatesCard form={form} watchIsGroup={watchIsGroup} defaultCurrency={defaultCurrency} />
+            <StaffInfoForm
+              form={form}
+              watchIsGroup={watchIsGroup}
+              roleOptions={options}
+              column="left"
+            />
+            <StaffRatesCard
+              form={form}
+              watchIsGroup={watchIsGroup}
+              defaultCurrency={defaultCurrency}
+            />
           </div>
 
           {/* Right column - contact + emergency/notes */}
           <div className="space-y-6">
-            <StaffInfoForm form={form} watchIsGroup={watchIsGroup} roleOptions={options} column="right" />
+            <StaffInfoForm
+              form={form}
+              watchIsGroup={watchIsGroup}
+              roleOptions={options}
+              column="right"
+            />
           </div>
         </div>
       </form>
@@ -128,17 +152,25 @@ export default function StaffEditPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/staff")}>
-          <ArrowLeft className="w-5 h-5" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold">
-            {isNew ? "Nový člen personálu" : `${member?.firstName} ${member?.lastName}`}
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            {isNew ? "Přidejte nového člena nebo skupinu" : "Úprava údajů"}
-          </p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("/staff")}
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <PageHeader
+            title={
+              isNew
+                ? "Nový člen personálu"
+                : `${member?.firstName} ${member?.lastName}`
+            }
+            description={
+              isNew ? "Přidejte nového člena nebo skupinu" : "Úprava údajů"
+            }
+          />
         </div>
         <Button
           onClick={form.handleSubmit(handleSubmit)}

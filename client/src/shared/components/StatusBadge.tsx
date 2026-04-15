@@ -8,7 +8,7 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status, type }: StatusBadgeProps) {
-  const getVariant = () => {
+  const _getVariant = () => {
     if (status === 'PAID' || status === 'CONFIRMED') {
       return 'default'; // Zelená
     }

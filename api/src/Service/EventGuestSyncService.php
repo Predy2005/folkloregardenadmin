@@ -15,12 +15,15 @@ use Doctrine\ORM\EntityManagerInterface;
  * Central synchronizer: keeps event_guest (and derived event_menu aggregates)
  * in sync with reservations for the event date.
  *
- * Rules:
- * - For the given event, remove all existing EventGuest and EventMenu records
- *   and rebuild them from reservations whose Reservation.date == Event.eventDate.
- * - For every ReservationPerson in those reservations create a corresponding EventGuest.
- * - Aggregate menu selections into EventMenu records with proper quantity and totals.
- * - Idempotent: repeated calls produce the same result without duplicates.
+ * Strategy — IDEMPOTENT UPDATE-IN-PLACE:
+ * - For every ReservationPerson in reservations on the event date, match against
+ *   the existing EventGuest with the same (reservation_id, position-within-reservation).
+ * - Matching guests keep their ID and all assignments (eventTable, space, isPresent, isPaid).
+ * - Unmatched persons → create new EventGuest.
+ * - Orphaned EventGuests (reservation deleted or person removed) → delete.
+ *
+ * This way, repeated calls are safe: IDs stay stable, table assignments survive,
+ * and no frontend cache invalidation is required unless reservations actually changed.
  */
 class EventGuestSyncService
 {
@@ -30,107 +33,97 @@ class EventGuestSyncService
 
     public function syncForEvent(Event $event): void
     {
-        // 1) Remove current guests and menu items for this event (full rebuild strategy)
-        // But first, preserve space assignments so we can restore them
         $guestRepo = $this->em->getRepository(EventGuest::class);
         $menuRepo  = $this->em->getRepository(EventMenu::class);
 
-        // Store space and presence status keyed by reservation ID + local person position
-        // Position is counted per reservation to handle reordering
-        $preservedData = []; // key => ['space' => string|null, 'isPresent' => bool]
-        $guestsByRes = []; // group guests by reservation to count position
-
+        // ── 1) Index existing EventGuests by (reservationId, positionInRes) ────────
+        // Position is determined by sorting existing guests within each reservation
+        // by personIndex ascending — stable ordering matches reservation.persons order.
+        /** @var EventGuest[] $existingGuests */
         $existingGuests = $guestRepo->findBy(['event' => $event]);
+
+        /** @var array<int, EventGuest[]> $byRes */
+        $byRes = [];
         foreach ($existingGuests as $g) {
             $resId = $g->getReservation()?->getId();
-            if ($resId !== null) {
-                $guestsByRes[$resId][] = $g;
-            }
+            if ($resId === null) continue;
+            $byRes[$resId][] = $g;
         }
+        // Sort each reservation's guests by personIndex for stable matching
+        foreach ($byRes as $resId => &$list) {
+            usort($list, fn(EventGuest $a, EventGuest $b) => ($a->getPersonIndex() ?? 0) - ($b->getPersonIndex() ?? 0));
+        }
+        unset($list);
 
-        // Now create keys with per-reservation position
-        foreach ($guestsByRes as $resId => $guests) {
-            // Sort by personIndex to ensure consistent ordering
-            usort($guests, fn($a, $b) => ($a->getPersonIndex() ?? 0) - ($b->getPersonIndex() ?? 0));
-            $localPosition = 0;
-            foreach ($guests as $g) {
-                $key = $resId . '_' . $localPosition;
-                $preservedData[$key] = [
-                    'space' => $g->getSpace(),
-                    'isPresent' => $g->isPresent(),
-                ];
-                $localPosition++;
-            }
-        }
+        /** @var array<string, EventGuest> $matchedByKey */
+        $matchedByKey = [];
+        $usedGuestIds = []; // ids of guests we keep (all others get deleted)
 
-        // Now remove all guests
-        foreach ($existingGuests as $g) {
-            $this->em->remove($g);
-        }
+        // ── 2) Load reservations for the event date ────────────────────────────────
+        $reservations = $this->em->getRepository(Reservation::class)
+            ->findBy(['date' => $event->getEventDate()]);
+
+        // ── 3) Wipe EventMenu aggregates (cheap; rebuilt each sync) ────────────────
+        // Aggregates are derived data; wiping is fine because nothing else references them.
         foreach ($menuRepo->findBy(['event' => $event]) as $m) {
             $this->em->remove($m);
         }
         $this->em->flush();
 
-        // 2) Find reservations matching the event date
-        $reservations = $this->em->getRepository(Reservation::class)
-            ->findBy(['date' => $event->getEventDate()]);
-
         if (!$reservations) {
-            return; // nothing to build
+            // No reservations — remove any orphan guests and exit
+            foreach ($existingGuests as $g) {
+                $this->em->remove($g);
+            }
+            $this->em->flush();
+            return;
         }
 
-        $personIndex = 0;
+        $globalPersonIndex = 0;
         /** @var array<string, EventMenu> $menuCache */
         $menuCache = [];
-        // Track local position per reservation for restoring space/presence
-        $localPositionByRes = [];
 
         foreach ($reservations as $reservation) {
             $resId = $reservation->getId();
-            if (!isset($localPositionByRes[$resId])) {
-                $localPositionByRes[$resId] = 0;
-            }
+            $resGuests = $byRes[$resId] ?? [];
+            $localPos = 0;
 
             foreach ($reservation->getPersons() as $person) {
-                // Build key to look up preserved data
-                $preserveKey = $resId . '_' . $localPositionByRes[$resId];
-                $localPositionByRes[$resId]++;
+                $globalPersonIndex++;
+                $positionKey = $resId . '_' . $localPos;
 
-                $guest = new EventGuest();
-                $guest
-                    ->setEvent($event)
-                    ->setReservation($reservation)
-                    ->setType($person->getType() ?? 'adult')
-                    ->setFirstName($reservation->getContactName())
-                    ->setIsPaid(true)
-                    ->setPersonIndex(++$personIndex)
-                    ->setNationality($reservation->getContactNationality());
-
-                // Restore preserved space and presence status if available
-                if (isset($preservedData[$preserveKey])) {
-                    $preserved = $preservedData[$preserveKey];
-                    if ($preserved['space'] !== null) {
-                        $guest->setSpace($preserved['space']);
-                    }
-                    if ($preserved['isPresent']) {
-                        $guest->setIsPresent(true);
-                    }
+                // ── Match existing OR create new ────────────────────────────────
+                $guest = $resGuests[$localPos] ?? null;
+                if ($guest !== null) {
+                    // Reuse existing record — preserves ID, eventTable, space, isPresent, etc.
+                    $matchedByKey[$positionKey] = $guest;
+                    $usedGuestIds[$guest->getId()] = true;
+                } else {
+                    $guest = new EventGuest();
+                    $guest->setEvent($event)
+                        ->setReservation($reservation)
+                        ->setIsPaid(true);
+                    $this->em->persist($guest);
                 }
 
-                // Pick menu from ReservationPerson -> link to ReservationFoods if possible
-                $menuRaw = trim((string)$person->getMenu());
+                // Update mutable fields that mirror reservation data
+                $guest->setType($person->getType() ?? 'adult')
+                    ->setFirstName($reservation->getContactName() ?: $person->getType())
+                    ->setPersonIndex($globalPersonIndex)
+                    ->setNationality($reservation->getContactNationality());
+
+                // ── Menu linking (aggregate into EventMenu) ──────────────────────
+                $menuRaw = trim((string) $person->getMenu());
                 if ($menuRaw !== '') {
                     $rf = null;
-                    $menuKey = null; // prefer id-based key if possible
+                    $menuKey = null;
                     if (ctype_digit($menuRaw)) {
-                        $rf = $this->em->getRepository(ReservationFoods::class)->find((int)$menuRaw);
+                        $rf = $this->em->getRepository(ReservationFoods::class)->find((int) $menuRaw);
                         if ($rf) {
                             $menuKey = 'res:' . $resId . ':id:' . $rf->getId();
                         }
                     }
                     if (!$rf) {
-                        // Fallback: find by name for backward compatibility
                         $rf = $this->em->getRepository(ReservationFoods::class)->findOneBy(['name' => $menuRaw]);
                         $menuKey = $rf
                             ? ('res:' . $resId . ':id:' . $rf->getId())
@@ -147,36 +140,37 @@ class EventGuestSyncService
                             ->setTotalPrice('0.00');
                         if ($rf) {
                             $emItem->setReservationFood($rf);
-                            if ($emItem->getPricePerUnit() === null) {
-                                $emItem->setPricePerUnit(number_format((float)$rf->getPrice(), 2, '.', ''));
-                            }
+                            $emItem->setPricePerUnit(number_format((float) $rf->getPrice(), 2, '.', ''));
                         }
                         $this->em->persist($emItem);
                         $menuCache[$menuKey] = $emItem;
                     }
                     $eventMenu = $menuCache[$menuKey];
 
-                    // Person-specific price overrides unit price
                     $personPrice = $person->getPrice();
                     if ($personPrice !== null && $personPrice !== '') {
-                        $eventMenu->setPricePerUnit(number_format((float)$personPrice, 2, '.', ''));
+                        $eventMenu->setPricePerUnit(number_format((float) $personPrice, 2, '.', ''));
                     }
 
-                    // Accumulate quantity and total
                     $eventMenu->setQuantity($eventMenu->getQuantity() + 1);
-                    $ppu = (float)($eventMenu->getPricePerUnit() ?? 0);
-                    $currentTotal = (float)($eventMenu->getTotalPrice() ?? 0);
+                    $ppu = (float) ($eventMenu->getPricePerUnit() ?? 0);
+                    $currentTotal = (float) ($eventMenu->getTotalPrice() ?? 0);
                     $eventMenu->setTotalPrice(number_format($currentTotal + $ppu, 2, '.', ''));
 
-                    // Link guest to the chosen menu
                     $guest->setMenuItem($eventMenu);
+                } else {
+                    // No menu in reservation — clear any previously set link
+                    $guest->setMenuItem(null);
                 }
 
-                if (!$guest->getFirstName()) {
-                    $guest->setFirstName($person->getType());
-                }
+                $localPos++;
+            }
+        }
 
-                $this->em->persist($guest);
+        // ── 4) Remove orphaned guests (their reservation or person no longer exists) ──
+        foreach ($existingGuests as $g) {
+            if (!isset($usedGuestIds[$g->getId()])) {
+                $this->em->remove($g);
             }
         }
 

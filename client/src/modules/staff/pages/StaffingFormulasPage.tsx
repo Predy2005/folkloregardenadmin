@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '@/shared/lib/api';
 import { queryClient } from '@/shared/lib/queryClient';
@@ -13,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/shared/components/ui/form';
 import { Plus, Edit, Trash2, Calculator, Users } from 'lucide-react';
 import { PageHeader } from "@/shared/components/PageHeader";
-import type { StaffingFormula, StaffingCategory } from '@shared/types';
+import type { StaffingFormula } from '@shared/types';
 import { STAFFING_CATEGORY_LABELS } from '@shared/types';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -41,7 +40,7 @@ export default function StaffingFormulas() {
     },
   });
 
-  const { createMutation, updateMutation, deleteMutation, isPending } = useCrudMutations<StaffingFormulaForm>({
+  const { createMutation, updateMutation, deleteMutation, isPending: _isPending } = useCrudMutations<StaffingFormulaForm>({
     endpoint: '/api/staffing-formulas',
     queryKey: ['/api/staffing-formulas'],
     entityName: 'Vzorec',

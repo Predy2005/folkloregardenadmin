@@ -5,6 +5,8 @@ import { Label } from '@/shared/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
 import { Search, Filter, X } from 'lucide-react';
 import { PAGE_SIZE_OPTIONS } from '@/shared/lib/constants';
+import type { FilterState, ReservationFiltersProps } from '@modules/reservations/types/components/table/ReservationFilters';
+export type { FilterState, ReservationFiltersProps };
 
 const STATUS_OPTIONS = [
   { value: 'RECEIVED', label: 'Přijato' },
@@ -14,26 +16,6 @@ const STATUS_OPTIONS = [
   { value: 'CONFIRMED', label: 'Potvrzeno' },
   { value: 'CANCELLED', label: 'Zrušeno' },
 ] as const;
-
-export type FilterState = {
-  statusFilter: string;
-  nationalityFilter: string;
-  dateFrom: string;
-  dateTo: string;
-};
-
-type Props = {
-  searchTerm: string;
-  onSearchChange: (value: string) => void;
-  filters: FilterState;
-  onFilterChange: (filters: Partial<FilterState>) => void;
-  onClearAll: () => void;
-  nationalities: string[];
-  showFilters: boolean;
-  onToggleFilters: () => void;
-  pageSize: number;
-  onPageSizeChange: (value: string) => void;
-};
 
 export function ReservationFilters({
   searchTerm,
@@ -46,7 +28,7 @@ export function ReservationFilters({
   onToggleFilters,
   pageSize,
   onPageSizeChange,
-}: Props) {
+}: ReservationFiltersProps) {
   const { statusFilter, nationalityFilter, dateFrom, dateTo } = filters;
   const hasActiveFilters = statusFilter || nationalityFilter || dateFrom || dateTo;
 

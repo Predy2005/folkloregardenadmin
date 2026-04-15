@@ -270,8 +270,8 @@ export function FloorPlanEditor({
     return ids;
   }, [tables]);
 
-  const getTableGuests = (tableId: number) =>
-    guests.filter((g) => g.eventTableId === tableId);
+  const getTableGuests = useCallback((tableId: number) =>
+    guests.filter((g) => g.eventTableId === tableId), [guests]);
 
   // ── Guest drag-drop ──
   const findTableAtScreenPos = useCallback((clientX: number, clientY: number): number | null => {
@@ -298,18 +298,37 @@ export function FloorPlanEditor({
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDropTargetTableId(null);
+
+    const tableId = findTableAtScreenPos(e.clientX, e.clientY);
+    if (tableId == null) return;
+    const table = tables.find((t) => t.id === tableId);
+    if (!table) return;
+
+    // Multi-guest drop (from group drag)
+    const guestIdsRaw = e.dataTransfer.getData("guestIds");
+    if (guestIdsRaw) {
+      try {
+        const guestIds: number[] = JSON.parse(guestIdsRaw);
+        const available = table.capacity - getTableGuests(table.id).length;
+        if (available > 0) {
+          const toAssign = guestIds.slice(0, available);
+          window.dispatchEvent(new CustomEvent("floorplan-guest-drop", {
+            detail: { tableId: table.id, guestIds: toAssign },
+          }));
+        }
+      } catch { /* ignore malformed data */ }
+      return;
+    }
+
+    // Single guest drop
     const guestId = parseInt(e.dataTransfer.getData("guestId"), 10);
     if (isNaN(guestId)) return;
-    const tableId = findTableAtScreenPos(e.clientX, e.clientY);
-    if (tableId != null) {
-      const table = tables.find((t) => t.id === tableId);
-      if (table && getTableGuests(table.id).length < table.capacity) {
-        window.dispatchEvent(new CustomEvent("floorplan-guest-drop", {
-          detail: { tableId: table.id, guestId },
-        }));
-      }
+    if (getTableGuests(table.id).length < table.capacity) {
+      window.dispatchEvent(new CustomEvent("floorplan-guest-drop", {
+        detail: { tableId: table.id, guestId },
+      }));
     }
-  }, [tables, guests, findTableAtScreenPos]);
+  }, [tables, findTableAtScreenPos, getTableGuests]);
 
   // ── Ref callbacks ──
   const setTableRef = useCallback((id: number, handle: TableShapeHandle | null) => {

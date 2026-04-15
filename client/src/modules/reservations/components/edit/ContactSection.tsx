@@ -1,23 +1,10 @@
-import type { Ref } from "react";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { NationalityInput } from "@/shared/components/NationalityInput";
 import { CurrencySelect } from "@/shared/components/CurrencySelect";
-import type { SharedContact } from "@modules/reservations/types";
-import type { Contact } from "@shared/types";
+import type { ContactSectionProps } from "@modules/reservations/types/components/edit/ContactSection";
 
-export interface ContactSectionProps {
-  sharedContact: SharedContact;
-  setSharedContact: React.Dispatch<React.SetStateAction<SharedContact>>;
-  contactQuery: string;
-  setContactQuery: (value: string) => void;
-  isContactDropdownOpen: boolean;
-  setIsContactDropdownOpen: (value: boolean) => void;
-  contactBoxRef: Ref<HTMLDivElement>;
-  isSearchingContacts: boolean;
-  contactSearchItems: Contact[] | undefined;
-  applyContactToForm: (contact: Contact) => void;
-}
+export type { ContactSectionProps };
 
 export function ContactSection({
   sharedContact,

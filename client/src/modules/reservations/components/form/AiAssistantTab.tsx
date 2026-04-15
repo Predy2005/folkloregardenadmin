@@ -1,17 +1,7 @@
 import { Button } from '@/shared/components/ui/button';
 import { FormLabel } from '@/shared/components/ui/form';
 import { Textarea } from '@/shared/components/ui/textarea';
-
-type Props = {
-  aiInput: string;
-  setAiInput: (val: string) => void;
-  aiJson: Record<string, unknown> | null;
-  aiError: string | null;
-  aiLoading: boolean;
-  onAnalyze: () => void;
-  onApply: () => void;
-  aiConfigured: boolean;
-};
+import type { AiAssistantTabProps } from '@modules/reservations/types/components/form/AiAssistantTab';
 
 export function AiAssistantTab({
   aiInput,
@@ -22,7 +12,7 @@ export function AiAssistantTab({
   onAnalyze,
   onApply,
   aiConfigured,
-}: Props) {
+}: AiAssistantTabProps) {
   return (
     <div className="space-y-4">
       {!aiConfigured && (

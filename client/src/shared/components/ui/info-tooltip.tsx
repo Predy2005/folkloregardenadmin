@@ -30,7 +30,7 @@ export function InfoTooltip({
   showIcon = false,
 }: InfoTooltipProps) {
   const [open, setOpen] = React.useState(false);
-  const [isHovering, setIsHovering] = React.useState(false);
+  const [_isHovering, setIsHovering] = React.useState(false);
   const timeoutRef = React.useRef<NodeJS.Timeout>();
 
   // Handle hover for desktop

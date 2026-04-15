@@ -5,7 +5,6 @@ import { api, apiClient } from "@/shared/lib/api";
 import type { Recipe, MenuRecipe } from "@shared/types";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { useAuth } from "@modules/auth";
-import { formatCurrency } from "@/shared/lib/formatting";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
@@ -91,15 +90,18 @@ export default function Recipes() {
   });
 
   // Group menu recipes by recipeId
-  const menusByRecipe = new Map<number, string[]>();
-  allMenuRecipes?.forEach((mr) => {
-    const existing = menusByRecipe.get(mr.recipeId) ?? [];
-    const foodName = mr.reservationFood?.name;
-    if (foodName && !existing.includes(foodName)) {
-      existing.push(foodName);
-    }
-    menusByRecipe.set(mr.recipeId, existing);
-  });
+  const menusByRecipe = useMemo(() => {
+    const map = new Map<number, string[]>();
+    allMenuRecipes?.forEach((mr) => {
+      const existing = map.get(mr.recipeId) ?? [];
+      const foodName = mr.reservationFood?.name;
+      if (foodName && !existing.includes(foodName)) {
+        existing.push(foodName);
+      }
+      map.set(mr.recipeId, existing);
+    });
+    return map;
+  }, [allMenuRecipes]);
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/api/recipes/${id}`),

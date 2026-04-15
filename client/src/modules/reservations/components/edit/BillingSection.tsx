@@ -1,7 +1,7 @@
-import type { Ref, Dispatch, SetStateAction } from "react";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Checkbox } from "@/shared/components/ui/checkbox";
+import { Button } from "@/shared/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -9,32 +9,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
-import { Search, Building2 } from "lucide-react";
-import type { SharedContact } from "@modules/reservations/types";
-import type { CompanySearchResult } from "@modules/contacts/utils/companySearch";
+import { Search, Building2, UserCheck, Handshake } from "lucide-react";
 import { parseCompanyData } from "@modules/contacts/utils/companySearch";
+import type { BillingSectionProps } from "@modules/reservations/types/components/edit/BillingSection";
 
-export interface BillingSectionProps {
-  readonly sharedContact: SharedContact;
-  readonly setSharedContact: Dispatch<SetStateAction<SharedContact>>;
-  // Company search
-  readonly companyQuery: string;
-  readonly setCompanyQuery: (value: string) => void;
-  readonly companyResults: readonly CompanySearchResult[];
-  readonly isCompanyDropdownOpen: boolean;
-  readonly setIsCompanyDropdownOpen: (value: boolean) => void;
-  readonly isCompanySearching: boolean;
-  readonly companyBoxRef: Ref<HTMLDivElement>;
-  readonly applyCompanyToForm: (company: CompanySearchResult) => void;
-  // Auto-invoice (create mode only)
-  readonly isEdit: boolean;
-  readonly autoCreateInvoice: boolean;
-  readonly setAutoCreateInvoice: (value: boolean) => void;
-  readonly autoInvoiceType: "DEPOSIT" | "FINAL";
-  readonly setAutoInvoiceType: (value: "DEPOSIT" | "FINAL") => void;
-  readonly autoInvoicePercent: number;
-  readonly setAutoInvoicePercent: (value: number) => void;
-}
+export type { BillingSectionProps };
 
 export function BillingSection({
   sharedContact,
@@ -47,6 +26,10 @@ export function BillingSection({
   isCompanySearching,
   companyBoxRef,
   applyCompanyToForm,
+  linkedContact,
+  applyContactBillingToForm,
+  detectedPartner,
+  applyPartnerBillingToForm,
   isEdit,
   autoCreateInvoice,
   setAutoCreateInvoice,
@@ -55,20 +38,67 @@ export function BillingSection({
   autoInvoicePercent,
   setAutoInvoicePercent,
 }: BillingSectionProps) {
+  const hasLinkedContactBilling = !!(
+    linkedContact &&
+    (linkedContact.invoiceName ||
+      linkedContact.company ||
+      linkedContact.invoiceIc ||
+      linkedContact.invoiceDic ||
+      linkedContact.invoiceEmail ||
+      linkedContact.invoicePhone)
+  );
+  const hasPartnerBilling = !!(
+    detectedPartner &&
+    (detectedPartner.invoiceCompany ||
+      detectedPartner.name ||
+      detectedPartner.ic ||
+      detectedPartner.dic ||
+      detectedPartner.billingEmail ||
+      detectedPartner.email ||
+      detectedPartner.phone)
+  );
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="flex flex-row items-center space-x-3 rounded-md border p-4 md:col-span-2">
-          <Checkbox
-            checked={sharedContact.invoiceSameAsContact}
-            onCheckedChange={(checked) =>
-              setSharedContact((prev) => ({
-                ...prev,
-                invoiceSameAsContact: !!checked,
-              }))
-            }
-          />
-          <Label>Fakturační údaje stejné jako kontaktní</Label>
+        <div className="flex flex-row items-center justify-between space-x-3 rounded-md border p-4 md:col-span-2">
+          <div className="flex items-center space-x-3">
+            <Checkbox
+              checked={sharedContact.invoiceSameAsContact}
+              onCheckedChange={(checked) =>
+                setSharedContact((prev) => ({
+                  ...prev,
+                  invoiceSameAsContact: !!checked,
+                }))
+              }
+            />
+            <Label>Fakturační údaje stejné jako kontaktní</Label>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {hasPartnerBilling && applyPartnerBillingToForm && detectedPartner && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => applyPartnerBillingToForm(detectedPartner)}
+                title={`Načíst fakturační údaje z partnera "${detectedPartner.name}"`}
+              >
+                <Handshake className="w-4 h-4 mr-2" />
+                Předvyplnit z partnera
+              </Button>
+            )}
+            {hasLinkedContactBilling && applyContactBillingToForm && linkedContact && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => applyContactBillingToForm(linkedContact)}
+                title="Načíst fakturační údaje z propojeného kontaktu"
+              >
+                <UserCheck className="w-4 h-4 mr-2" />
+                Předvyplnit z kontaktu
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Company search autocomplete */}

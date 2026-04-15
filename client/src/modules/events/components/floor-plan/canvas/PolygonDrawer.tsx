@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Stage, Layer, Line, Circle, Text, Rect } from "react-konva";
+import { Stage, Layer, Line, Circle, Text } from "react-konva";
 import type Konva from "konva";
 import { Button } from "@/shared/components/ui/button";
 import { Check, X, Undo2, RotateCcw } from "lucide-react";
@@ -14,7 +14,7 @@ interface PolygonDrawerProps {
 }
 
 export function PolygonDrawer({
-  width: propWidth,
+  width: _propWidth,
   height: propHeight,
   initialPoints,
   gridSize = 20,
@@ -43,7 +43,7 @@ export function PolygonDrawer({
   const width = canvasSize.width;
   const height = canvasSize.height;
 
-  const snapToGrid = (val: number) => Math.round(val / gridSize) * gridSize;
+  const snapToGrid = useCallback((val: number) => Math.round(val / gridSize) * gridSize, [gridSize]);
 
   const handleStageClick = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -70,7 +70,7 @@ export function PolygonDrawer({
 
       setPoints((prev) => [...prev, x, y]);
     },
-    [isDrawing, points, gridSize]
+    [isDrawing, points, snapToGrid]
   );
 
   const handleUndo = () => {

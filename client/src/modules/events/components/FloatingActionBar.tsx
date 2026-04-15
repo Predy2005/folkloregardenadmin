@@ -5,7 +5,6 @@ import { Badge } from "@/shared/components/ui/badge";
 import { Label } from "@/shared/components/ui/label";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/shared/components/ui/sheet";
-import { cn } from "@/shared/lib/utils";
 import { useEventNotes } from "../contexts/EventNotesContext";
 
 type PanelType = "notes" | null;

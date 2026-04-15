@@ -20,7 +20,7 @@ import {
   PopoverTrigger,
 } from "@/shared/components/ui/popover";
 import { Loader2, Search, Building2, Users } from "lucide-react";
-import { searchCompanies, parseCompanyData, smartCompanySearch, type CompanySearchResult, type ViesParsedResult } from "@modules/contacts/utils/companySearch";
+import { parseCompanyData, smartCompanySearch, type CompanySearchResult, type ViesParsedResult } from "@modules/contacts/utils/companySearch";
 import { Badge } from "@/shared/components/ui/badge";
 import { Globe, CheckCircle2, XCircle } from "lucide-react";
 import type { Contact } from "@shared/types";

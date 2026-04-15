@@ -1,24 +1,16 @@
 import dayjs from 'dayjs';
 import { Loader2, CheckCircle } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
+import { SectionHeader } from '@/shared/components/SectionHeader';
 import { StatusBadge } from '@/shared/components/StatusBadge';
 import { formatCurrency } from '@/shared/lib/formatting';
-import type { Invoice } from '@shared/types';
 import { INVOICE_TYPE_LABELS } from '@shared/types';
-import type { UseMutationResult } from '@tanstack/react-query';
+import type { InvoiceListSectionProps } from '@modules/reservations/types/components/detail/InvoiceListSection';
 
-type Props = {
-  invoices: Invoice[] | undefined;
-  isLoading: boolean;
-  markInvoicePaidMutation: UseMutationResult<unknown, Error, number>;
-};
-
-export function InvoiceListSection({ invoices, isLoading, markInvoicePaidMutation }: Props) {
+export function InvoiceListSection({ invoices, isLoading, markInvoicePaidMutation }: InvoiceListSectionProps) {
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold">Vystavené faktury</h3>
-      </div>
+      <SectionHeader title="Vystavené faktury" className="mb-3" />
 
       {isLoading ? (
         <div className="flex justify-center py-4">

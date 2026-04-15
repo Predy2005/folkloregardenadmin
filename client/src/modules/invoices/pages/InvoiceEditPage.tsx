@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation, useParams } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
+import { PageHeader } from "@/shared/components/PageHeader";
 import { invalidateInvoiceQueries } from "@/shared/lib/query-helpers";
 import dayjs from "dayjs";
 import { Button } from "@/shared/components/ui/button";
@@ -165,14 +166,10 @@ export default function InvoiceEdit() {
           <Button variant="ghost" size="icon" onClick={() => navigate("/invoices")}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold text-primary">
-              {isNew ? "Nová faktura" : `Faktura ${invoice?.invoiceNumber}`}
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              {isNew ? "Vytvoření nové faktury" : "Úprava existující faktury"}
-            </p>
-          </div>
+          <PageHeader
+            title={isNew ? "Nová faktura" : `Faktura ${invoice?.invoiceNumber}`}
+            description={isNew ? "Vytvoření nové faktury" : "Úprava existující faktury"}
+          />
         </div>
         <div className="flex gap-2">
           {!isNew && formData.customerEmail && (

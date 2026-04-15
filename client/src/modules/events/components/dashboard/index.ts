@@ -15,6 +15,9 @@ export { GuestStatsCard } from "./GuestStatsCard";
 export { SpaceGuestsCard } from "./SpaceGuestsCard";
 export { ReservationCheckInCard } from "./ReservationCheckInCard";
 
+// Dashboard Floor Plan (read-only for tablet service)
+export { DashboardFloorPlan } from "./floor-plan";
+
 // Layout components
 export {
   DashboardLayoutProvider,

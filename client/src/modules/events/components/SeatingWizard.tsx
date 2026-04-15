@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/shared/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/shared/components/ui/dialog";
 import { Badge } from "@/shared/components/ui/badge";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
@@ -105,7 +105,7 @@ export default function SeatingWizard({ eventId, tables }: SeatingWizardProps) {
 
   // Remove a proposal
   const removeProposal = (index: number) => {
-    const removed = proposals[index];
+    const _removed = proposals[index];
     setProposals((prev) => prev.filter((_, i) => i !== index));
     // Add guests back to unassigned
     // (In a real implementation, we'd track guest names)

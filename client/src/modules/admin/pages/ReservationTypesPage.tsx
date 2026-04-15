@@ -118,7 +118,7 @@ export default function ReservationTypesPage() {
   const onSubmit = (data: ReservationTypeForm) => {
     if (dialog.editingItem) {
       // code cannot be changed on edit
-      const { code, ...updateData } = data;
+      const { code: _code, ...updateData } = data;
       updateMutation.mutate({ id: dialog.editingItem.id, data: updateData });
     } else {
       createMutation.mutate(data);

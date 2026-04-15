@@ -152,6 +152,10 @@ export default function ReservationEdit() {
                 isCompanySearching={form.isCompanySearching}
                 companyBoxRef={form.companyBoxRef}
                 applyCompanyToForm={form.applyCompanyToForm}
+                linkedContact={form.linkedContact}
+                applyContactBillingToForm={form.applyContactBillingToForm}
+                detectedPartner={form.detectedPartner}
+                applyPartnerBillingToForm={form.applyPartnerBillingToForm}
                 isEdit={form.isEdit}
                 autoCreateInvoice={form.autoCreateInvoice}
                 setAutoCreateInvoice={form.setAutoCreateInvoice}
@@ -198,7 +202,7 @@ export default function ReservationEdit() {
                     </button>
                   );
                 })}
-                <Button variant="ghost" size="sm" onClick={form.addReservation}>
+                <Button variant="success" size="sm" onClick={form.addReservation}>
                   <Plus className="w-4 h-4 mr-1" /> Přidat
                 </Button>
               </div>
@@ -546,6 +550,7 @@ export default function ReservationEdit() {
                   summaryLoading={form.summaryLoading}
                   invoices={form.invoices}
                   invoicesLoading={form.invoicesLoading}
+                  currentCurrency={form.sharedContact.currency}
                   markPaidMutation={form.markPaidMutation}
                   markInvoicePaidMutation={form.markInvoicePaidMutation}
                   isAnyInvoiceMutationPending={form.isAnyInvoiceMutationPending}
@@ -559,14 +564,15 @@ export default function ReservationEdit() {
         </CardContent>
       </Card>
 
-      {/* Invoice Create Dialog */}
-      {form.isEdit && form.reservationId && (
+      {/* Invoice Create Dialog - mounted only when open so state always starts fresh */}
+      {form.isEdit && form.reservationId && form.invoiceDialogOpen && (
         <InvoiceCreateDialog
           open={form.invoiceDialogOpen}
           onOpenChange={form.setInvoiceDialogOpen}
           reservationId={Number(form.reservationId)}
           invoiceType={form.invoiceDialogType}
           depositPercent={form.invoiceDialogPercent}
+          currency={form.sharedContact.currency}
           onSuccess={form.invalidateInvoices}
         />
       )}

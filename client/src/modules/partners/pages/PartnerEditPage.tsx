@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
+import { PageHeader } from "@/shared/components/PageHeader";
 import { queryClient } from "@/shared/lib/queryClient";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { useCurrency } from "@/shared/contexts/CurrencyContext";
@@ -21,7 +22,6 @@ import { PartnerReservationsTab } from "../components/edit/PartnerReservationsTa
 
 export default function PartnerEditPage() {
   const [, paramsEdit] = useRoute("/partners/:id/edit");
-  const [, paramsNew] = useRoute("/partners/new");
   const id = paramsEdit?.id;
   const [, navigate] = useLocation();
   const isNew = !id;
@@ -66,6 +66,7 @@ export default function PartnerEditPage() {
       ic: "",
       dic: "",
       bankAccount: "",
+      currency: defaultCurrency || "CZK",
       isActive: true,
       notes: "",
       pricingModel: "DEFAULT",
@@ -102,6 +103,7 @@ export default function PartnerEditPage() {
         ic: partner.ic || "",
         dic: partner.dic || "",
         bankAccount: partner.bankAccount || "",
+        currency: partner.currency || "CZK",
         isActive: partner.isActive,
         notes: partner.notes || "",
         pricingModel: partner.pricingModel || "DEFAULT",
@@ -163,6 +165,7 @@ export default function PartnerEditPage() {
       });
       setCustomPricesLocal(local);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pricingModel, foods]);
 
   // ARES/VIES lookup
@@ -297,21 +300,19 @@ export default function PartnerEditPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/partners")}>
-          <ArrowLeft className="w-5 h-5" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold">
-            {isNew ? "Novy partner" : partner?.name || "Partner"}
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            {isNew
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/partners")}>
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <PageHeader
+            title={isNew ? "Novy partner" : partner?.name || "Partner"}
+            description={isNew
               ? fromContactId
                 ? "Vytvoreni partnera z kontaktu"
                 : "Vytvorte noveho affiliate partnera"
               : "Uprava udaju partnera"}
-          </p>
+          />
         </div>
         <Button
           onClick={form.handleSubmit(handleSubmit)}

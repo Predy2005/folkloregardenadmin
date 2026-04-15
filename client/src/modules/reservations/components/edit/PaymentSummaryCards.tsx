@@ -12,32 +12,24 @@ import {
   Info,
   Loader2,
 } from "lucide-react";
-import type { PaymentSummary } from "@shared/types";
 import {
   RESERVATION_PAYMENT_STATUS_LABELS,
   RESERVATION_PAYMENT_METHOD_LABELS,
 } from "@shared/types";
-
-interface PaymentSummaryCardsProps {
-  paymentSummary: PaymentSummary | undefined;
-  summaryLoading: boolean;
-  isAnyInvoiceMutationPending: boolean;
-  linkedEvent: { id: number; name: string; hasCashbox: boolean } | null;
-  onOpenConfirm: (method: string) => void;
-  onOpenEditDialog: () => void;
-  onCreateInvoice: (type: "DEPOSIT" | "FINAL", percent?: number) => void;
-}
+import type { PaymentSummaryCardsProps } from "@modules/reservations/types/components/edit/PaymentSummaryCards";
 
 export function PaymentSummaryCards({
   paymentSummary,
   summaryLoading,
   isAnyInvoiceMutationPending,
   linkedEvent,
+  currentCurrency,
   onOpenConfirm,
   onOpenEditDialog,
   onCreateInvoice,
 }: PaymentSummaryCardsProps) {
-  const cur = paymentSummary?.currency;
+  // Prefer live form currency, fallback to saved server-side
+  const cur = currentCurrency ?? paymentSummary?.currency;
 
   if (summaryLoading) {
     return (

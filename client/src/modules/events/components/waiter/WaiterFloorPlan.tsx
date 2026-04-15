@@ -1,6 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
-import { Badge } from "@/shared/components/ui/badge";
 import NationalityBadge, { getNationalityColor } from "./NationalityBadge";
 import type { WaiterViewTable, WaiterViewGuest } from "./types";
 
@@ -124,7 +123,7 @@ export default function WaiterFloorPlan({
                 {/* Nationality badges around table */}
                 {hasGuests && (
                   <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 flex gap-0.5">
-                    {table.guests.slice(0, 4).map((guest, idx) => (
+                    {table.guests.slice(0, 4).map((guest, _idx) => (
                       <div
                         key={guest.id}
                         className={`w-3 h-3 rounded-full ${

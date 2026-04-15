@@ -33,6 +33,9 @@ class Partner
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $address = null;
 
+    #[ORM\Column(type: Types::STRING, length: 3, options: ['default' => 'CZK'])]
+    private string $currency = 'CZK';
+
     #[ORM\Column(type: Types::DECIMAL, precision: 5, scale: 2, options: ['default' => 0])]
     private string $commissionRate = '0.00';
 
@@ -133,6 +136,9 @@ class Partner
 
     public function getAddress(): ?string { return $this->address; }
     public function setAddress(?string $v): self { $this->address = $v; return $this; }
+
+    public function getCurrency(): string { return $this->currency; }
+    public function setCurrency(string $v): self { $this->currency = $v; return $this; }
 
     public function getCommissionRate(): string { return $this->commissionRate; }
     public function setCommissionRate(string $v): self { $this->commissionRate = $v; return $this; }

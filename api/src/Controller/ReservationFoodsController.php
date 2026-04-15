@@ -15,7 +15,7 @@ use Symfony\Component\Security\Http\Attribute\IsGranted;
 class ReservationFoodsController extends AbstractController
 {
     #[Route('', methods: ['GET'])]
-    #[IsGranted('reservation_foods.read')]
+    #[IsGranted('IS_AUTHENTICATED_FULLY')]
     public function list(ReservationFoodsRepository $repository): JsonResponse
     {
         $foods = $repository->findAll();
@@ -24,7 +24,7 @@ class ReservationFoodsController extends AbstractController
     }
 
     #[Route('', methods: ['POST'])]
-    #[IsGranted('reservation_foods.create')]
+    #[IsGranted('foods.create')]
     public function create(Request $request, EntityManagerInterface $em): JsonResponse
     {
         $data = json_decode($request->getContent(), true);
@@ -109,7 +109,7 @@ class ReservationFoodsController extends AbstractController
     }
 
     #[Route('/{id}', methods: ['PUT', 'PATCH'])]
-    #[IsGranted('reservation_foods.update')]
+    #[IsGranted('foods.update')]
     public function edit(int $id, Request $request, ReservationFoodsRepository $repository, EntityManagerInterface $em): JsonResponse
     {
         $food = $repository->find($id);
@@ -145,7 +145,7 @@ class ReservationFoodsController extends AbstractController
     }
 
     #[Route('/{id}', methods: ['DELETE'])]
-    #[IsGranted('reservation_foods.delete')]
+    #[IsGranted('foods.delete')]
     public function delete(int $id, ReservationFoodsRepository $repository, EntityManagerInterface $em): JsonResponse
     {
         $food = $repository->find($id);

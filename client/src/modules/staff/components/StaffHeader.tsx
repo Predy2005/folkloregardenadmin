@@ -2,6 +2,7 @@ import {Search, UserCog, Plus} from "lucide-react";
 import {Input} from "@/shared/components/ui/input";
 import {CardDescription, CardHeader, CardTitle} from "@/shared/components/ui/card";
 import {Button} from "@/shared/components/ui/button";
+import {PageHeader} from "@/shared/components/PageHeader";
 import React from "react";
 
 interface StaffHeaderProps {
@@ -11,13 +12,9 @@ interface StaffHeaderProps {
   onCreateClick?: () => void;
 }
 
-export function StaffHeader({search, onSearchChange, staffCount, onCreateClick}: StaffHeaderProps) {
+export function StaffHeader({search: _search, onSearchChange: _onSearchChange, staffCount: _staffCount, onCreateClick}: StaffHeaderProps) {
   return (
-    <div className="flex items-center justify-between">
-      <div>
-        <h1 className="text-3xl font-serif font-bold text-foreground">Personál</h1>
-        <p className="text-muted-foreground">Správa členů týmu</p>
-      </div>
+    <PageHeader title="Personál" description="Správa členů týmu">
       <Button
         onClick={onCreateClick}
         className="bg-primary hover:bg-primary/90"
@@ -26,7 +23,7 @@ export function StaffHeader({search, onSearchChange, staffCount, onCreateClick}:
         <Plus className="w-4 h-4 mr-2"/>
         Nový člen
       </Button>
-    </div>
+    </PageHeader>
   );
 }
 

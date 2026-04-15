@@ -9,6 +9,7 @@ import {
   TransportCard,
   QuickActionsBar,
   StockRequirementsCard,
+  DashboardFloorPlan,
 } from "../components/dashboard";
 import {
   DashboardLayoutProvider,
@@ -22,6 +23,7 @@ import {
   HandCoins,
   Bus,
   Package,
+  LayoutGrid,
 } from "lucide-react";
 import { Badge } from "@/shared/components/ui/badge";
 import { InfoTooltip } from "@/shared/components/ui/info-tooltip";
@@ -125,6 +127,12 @@ export default function EventDashboardPage() {
         ) : (
           <div className="h-48 bg-muted rounded-lg animate-pulse" />
         ),
+    },
+    {
+      id: "floor-plan",
+      title: "Plánek stolů",
+      icon: <LayoutGrid className="h-4 w-4" />,
+      render: () => <DashboardFloorPlan eventId={eventId} />,
     },
     {
       id: "staff-planning",

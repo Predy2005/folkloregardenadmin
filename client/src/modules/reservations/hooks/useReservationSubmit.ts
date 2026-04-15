@@ -105,7 +105,7 @@ export function useReservationSubmit(params: {
     }
   };
 
-  const handleSubmitSingle = async () => {
+  const handleSubmitSingle = async (options?: { stayOnPage?: boolean }) => {
     const errors: string[] = [];
     if (!sharedContact.contactName?.trim()) errors.push("Jméno kontaktu");
     if (!sharedContact.contactEmail?.trim() || !sharedContact.contactEmail.includes("@")) errors.push("Platný e-mail");
@@ -130,6 +130,7 @@ export function useReservationSubmit(params: {
 
     const payload = {
       date: res.date,
+      currency: sharedContact.currency,
       contactName: sharedContact.contactName,
       contactEmail: sharedContact.contactEmail,
       contactPhone: sharedContact.contactPhone,
@@ -179,7 +180,9 @@ export function useReservationSubmit(params: {
       }
       invalidateReservationQueries();
       invalidateInvoiceQueries();
-      navigate("/reservations");
+      if (!options?.stayOnPage) {
+        navigate("/reservations");
+      }
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Chyba při ukládání";
       errorToast(message);

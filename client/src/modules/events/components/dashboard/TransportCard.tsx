@@ -169,7 +169,6 @@ function EventTransportItem({ assignment: a }: { assignment: DashboardEventTrans
 
 function TaxiReservationItem({ reservation }: { reservation: TaxiReservation }) {
   const transfers = reservation.transfers ?? [];
-  const hasTransportAssigned = transfers.some((t) => t.transportCompanyName);
 
   return (
     <div className="p-3 border rounded-lg bg-background">

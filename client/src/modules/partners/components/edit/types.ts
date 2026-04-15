@@ -10,6 +10,7 @@ export const partnerSchema = z.object({
   ic: z.string().optional(),
   dic: z.string().optional(),
   bankAccount: z.string().optional(),
+  currency: z.string().min(3).max(3).default("CZK"),
   isActive: z.boolean().default(true),
   notes: z.string().optional(),
   pricingModel: z.enum(["DEFAULT", "CUSTOM", "FLAT"]),

@@ -41,7 +41,7 @@ interface DriverDialogProps {
   onOpenChange: (open: boolean) => void;
   editingDriver: TransportDriver | null;
   form: UseFormReturn<DriverForm>;
-  saveMutation: UseMutationResult<any, Error, DriverForm>;
+  saveMutation: UseMutationResult<unknown, Error, DriverForm>;
   onClose: () => void;
 }
 

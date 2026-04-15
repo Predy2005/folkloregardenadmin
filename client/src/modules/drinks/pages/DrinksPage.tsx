@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
-import type { DrinkItem, DrinkCategory, FoodDrinkPairing, ReservationFood } from "@shared/types";
+import type { DrinkItem, FoodDrinkPairing, ReservationFood } from "@shared/types";
 import { Button } from "@/shared/components/ui/button";
 import { Card } from "@/shared/components/ui/card";
 import { Plus } from "lucide-react";

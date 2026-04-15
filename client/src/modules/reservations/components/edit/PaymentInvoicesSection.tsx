@@ -1,26 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
-import type { Invoice, PaymentSummary } from "@shared/types";
-import type { UseMutationResult } from "@tanstack/react-query";
 import { PaymentSummaryCards } from "./PaymentSummaryCards";
 import { InvoicesList } from "./InvoicesList";
 import { PaymentEditForm } from "./PaymentEditForm";
+import type { PaymentInvoicesSectionProps } from "@modules/reservations/types/components/edit/PaymentInvoicesSection";
 
-export interface PaymentInvoicesSectionProps {
-  reservationId: number;
-  paymentSummary: PaymentSummary | undefined;
-  summaryLoading: boolean;
-  invoices: Invoice[] | undefined;
-  invoicesLoading: boolean;
-  // Mutations
-  markPaidMutation: UseMutationResult<any, Error, { paymentMethod: string; cashboxTarget?: string }, unknown>;
-  markInvoicePaidMutation: UseMutationResult<any, Error, number, unknown>;
-  isAnyInvoiceMutationPending: boolean;
-  // Invoice dialog
-  setInvoiceDialogType: (type: "DEPOSIT" | "FINAL") => void;
-  setInvoiceDialogPercent: (percent: number) => void;
-  setInvoiceDialogOpen: (open: boolean) => void;
-}
+export type { PaymentInvoicesSectionProps };
 
 export function PaymentInvoicesSection({
   reservationId,
@@ -28,6 +13,7 @@ export function PaymentInvoicesSection({
   summaryLoading,
   invoices,
   invoicesLoading,
+  currentCurrency,
   markPaidMutation,
   markInvoicePaidMutation,
   isAnyInvoiceMutationPending,
@@ -47,6 +33,7 @@ export function PaymentInvoicesSection({
     paymentSummary,
     markPaidMutation,
     linkedEvent,
+    currentCurrency,
   });
 
   const handleCreateInvoice = (type: "DEPOSIT" | "FINAL", percent?: number) => {
@@ -65,6 +52,7 @@ export function PaymentInvoicesSection({
         summaryLoading={summaryLoading}
         isAnyInvoiceMutationPending={isAnyInvoiceMutationPending}
         linkedEvent={linkedEvent}
+        currentCurrency={currentCurrency}
         onOpenConfirm={openConfirm}
         onOpenEditDialog={openEditDialog}
         onCreateInvoice={handleCreateInvoice}

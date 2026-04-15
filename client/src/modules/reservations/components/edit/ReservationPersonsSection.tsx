@@ -11,46 +11,11 @@ import {
 } from "@/shared/components/ui/select";
 import { Trash2 } from "lucide-react";
 import { formatCurrency } from "@/shared/lib/formatting";
-import type { ReservationFood, DrinkItem } from "@shared/types";
 import { PERSON_TYPE_LABELS, DRINK_OPTION_LABELS } from "@shared/types";
-import type { PersonEntry, ReservationEntry } from "@modules/reservations/types";
+import type { PersonEntry } from "@modules/reservations/types";
+import type { ReservationPersonsSectionProps } from "@modules/reservations/types/components/edit/ReservationPersonsSection";
 
-export interface ReservationPersonsSectionProps {
-  currentReservation: ReservationEntry;
-  activeTabIndex: number;
-  foods: ReservationFood[] | undefined;
-  drinks?: DrinkItem[];
-  currency?: string;
-  currentTotalPrice: number;
-  // Bulk add persons state
-  bulkCount: number;
-  setBulkCount: (value: number) => void;
-  bulkType: PersonEntry["type"];
-  setBulkType: (value: PersonEntry["type"]) => void;
-  bulkMenu: string;
-  setBulkMenu: (value: string) => void;
-  bulkPrice: number | "";
-  setBulkPrice: (value: number | "") => void;
-  bulkNationality: string;
-  setBulkNationality: (value: string) => void;
-  // Bulk change state
-  bulkPriceChange: number | "";
-  setBulkPriceChange: (value: number | "") => void;
-  bulkMenuChange: string;
-  setBulkMenuChange: (value: string) => void;
-  bulkDrinkChange: string;
-  setBulkDrinkChange: (value: string) => void;
-  // Handlers
-  addPerson: (resIndex: number, type: PersonEntry["type"]) => void;
-  addBulkPersons: (resIndex: number) => void;
-  applyBulkPriceChange: (resIndex: number) => void;
-  applyBulkMenuChange: (resIndex: number) => void;
-  applyBulkDrinkChange: (resIndex: number) => void;
-  handleTypeChange: (resIndex: number, personIndex: number, newType: PersonEntry["type"]) => void;
-  handleMenuChange: (resIndex: number, personIndex: number, newMenuValue: string) => void;
-  updatePerson: (resIndex: number, personIndex: number, updates: Partial<PersonEntry>) => void;
-  removePerson: (resIndex: number, personIndex: number) => void;
-}
+export type { ReservationPersonsSectionProps };
 
 export function ReservationPersonsSection({
   currentReservation,

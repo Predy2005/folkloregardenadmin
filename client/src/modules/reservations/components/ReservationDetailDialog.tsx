@@ -9,15 +9,10 @@ import {
   PaymentSummarySection,
   InvoiceListSection,
 } from './detail';
-import type { Reservation, Invoice, PaymentSummary } from '@shared/types';
+import type { Invoice, PaymentSummary } from '@shared/types';
+import type { ReservationDetailDialogProps } from '@modules/reservations/types/components/common/ReservationDetailDialog';
 
-type Props = {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  reservation: Reservation | null;
-};
-
-export function ReservationDetailDialog({ open, onOpenChange, reservation }: Props) {
+export function ReservationDetailDialog({ open, onOpenChange, reservation }: ReservationDetailDialogProps) {
   // Fetch payment summary for this reservation
   const { data: paymentSummary, isLoading: summaryLoading } = useQuery({
     queryKey: ['/api/reservations', reservation?.id, 'payment-summary'],

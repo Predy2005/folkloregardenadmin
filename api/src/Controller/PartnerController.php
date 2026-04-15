@@ -36,6 +36,7 @@ class PartnerController extends AbstractController
                 'contactPerson' => $p->getContactPerson(),
                 'email' => $p->getEmail(),
                 'phone' => $p->getPhone(),
+                'currency' => $p->getCurrency(),
                 'commissionRate' => $p->getCommissionRate(),
                 'commissionAmount' => $p->getCommissionAmount(),
                 'paymentMethod' => $p->getPaymentMethod(),
@@ -74,6 +75,7 @@ class PartnerController extends AbstractController
             ->setIsActive((bool)($data['isActive'] ?? true))
             ->setNotes($data['notes'] ?? null);
 
+        if (!empty($data['currency'])) $partner->setCurrency($data['currency']);
         if (isset($data['pricingModel'])) $partner->setPricingModel($data['pricingModel']);
         if (isset($data['flatPriceAdult'])) $partner->setFlatPriceAdult((string)$data['flatPriceAdult']);
         if (isset($data['flatPriceChild'])) $partner->setFlatPriceChild((string)$data['flatPriceChild']);
@@ -166,6 +168,7 @@ class PartnerController extends AbstractController
                 'email' => $matched->getEmail(),
                 'phone' => $matched->getPhone(),
                 'address' => $matched->getAddress(),
+                'currency' => $matched->getCurrency(),
                 'commissionRate' => $matched->getCommissionRate(),
                 'commissionAmount' => $matched->getCommissionAmount(),
                 'paymentMethod' => $matched->getPaymentMethod(),
@@ -312,6 +315,7 @@ class PartnerController extends AbstractController
             'email' => $p->getEmail(),
             'phone' => $p->getPhone(),
             'address' => $p->getAddress(),
+            'currency' => $p->getCurrency(),
             'commissionRate' => $p->getCommissionRate(),
             'commissionAmount' => $p->getCommissionAmount(),
             'paymentMethod' => $p->getPaymentMethod(),
@@ -347,6 +351,7 @@ class PartnerController extends AbstractController
         $data = json_decode($request->getContent(), true) ?? [];
         if (isset($data['name'])) $p->setName($data['name']);
         if (isset($data['partnerType'])) $p->setPartnerType($data['partnerType']);
+        if (!empty($data['currency'])) $p->setCurrency($data['currency']);
         $p->setContactPerson($data['contactPerson'] ?? $p->getContactPerson());
         $p->setEmail($data['email'] ?? $p->getEmail());
         $p->setPhone($data['phone'] ?? $p->getPhone());

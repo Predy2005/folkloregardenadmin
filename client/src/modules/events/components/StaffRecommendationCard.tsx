@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Badge } from "@/shared/components/ui/badge";
-import { Loader2, Users, AlertCircle, CheckCircle2, MinusCircle } from "lucide-react";
+import { Loader2, Users, AlertCircle, CheckCircle2 } from "lucide-react";
 import { api } from "@/shared/lib/api";
 import type { EventStaffAssignment, StaffMember } from "@shared/types";
 import { translateStaffRole } from "@modules/staff/utils/staffRoles";

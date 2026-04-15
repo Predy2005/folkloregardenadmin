@@ -1,7 +1,4 @@
-import type { Event } from "@shared/types";
-import { EVENT_STATUS_LABELS } from "@shared/types";
 import { Button } from "@/shared/components/ui/button";
-import { Checkbox } from "@/shared/components/ui/checkbox";
 import { Badge } from "@/shared/components/ui/badge";
 import {
   CardDescription,

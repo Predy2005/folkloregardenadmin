@@ -17,8 +17,9 @@ export function useReservationData(params: {
   reservationId: number | null;
   contactQuery: string;
   contactId: number | null;
+  linkedContactEmail?: string;
 }) {
-  const { isEdit, reservationId, contactQuery, contactId } = params;
+  const { isEdit, reservationId, contactQuery, contactId, linkedContactEmail } = params;
 
   const { data: foods } = useQuery({
     queryKey: ["/api/reservation-foods"],
@@ -65,6 +66,20 @@ export function useReservationData(params: {
     queryFn: () => api.get<Contact>(`/api/contacts/${contactId}`),
   });
 
+  // In edit mode, look up the contact by reservation email so we can prefill billing
+  const { data: linkedContactSearch } = useQuery({
+    queryKey: ["/api/contacts/by-email", linkedContactEmail],
+    enabled: isEdit && !!linkedContactEmail && linkedContactEmail.includes("@"),
+    queryFn: () =>
+      api.get<{ items: Contact[]; total: number }>(
+        `/api/contacts?q=${encodeURIComponent(linkedContactEmail!)}&limit=5`
+      ),
+  });
+  // Pick the contact whose email matches exactly (case-insensitive)
+  const linkedContact: Contact | undefined = linkedContactSearch?.items?.find(
+    (c) => c.email && c.email.toLowerCase() === linkedContactEmail?.toLowerCase()
+  );
+
   const { data: paymentSummary, isLoading: summaryLoading } = useQuery({
     queryKey: ["/api/reservations", reservationId, "payment-summary"],
     queryFn: () => api.get<PaymentSummary>(`/api/reservations/${reservationId}/payment-summary`),
@@ -88,6 +103,7 @@ export function useReservationData(params: {
     contactSearch,
     isSearchingContacts,
     prefillContact,
+    linkedContact,
     paymentSummary,
     summaryLoading,
     invoices,

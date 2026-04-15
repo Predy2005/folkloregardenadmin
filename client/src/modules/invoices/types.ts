@@ -11,6 +11,7 @@ export interface InvoicePreview {
   percent?: number;
   defaultDescription?: string;
   paidDeposits?: number;
+  currency?: string;
 }
 
 export interface InvoiceFormData {

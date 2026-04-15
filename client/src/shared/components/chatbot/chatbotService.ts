@@ -63,6 +63,78 @@ interface RagResult {
   links: ChatLink[];
 }
 
+// ─── RAG entity types (minimal shapes for search/display) ───────────
+interface RagReservation {
+  id: number;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  invoiceCompany?: string | null;
+  status?: string | null;
+  date?: string | null;
+  contactNote?: string | null;
+  persons?: unknown[];
+}
+
+interface RagEvent {
+  id: number;
+  name?: string | null;
+  eventType?: string | null;
+  eventDate?: string | null;
+  status?: string | null;
+  organizerPerson?: string | null;
+  notesInternal?: string | null;
+  guestsTotal?: number | null;
+}
+
+interface RagContact {
+  id: number;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  company?: string | null;
+}
+
+interface RagStaffMember {
+  id: number;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  position?: string | null;
+  isGroup?: boolean;
+  isActive?: boolean;
+}
+
+interface RagPartner {
+  id: number;
+  name?: string | null;
+  email?: string | null;
+  contactPerson?: string | null;
+  partnerType?: string | null;
+  ic?: string | null;
+  isActive?: boolean;
+}
+
+interface RagInvoice {
+  id: number;
+  invoiceNumber?: string | null;
+  status?: string | null;
+  customer?: { name?: string | null; company?: string | null; ico?: string | null } | null;
+  issueDate?: string | null;
+  total?: number | null;
+  currency?: string | null;
+}
+
+interface RagPayment {
+  id: number;
+  transactionId?: string | null;
+  amount?: number | null;
+  status?: string | null;
+  reservation?: { contactName?: string | null } | null;
+  createdAt?: string | null;
+}
+
 // Keywords that trigger data search per entity type
 const SEARCH_TRIGGERS = {
   reservations: [
@@ -213,10 +285,10 @@ export async function fetchRagContext(
     if (entities.includes("reservations")) {
       fetches.push(
         api
-          .get<any[]>("/api/reservations")
+          .get<RagReservation[]>("/api/reservations")
           .then((data) => {
             const filtered = data
-              .filter((r: any) =>
+              .filter((r) =>
                 matchesSearch([
                   r.contactName,
                   r.contactEmail,
@@ -233,7 +305,7 @@ export async function fetchRagContext(
               contextParts.push(
                 `\n== NALEZENÉ REZERVACE (${filtered.length} výsledků) ==\n` +
                   filtered
-                    .map((r: any) => {
+                    .map((r) => {
                       const persons = r.persons?.length || 0;
                       links.push({
                         label: `${r.contactName || "Bez jména"} — ${r.date}`,
@@ -257,10 +329,10 @@ export async function fetchRagContext(
     if (entities.includes("events")) {
       fetches.push(
         api
-          .get<any[]>("/api/events")
+          .get<RagEvent[]>("/api/events")
           .then((data) => {
             const filtered = data
-              .filter((e: any) =>
+              .filter((e) =>
                 matchesSearch([
                   e.name,
                   e.eventType,
@@ -276,7 +348,7 @@ export async function fetchRagContext(
               contextParts.push(
                 `\n== NALEZENÉ AKCE (${filtered.length} výsledků) ==\n` +
                   filtered
-                    .map((e: any) => {
+                    .map((e) => {
                       links.push({
                         label: `${e.name} — ${e.eventDate}`,
                         url: `/events/${e.id}/edit`,
@@ -300,7 +372,7 @@ export async function fetchRagContext(
       const query = searchTerms.join(" ");
       fetches.push(
         api
-          .get<{ items: any[]; total: number }>(
+          .get<{ items: RagContact[]; total: number }>(
             `/api/contacts?q=${encodeURIComponent(query)}&limit=8`
           )
           .then(({ items }) => {
@@ -308,7 +380,7 @@ export async function fetchRagContext(
               contextParts.push(
                 `\n== NALEZENÉ KONTAKTY (${items.length} výsledků) ==\n` +
                   items
-                    .map((c: any) => {
+                    .map((c) => {
                       links.push({
                         label: `${c.name || "Bez jména"}`,
                         url: `/contacts/${c.id}/edit`,
@@ -333,10 +405,10 @@ export async function fetchRagContext(
     if (entities.includes("staff")) {
       fetches.push(
         api
-          .get<any[]>("/api/staff")
+          .get<RagStaffMember[]>("/api/staff")
           .then((data) => {
             const filtered = data
-              .filter((s: any) =>
+              .filter((s) =>
                 matchesSearch([
                   s.firstName,
                   s.lastName,
@@ -351,10 +423,10 @@ export async function fetchRagContext(
               contextParts.push(
                 `\n== NALEZENÝ PERSONÁL (${filtered.length} výsledků) ==\n` +
                   filtered
-                    .map((s: any) => {
+                    .map((s) => {
                       const name = s.isGroup
-                        ? s.firstName
-                        : `${s.firstName} ${s.lastName}`;
+                        ? (s.firstName ?? "")
+                        : `${s.firstName ?? ""} ${s.lastName ?? ""}`;
                       links.push({
                         label: name,
                         url: `/staff/${s.id}/edit`,
@@ -382,10 +454,10 @@ export async function fetchRagContext(
     if (entities.includes("partners")) {
       fetches.push(
         api
-          .get<any[]>("/api/partner")
+          .get<RagPartner[]>("/api/partner")
           .then((data) => {
             const filtered = data
-              .filter((p: any) =>
+              .filter((p) =>
                 matchesSearch([
                   p.name,
                   p.email,
@@ -400,9 +472,9 @@ export async function fetchRagContext(
               contextParts.push(
                 `\n== NALEZENÍ PARTNEŘI (${filtered.length} výsledků) ==\n` +
                   filtered
-                    .map((p: any) => {
+                    .map((p) => {
                       links.push({
-                        label: p.name,
+                        label: p.name ?? "",
                         url: `/partners/${p.id}/edit`,
                         meta: [
                           p.partnerType,
@@ -428,10 +500,10 @@ export async function fetchRagContext(
     if (entities.includes("invoices")) {
       fetches.push(
         api
-          .get<any[]>("/api/invoices")
+          .get<RagInvoice[]>("/api/invoices")
           .then((data) => {
             const filtered = data
-              .filter((inv: any) =>
+              .filter((inv) =>
                 matchesSearch([
                   inv.invoiceNumber,
                   inv.status,
@@ -447,7 +519,7 @@ export async function fetchRagContext(
               contextParts.push(
                 `\n== NALEZENÉ FAKTURY (${filtered.length} výsledků) ==\n` +
                   filtered
-                    .map((inv: any) => {
+                    .map((inv) => {
                       links.push({
                         label: `${inv.invoiceNumber} — ${inv.customer?.name || "?"}`,
                         url: `/invoices/${inv.id}/edit`,
@@ -471,7 +543,7 @@ export async function fetchRagContext(
       const searchParam = searchTerms.join(" ");
       fetches.push(
         api
-          .get<any[]>(
+          .get<RagPayment[]>(
             `/api/payment/list?search=${encodeURIComponent(searchParam)}`
           )
           .then((data) => {
@@ -480,7 +552,7 @@ export async function fetchRagContext(
               contextParts.push(
                 `\n== NALEZENÉ PLATBY (${items.length} výsledků) ==\n` +
                   items
-                    .map((p: any) => {
+                    .map((p) => {
                       links.push({
                         label: `Platba ${p.transactionId || p.id} — ${p.amount} CZK`,
                         url: "/payments",

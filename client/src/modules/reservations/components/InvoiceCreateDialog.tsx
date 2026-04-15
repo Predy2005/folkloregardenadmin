@@ -27,15 +27,9 @@ import { formatCurrency } from "@/shared/lib/formatting";
 import type { Invoice, InvoiceItem } from "@shared/types";
 import type { InvoicePreview } from "@modules/invoices/types";
 
-interface InvoiceCreateDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  reservationId: number;
-  invoiceType: "DEPOSIT" | "FINAL";
-  depositPercent?: number;
-  currency?: string;
-  onSuccess?: () => void;
-}
+import type { InvoiceCreateDialogProps } from "@modules/reservations/types/components/common/InvoiceCreateDialog";
+
+export type { InvoiceCreateDialogProps };
 
 export function InvoiceCreateDialog({
   open,
@@ -43,14 +37,19 @@ export function InvoiceCreateDialog({
   reservationId,
   invoiceType,
   depositPercent = 25,
-  currency: cur,
+  currency,
   onSuccess,
 }: InvoiceCreateDialogProps) {
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [selectedPercent, setSelectedPercent] = useState(depositPercent);
 
-  // Fetch preview
-  const { data: preview, isLoading: previewLoading } = useQuery({
+  // Sync selectedPercent when prop changes (e.g. user clicks Záloha 50% button)
+  useEffect(() => {
+    setSelectedPercent(depositPercent);
+  }, [depositPercent, open]);
+
+  // Fetch preview - always refetch when dialog opens to get latest reservation state
+  const { data: preview, isLoading: previewLoading, error: previewError } = useQuery({
     queryKey: [
       `/api/invoices/preview-${invoiceType.toLowerCase()}`,
       reservationId,
@@ -63,21 +62,27 @@ export function InvoiceCreateDialog({
           )
         : api.get<InvoicePreview>(`/api/invoices/preview-final/${reservationId}`),
     enabled: open,
+    staleTime: 0,
+    refetchOnMount: "always",
+    retry: false,
   });
 
-  // Initialize items from preview
+  // Surface backend errors (e.g. 403 permissions) instead of silently showing empty
   useEffect(() => {
-    if (preview?.items) {
+    if (previewError instanceof Error) {
+      errorToast(previewError);
+    }
+  }, [previewError]);
+
+  // Use prop currency, fallback to preview currency, then CZK
+  const cur = currency ?? preview?.currency ?? "CZK";
+
+  // Sync items from preview whenever it changes (initial load, deposit %, invoice type, refetches)
+  useEffect(() => {
+    if (preview && Array.isArray(preview.items) && preview.items.length > 0) {
       setItems(preview.items);
     }
   }, [preview]);
-
-  // Reset when percent changes for deposit
-  useEffect(() => {
-    if (invoiceType === "DEPOSIT" && preview?.items) {
-      setItems(preview.items);
-    }
-  }, [selectedPercent, invoiceType, preview]);
 
   const createMutation = useMutation({
     mutationFn: () => {

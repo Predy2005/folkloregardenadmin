@@ -33,7 +33,7 @@ export type CompanyForm = z.infer<typeof companySchema>;
 
 interface CompanyInfoFormProps {
   form: UseFormReturn<CompanyForm>;
-  saveMutation: UseMutationResult<any, Error, CompanyForm>;
+  saveMutation: UseMutationResult<unknown, Error, CompanyForm>;
   isNew: boolean;
   onSubmit: (data: CompanyForm) => void;
 }

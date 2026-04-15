@@ -15,7 +15,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/shared/components/ui/select";
 import { api } from "@/shared/lib/api";
 import { queryClient } from "@/shared/lib/queryClient";

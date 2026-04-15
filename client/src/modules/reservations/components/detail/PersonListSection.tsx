@@ -1,21 +1,18 @@
 import dayjs from 'dayjs';
 import { StatusBadge } from '@/shared/components/StatusBadge';
+import { SectionHeader } from '@/shared/components/SectionHeader';
 import { formatCurrency } from '@/shared/lib/formatting';
-import type { Reservation } from '@shared/types';
 import { PERSON_TYPE_LABELS } from '@shared/types';
+import type { PersonListSectionProps } from '@modules/reservations/types/components/detail/PersonListSection';
 
-type Props = {
-  reservation: Reservation;
-};
-
-export function PersonListSection({ reservation }: Props) {
+export function PersonListSection({ reservation }: PersonListSectionProps) {
   const cur = reservation.currency;
 
   return (
     <>
       {reservation.persons && reservation.persons.length > 0 && (
         <div>
-          <h3 className="font-semibold mb-3">Osoby ({reservation.persons.length})</h3>
+          <SectionHeader title={`Osoby (${reservation.persons.length})`} className="mb-3" />
           <div className="space-y-2">
             {reservation.persons.map((person, index) => (
               <div key={person.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
@@ -37,7 +34,7 @@ export function PersonListSection({ reservation }: Props) {
 
       {reservation.payments && reservation.payments.length > 0 && (
         <div>
-          <h3 className="font-semibold mb-3">Platby ({reservation.payments.length})</h3>
+          <SectionHeader title={`Platby (${reservation.payments.length})`} className="mb-3" />
           <div className="space-y-2">
             {reservation.payments.map((payment) => (
               <div key={payment.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">

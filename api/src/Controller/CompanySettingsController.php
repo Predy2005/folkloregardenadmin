@@ -128,6 +128,12 @@ class CompanySettingsController extends AbstractController
         if (array_key_exists('mainCashboxHidden', $data)) {
             $settings->setMainCashboxHidden((bool) $data['mainCashboxHidden']);
         }
+        if (isset($data['defaultCurrency'])) {
+            $settings->setDefaultCurrency($data['defaultCurrency']);
+        }
+        if (isset($data['enabledCurrencies']) && is_array($data['enabledCurrencies'])) {
+            $settings->setEnabledCurrencies($data['enabledCurrencies']);
+        }
 
         $settings->setUpdatedAt(new \DateTime());
 
@@ -242,6 +248,10 @@ class CompanySettingsController extends AbstractController
             'isVatPayer' => $settings->isVatPayer(),
 
             'mainCashboxHidden' => $settings->isMainCashboxHidden(),
+
+            // Currency
+            'defaultCurrency' => $settings->getDefaultCurrency(),
+            'enabledCurrencies' => $settings->getEnabledCurrencies(),
 
             'createdAt' => $settings->getCreatedAt()->format('Y-m-d H:i:s'),
             'updatedAt' => $settings->getUpdatedAt()->format('Y-m-d H:i:s'),

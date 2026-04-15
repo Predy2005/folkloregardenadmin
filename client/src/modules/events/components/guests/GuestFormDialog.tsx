@@ -102,6 +102,7 @@ export default function GuestFormDialog({
         });
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingGuest]);
 
   const invalidateQueries = () => {

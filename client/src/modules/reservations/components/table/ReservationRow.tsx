@@ -5,20 +5,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/components/ui/
 import { Checkbox } from '@/shared/components/ui/checkbox';
 import { Eye, Edit, Trash2, Mail } from 'lucide-react';
 import { StatusBadge } from '@/shared/components/StatusBadge';
-import type { Reservation } from '@shared/types';
+import type { ReservationRowProps } from '@modules/reservations/types/components/table/ReservationRow';
 
-type Props = {
-  reservation: Reservation;
-  onView: (reservation: Reservation) => void;
-  onEdit: (reservation: Reservation) => void;
-  onDelete: (id: number) => void;
-  onSendPayment: (id: number) => void;
-  showCheckbox?: boolean;
-  isSelected?: boolean;
-  onToggleSelect?: (id: number) => void;
-};
-
-export function ReservationRow({ reservation, onView, onEdit, onDelete, onSendPayment, showCheckbox, isSelected, onToggleSelect }: Props) {
+export function ReservationRow({ reservation, onView, onEdit, onDelete, onSendPayment, showCheckbox, isSelected, onToggleSelect }: ReservationRowProps) {
   return (
     <TableRow data-testid={`row-reservation-${reservation.id}`}>
       {showCheckbox && (

@@ -66,7 +66,7 @@ export default function Partners() {
     queryFn: () => api.get<Partner[]>("/api/partner"),
   });
 
-  const { deleteMutation } = useCrudMutations<any>({
+  const { deleteMutation } = useCrudMutations<Record<string, unknown>>({
     endpoint: "/api/partner",
     queryKey: ["/api/partner"],
     entityName: "Partner",

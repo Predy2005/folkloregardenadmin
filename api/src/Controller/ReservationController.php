@@ -15,6 +15,7 @@ use App\Repository\ReservationTypeRepository;
 use App\Entity\Event;
 use App\Service\AutoEventService;
 use App\Service\CashboxService;
+use App\Service\CashMovementService;
 use App\Service\ReservationPaymentService;
 use App\Service\InvoiceService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -40,6 +41,7 @@ class ReservationController extends AbstractController
     private InvoiceService $invoiceService;
     private ReservationTypeRepository $reservationTypeRepository;
     private CashboxService $cashboxService;
+    private CashMovementService $movementService;
 
     public function __construct(
         EntityManagerInterface $entityManager,
@@ -49,7 +51,8 @@ class ReservationController extends AbstractController
         ReservationPaymentService $paymentService,
         InvoiceService $invoiceService,
         ReservationTypeRepository $reservationTypeRepository,
-        CashboxService $cashboxService
+        CashboxService $cashboxService,
+        CashMovementService $movementService
     ) {
         $this->entityManager = $entityManager;
         $this->mailer = $mailer;
@@ -59,6 +62,7 @@ class ReservationController extends AbstractController
         $this->invoiceService = $invoiceService;
         $this->reservationTypeRepository = $reservationTypeRepository;
         $this->cashboxService = $cashboxService;
+        $this->movementService = $movementService;
     }
 
     /**
@@ -121,6 +125,7 @@ class ReservationController extends AbstractController
                     'transactionId' => $payment->getTransactionId(),
                     'status' => $payment->getStatus(),
                     'amount' => $payment->getAmount(),
+                    'currency' => $payment->getCurrency(),
                 ];
             }
 
@@ -178,6 +183,7 @@ class ReservationController extends AbstractController
                     'code' => $reservation->getReservationType()->getCode(),
                     'color' => $reservation->getReservationType()->getColor(),
                 ] : null,
+                'currency' => $reservation->getCurrency(),
                 'persons' => $personsData,
                 'payments' => $paymentsData,
                 'transfers' => $transfersData,
@@ -230,6 +236,7 @@ class ReservationController extends AbstractController
                 'transactionId' => $payment->getTransactionId(),
                 'status' => $payment->getStatus(),
                 'amount' => $payment->getAmount(),
+                'currency' => $payment->getCurrency(),
             ];
         }
 
@@ -284,6 +291,7 @@ class ReservationController extends AbstractController
                 'createdAt' => $reservation->getCreatedAt()?->format('Y-m-d H:i:s'),
                 'updatedAt' => $reservation->getUpdatedAt()?->format('Y-m-d H:i:s'),
                 'status' => $reservation->getStatus(),
+                'currency' => $reservation->getCurrency(),
             ],
             'persons' => $personData,
             'payments' => $paymentsData,
@@ -411,6 +419,11 @@ class ReservationController extends AbstractController
         // Set timestamps
         $reservation->setCreatedAt(new \DateTime());
         $reservation->setUpdatedAt(new \DateTime());
+
+        // Set currency
+        if (!empty($data['currency'])) {
+            $reservation->setCurrency($data['currency']);
+        }
 
         // Set initial status - use provided status, or derive from withPayment flag
         $withPayment = $data['withPayment'] ?? false;
@@ -957,6 +970,7 @@ class ReservationController extends AbstractController
         return $this->json([
             'id' => $reservation->getId(),
             'date' => $reservation->getDate(),
+            'currency' => $reservation->getCurrency(),
             'contactName' => $reservation->getContactName(),
             'contactEmail' => $reservation->getContactEmail(),
             'contactPhone' => $reservation->getContactPhone(),
@@ -1093,6 +1107,9 @@ class ReservationController extends AbstractController
         }
 
         // Platebni udaje
+        if (array_key_exists('currency', $data)) {
+            $reservation->setCurrency($data['currency']);
+        }
         if (array_key_exists('paymentMethod', $data)) {
             $reservation->setPaymentMethod($data['paymentMethod']);
         }
@@ -1503,7 +1520,7 @@ class ReservationController extends AbstractController
         }
 
         $contactName = $reservation->getContactName() ?? 'Neznámý';
-        $movement = $this->cashboxService->addMovement($cashbox, 'INCOME', number_format($amount, 2, '.', ''), [
+        $movement = $this->movementService->addMovement($cashbox, 'INCOME', number_format($amount, 2, '.', ''), [
             'category' => 'Platba rezervace',
             'description' => "Platba hotově - rezervace #{$reservation->getId()} ({$contactName})",
             'paymentMethod' => 'CASH',

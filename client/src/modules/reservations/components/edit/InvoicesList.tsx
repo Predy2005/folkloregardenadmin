@@ -14,17 +14,9 @@ import {
   Loader2,
   Trash2,
 } from "lucide-react";
-import type { Invoice } from "@shared/types";
 import { INVOICE_TYPE_LABELS } from "@shared/types";
 import dayjs from "dayjs";
-import type { UseMutationResult } from "@tanstack/react-query";
-
-interface InvoicesListProps {
-  reservationId: number;
-  invoices: Invoice[] | undefined;
-  invoicesLoading: boolean;
-  markInvoicePaidMutation: UseMutationResult<any, Error, number, unknown>;
-}
+import type { InvoicesListProps } from "@modules/reservations/types/components/edit/InvoicesList";
 
 export function InvoicesList({
   reservationId,

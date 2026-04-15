@@ -39,7 +39,7 @@ export default function Payments() {
     queryFn: () => api.get<Reservation[]>('/api/reservations'),
   });
 
-  const payments = Array.isArray(paymentsData) ? paymentsData : [];
+  const payments = useMemo(() => Array.isArray(paymentsData) ? paymentsData : [], [paymentsData]);
 
   // Create reservation lookup map
   const reservationMap = useMemo(() => {

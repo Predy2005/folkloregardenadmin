@@ -41,20 +41,23 @@ apiClient.interceptors.response.use(
   },
 );
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- Generic API wrapper intentionally uses `any`
+   as the default type parameter for ergonomic usage. Callers specify concrete types via generics. */
 // Helper funkce pro API requesty
 export const api = {
   get: <T = any>(url: string, config?: AxiosRequestConfig) =>
     apiClient.get<T>(url, config).then((res) => res.data),
 
-  post: <T = any>(url: string, data?: any, config?: AxiosRequestConfig) =>
+  post: <T = any, D = unknown>(url: string, data?: D, config?: AxiosRequestConfig) =>
     apiClient.post<T>(url, data, config).then((res) => res.data),
 
-  put: <T = any>(url: string, data?: any, config?: AxiosRequestConfig) =>
+  put: <T = any, D = unknown>(url: string, data?: D, config?: AxiosRequestConfig) =>
     apiClient.put<T>(url, data, config).then((res) => res.data),
 
-  patch: <T = any>(url: string, data?: any, config?: AxiosRequestConfig) =>
+  patch: <T = any, D = unknown>(url: string, data?: D, config?: AxiosRequestConfig) =>
     apiClient.patch<T>(url, data, config).then((res) => res.data),
 
   delete: <T = any>(url: string, config?: AxiosRequestConfig) =>
     apiClient.delete<T>(url, config).then((res) => res.data),
 };
+/* eslint-enable @typescript-eslint/no-explicit-any */

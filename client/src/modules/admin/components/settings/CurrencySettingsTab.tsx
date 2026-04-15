@@ -2,7 +2,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/sha
 import { Label } from "@/shared/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/components/ui/select";
 import { Checkbox } from "@/shared/components/ui/checkbox";
-import { getCurrencySymbol } from "@/shared/lib/formatting";
 import type { CompanySettings } from "@shared/types";
 
 interface CurrencySettingsTabProps {

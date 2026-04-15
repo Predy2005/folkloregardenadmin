@@ -8,26 +8,16 @@ import { Checkbox } from '@/shared/components/ui/checkbox';
 import { Button } from '@/shared/components/ui/button';
 import { Badge } from '@/shared/components/ui/badge';
 import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
-import type { Reservation } from '@shared/types';
 import { usePagination } from '@/shared/hooks/usePagination';
 import type { SortColumn, SortDirection } from '@modules/reservations/types';
 import { ReservationFilters, ReservationRow, PaginationControls } from './table';
 import type { FilterState } from './table';
 import { BulkActionDialog, type BulkActionType } from './BulkActionDialog';
 import { useAuth } from '@/modules/auth/contexts/AuthContext';
+import type { ReservationTableProps } from '@modules/reservations/types/components/common/ReservationTable';
 
 dayjs.extend(isSameOrAfter);
 dayjs.extend(isSameOrBefore);
-
-type Props = {
-  reservations: Reservation[];
-  searchTerm: string;
-  onSearchChange: (value: string) => void;
-  onView: (reservation: Reservation) => void;
-  onEdit: (reservation: Reservation) => void;
-  onDelete: (id: number) => void;
-  onSendPayment: (id: number) => void;
-};
 
 export function ReservationTable({
   reservations,
@@ -37,7 +27,7 @@ export function ReservationTable({
   onEdit,
   onDelete,
   onSendPayment,
-}: Props) {
+}: ReservationTableProps) {
   // Super admin check
   const { isSuperAdmin } = useAuth();
 

@@ -26,6 +26,8 @@ interface TableShapeProps {
   gridSize: number;
   hasCollision?: boolean;
   isDropTarget?: boolean;
+  /** Optional financial indicator shown as a small badge in the top-right corner. */
+  financials?: { hasIncome: boolean; hasExpense: boolean };
   onSelect: (id: number) => void;
   onDragEnd: (id: number, x: number, y: number) => void;
   onDoubleClick: (id: number) => void;
@@ -39,6 +41,7 @@ export const TableShape = forwardRef<TableShapeHandle, TableShapeProps>(function
   gridSize,
   hasCollision,
   isDropTarget,
+  financials,
   onSelect,
   onDragEnd,
   onDoubleClick,
@@ -120,7 +123,10 @@ export const TableShape = forwardRef<TableShapeHandle, TableShapeProps>(function
     }
   });
   const topNat = Object.entries(nationalities).sort((a, b) => b[1] - a[1])[0];
-  const hasChildren = guests.some((g) => g.type === "child");
+  const childCount = guests.filter((g) => g.type === "child" || g.type === "infant").length;
+  const driverCount = guests.filter((g) => g.type === "driver").length;
+  const guideCount = guests.filter((g) => g.type === "guide").length;
+  const hasSpecialTypes = childCount > 0 || driverCount > 0 || guideCount > 0;
 
   // Render seat grid for rectangular tables
   const renderSeatGrid = () => {
@@ -295,12 +301,41 @@ export const TableShape = forwardRef<TableShapeHandle, TableShapeProps>(function
         />
       )}
 
-      {hasChildren && (
-        <Text x={2} y={-10} text="👶" fontSize={9} listening={false} />
-      )}
+      {/* Guest type indicators */}
+      {hasSpecialTypes && (() => {
+        const icons: { emoji: string; count: number }[] = [];
+        if (driverCount > 0) icons.push({ emoji: "🚗", count: driverCount });
+        if (guideCount > 0) icons.push({ emoji: "🚩", count: guideCount });
+        if (childCount > 0) icons.push({ emoji: "👶", count: childCount });
+        return icons.map((icon, i) => (
+          <Text
+            key={i}
+            x={2 + i * 22}
+            y={-12}
+            text={`${icon.emoji}${icon.count > 1 ? icon.count : ""}`}
+            fontSize={9}
+            listening={false}
+          />
+        ));
+      })()}
 
       {locked && (
         <Text x={w - 12} y={-10} text="🔒" fontSize={9} listening={false} />
+      )}
+
+      {/* Financial indicator — visible whenever the table has any linked cash movement. */}
+      {financials && (financials.hasIncome || financials.hasExpense) && (
+        <Text
+          x={w - 26}
+          y={-10}
+          text={
+            financials.hasIncome && financials.hasExpense ? "💰"
+            : financials.hasIncome ? "💵"
+            : "🧾"
+          }
+          fontSize={11}
+          listening={false}
+        />
       )}
     </Group>
   );

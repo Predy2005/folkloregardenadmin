@@ -28,21 +28,14 @@ import {
   Landmark,
   Calendar,
 } from "lucide-react";
-import type { PaymentSummary } from "@shared/types";
-import type { UseMutationResult } from "@tanstack/react-query";
-
-interface PaymentEditFormProps {
-  reservationId: number;
-  paymentSummary: PaymentSummary | undefined;
-  markPaidMutation: UseMutationResult<any, Error, { paymentMethod: string; cashboxTarget?: string }, unknown>;
-  linkedEvent: { id: number; name: string; hasCashbox: boolean } | null;
-}
+import type { PaymentEditFormProps } from "@modules/reservations/types/components/edit/PaymentEditForm";
 
 export function PaymentEditForm({
   reservationId,
   paymentSummary,
   markPaidMutation,
   linkedEvent,
+  currentCurrency,
 }: PaymentEditFormProps) {
   // Confirmation dialog for mark-paid
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -100,7 +93,7 @@ export function PaymentEditForm({
   };
 
   const methodLabel = confirmMethod === "CASH" ? "hotově" : "převodem";
-  const cur = paymentSummary?.currency;
+  const cur = currentCurrency ?? paymentSummary?.currency;
   const confirmTotal = paymentSummary ? formatCurrency(Math.round(paymentSummary.remainingAmount || paymentSummary.totalPrice), cur) : "";
 
   return {
@@ -218,7 +211,7 @@ export function PaymentEditForm({
             <div className="space-y-4 py-2">
               {paymentSummary && (
                 <div className="text-sm text-muted-foreground">
-                  Celková cena: <strong>{formatCurrency(Math.round(paymentSummary.totalPrice), paymentSummary.currency)}</strong>
+                  Celková cena: <strong>{formatCurrency(Math.round(paymentSummary.totalPrice), cur)}</strong>
                 </div>
               )}
               <div className="space-y-2">

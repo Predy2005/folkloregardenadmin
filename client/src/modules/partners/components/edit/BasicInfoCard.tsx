@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { Loader2, Search } from "lucide-react";
+import { CurrencySelect } from "@/shared/components/CurrencySelect";
 import type { PartnerForm } from "../edit/types";
 
 interface BasicInfoCardProps {
@@ -170,19 +171,38 @@ export function BasicInfoCard({ form, aresLoading, onAresLookup }: BasicInfoCard
             </Button>
           </div>
         </div>
-        <FormField
-          control={form.control}
-          name="bankAccount"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Bankovni ucet</FormLabel>
-              <FormControl>
-                <Input placeholder="123456789/0100" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="bankAccount"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Bankovni ucet</FormLabel>
+                <FormControl>
+                  <Input placeholder="123456789/0100" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="currency"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Mena partnera</FormLabel>
+                <FormControl>
+                  <CurrencySelect
+                    value={field.value}
+                    onChange={field.onChange}
+                    className="w-full"
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
         <FormField
           control={form.control}
           name="isActive"

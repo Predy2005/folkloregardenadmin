@@ -13,6 +13,7 @@ import type {
   StaffMember,
 } from "@shared/types";
 import { Button } from "@/shared/components/ui/button";
+import { PageHeader } from "@/shared/components/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import { ArrowLeft, LayoutDashboard, Loader2 } from "lucide-react";
@@ -133,24 +134,28 @@ export default function EventEdit() {
     >
       <div className="container mx-auto p-6 space-y-6">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
             <Button
               variant="ghost"
+              size="icon"
               onClick={() => setLocation("/events")}
               data-testid="button-back"
             >
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Zpět na seznam
+              <ArrowLeft className="w-5 h-5" />
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => setLocation(`/events/${eventId}/dashboard`)}
-              data-testid="button-dashboard"
-            >
-              <LayoutDashboard className="mr-2 h-4 w-4" />
-              Dashboard
-            </Button>
+            <PageHeader
+              title={event.name || "Událost"}
+              description="Úprava údajů události"
+            />
           </div>
+          <Button
+            variant="outline"
+            onClick={() => setLocation(`/events/${eventId}/dashboard`)}
+            data-testid="button-dashboard"
+          >
+            <LayoutDashboard className="mr-2 h-4 w-4" />
+            Dashboard
+          </Button>
         </div>
 
         <FloatingActionBar />

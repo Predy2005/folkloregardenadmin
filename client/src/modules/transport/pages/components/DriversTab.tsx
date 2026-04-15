@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
+import { SectionHeader } from "@/shared/components/SectionHeader";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import type { TransportDriver } from "@shared/types";
 import { Button } from "@/shared/components/ui/button";
@@ -121,7 +122,7 @@ export function DriversTab({ companyId }: { companyId: number }) {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold">Ridici ({drivers?.length ?? 0})</h3>
+        <SectionHeader title={`Ridici (${drivers?.length ?? 0})`} size="lg" />
         <Button onClick={openCreate} size="sm">
           <Plus className="w-4 h-4 mr-2" />
           Pridat ridice

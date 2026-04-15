@@ -5,7 +5,7 @@ import { api } from "@/shared/lib/api";
 import { invalidateReservationQueries } from "@/shared/lib/query-helpers";
 import { Card, CardContent } from "@/shared/components/ui/card";
 import { Button } from "@/shared/components/ui/button";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { PageHeader } from "@/shared/components/PageHeader";
 import type {
   PricingDefault,
@@ -20,6 +20,7 @@ import {
   isAiConfigured,
   parseReservationWithAI,
   resolveMenuToFoodId,
+  type AiParsedReservation,
 } from "@modules/reservations/utils/ai";
 import { ReservationTable } from "../components/ReservationTable";
 import { ReservationDetailDialog } from "../components/ReservationDetailDialog";
@@ -73,8 +74,8 @@ export default function Reservations() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedReservation, setSelectedReservation] =
     useState<Reservation | null>(null);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingReservation, setEditingReservation] =
+  const [, setIsDialogOpen] = useState(false);
+  const [_editingReservation, setEditingReservation] =
     useState<Reservation | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [, navigate] = useLocation();
@@ -95,10 +96,10 @@ export default function Reservations() {
   });
 
   // AI assistant state
-  const [aiInput, setAiInput] = useState("");
-  const [aiJson, setAiJson] = useState<any | null>(null);
-  const [aiError, setAiError] = useState<string | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
+  const [aiInput] = useState("");
+  const [aiJson, setAiJson] = useState<AiParsedReservation | null>(null);
+  const [, setAiError] = useState<string | null>(null);
+  const [, setAiLoading] = useState(false);
 
   // Form
   const form = useForm<ReservationForm>({
@@ -128,17 +129,14 @@ export default function Reservations() {
   });
 
   const {
-    fields: personFields,
     append: appendPerson,
-    remove: removePerson,
-    update: updatePerson,
   } = useFieldArray({
     control: form.control,
     name: "persons",
   });
 
   // Mutations
-  const createMutation = useMutation({
+  const _createMutation = useMutation({
     mutationFn: (data: ReservationForm) => api.post("/api/reservations", data),
     onSuccess: () => {
       invalidateReservationQueries();
@@ -151,7 +149,7 @@ export default function Reservations() {
     },
   });
 
-  const updateMutation = useMutation({
+  const _updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: ReservationForm }) =>
       api.put(`/api/reservations/${id}`, data),
     onSuccess: () => {
@@ -214,16 +212,8 @@ export default function Reservations() {
     }
   };
 
-  const onSubmit = (data: ReservationForm) => {
-    if (editingReservation) {
-      updateMutation.mutate({ id: editingReservation.id, data });
-    } else {
-      createMutation.mutate(data);
-    }
-  };
-
   // Helper: Add person
-  const addPerson = (
+  const _addPerson = (
     type: "adult" | "child" | "infant" | "driver" | "guide",
   ) => {
     const defaultPrice =
@@ -246,7 +236,7 @@ export default function Reservations() {
   };
 
   // AI: analyze input
-  const handleAiAnalyze = async () => {
+  const _handleAiAnalyze = async () => {
     setAiError(null);
     setAiJson(null);
     if (!isAiConfigured()) {
@@ -271,7 +261,7 @@ export default function Reservations() {
   type FormPerson = z.infer<typeof personSchema>;
 
   // AI: apply parsed data into form
-  const handleAiApply = () => {
+  const _handleAiApply = () => {
     if (!aiJson) return;
     if (!foods) return;
 
@@ -445,7 +435,7 @@ export default function Reservations() {
   const watchedTransferCount = form.watch("transferCount");
 
   // Calculate total (memoized)
-  const totalPrice = useMemo(() => {
+  const _totalPrice = useMemo(() => {
     const personsTotal = (watchedPersons || []).reduce(
       (sum, person) => sum + (person.price || 0),
       0,
@@ -472,6 +462,14 @@ export default function Reservations() {
   return (
     <div className="p-6 space-y-6">
       <PageHeader title="Rezervace" description="Správa všech rezervací">
+        <Button
+          variant="outline"
+          onClick={() => navigate("/reservations/import")}
+          data-testid="button-import-reservations"
+        >
+          <Upload className="w-4 h-4 mr-2" />
+          Hromadný import
+        </Button>
         <Button
           onClick={handleCreate}
           className="bg-primary hover:bg-primary/90"

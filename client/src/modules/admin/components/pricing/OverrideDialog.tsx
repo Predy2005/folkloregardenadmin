@@ -2,7 +2,6 @@ import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { getCurrencySymbol } from "@/shared/lib/formatting";
-import { Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,

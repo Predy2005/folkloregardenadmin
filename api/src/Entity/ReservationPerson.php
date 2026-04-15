@@ -45,6 +45,19 @@ class ReservationPerson
     #[ORM\JoinColumn(name: 'drink_item_id', nullable: true, onDelete: 'SET NULL')]
     private ?DrinkItem $drinkItem = null;
 
+    #[ORM\Column(type: Types::STRING, length: 3, options: ['default' => 'CZK'])]
+    private string $currency = 'CZK';
+
+    /** Komplimentární osoba — neúčtuje se, ale počítá se do kapacity */
+    #[ORM\Column(name: 'is_free', type: Types::BOOLEAN, options: ['default' => false])]
+    private bool $isFree = false;
+
+    public function getCurrency(): string { return $this->currency; }
+    public function setCurrency(string $currency): static { $this->currency = $currency; return $this; }
+
+    public function isFree(): bool { return $this->isFree; }
+    public function setIsFree(bool $isFree): static { $this->isFree = $isFree; return $this; }
+
     public function getId(): ?int
     {
         return $this->id;

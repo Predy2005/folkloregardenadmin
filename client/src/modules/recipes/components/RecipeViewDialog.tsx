@@ -1,4 +1,5 @@
 import type { Recipe } from "@shared/types";
+import { SectionHeader } from "@/shared/components/SectionHeader";
 import { formatCurrency } from "@/shared/lib/formatting";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -36,29 +37,29 @@ export function RecipeViewDialog({ open, onOpenChange, recipe }: RecipeViewDialo
         {recipe && (
           <div className="space-y-4">
             <div>
-              <h3 className="font-semibold mb-1">Název</h3>
+              <SectionHeader title="Název" className="mb-1" />
               <p className="text-muted-foreground">{recipe.name}</p>
             </div>
             {recipe.description && (
               <div>
-                <h3 className="font-semibold mb-1">Postup</h3>
+                <SectionHeader title="Postup" className="mb-1" />
                 <p className="text-muted-foreground whitespace-pre-wrap">{recipe.description}</p>
               </div>
             )}
             <div className="flex gap-6">
               <div>
-                <h3 className="font-semibold mb-1">Počet porcí</h3>
+                <SectionHeader title="Počet porcí" className="mb-1" />
                 <Badge variant="secondary">{recipe.portions} ks</Badge>
               </div>
               {recipe.portionWeight && (
                 <div>
-                  <h3 className="font-semibold mb-1">Hmotnost porce</h3>
+                  <SectionHeader title="Hmotnost porce" className="mb-1" />
                   <Badge variant="secondary">{recipe.portionWeight} g</Badge>
                 </div>
               )}
             </div>
             <div>
-              <h3 className="font-semibold mb-2">Ingredience</h3>
+              <SectionHeader title="Ingredience" className="mb-2" />
               {recipe.ingredients && recipe.ingredients.length > 0 ? (
                 <Table>
                   <TableHeader>

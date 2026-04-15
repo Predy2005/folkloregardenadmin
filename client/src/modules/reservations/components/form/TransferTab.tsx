@@ -2,10 +2,11 @@ import { useFormContext } from 'react-hook-form';
 import { Checkbox } from '@/shared/components/ui/checkbox';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/shared/components/ui/form';
 import { Input } from '@/shared/components/ui/input';
-import { formatCurrency, getCurrencySymbol } from '@/shared/lib/formatting';
+import { formatCurrency } from '@/shared/lib/formatting';
 import { useCurrency } from '@/shared/contexts/CurrencyContext';
+import type { TransferTabProps } from '@modules/reservations/types/components/form/TransferTab';
 
-export function TransferTab({ currency: currencyProp }: { currency?: string }) {
+export function TransferTab({ currency: currencyProp }: TransferTabProps) {
   const form = useFormContext();
   const { defaultCurrency } = useCurrency();
   const cur = currencyProp ?? defaultCurrency;

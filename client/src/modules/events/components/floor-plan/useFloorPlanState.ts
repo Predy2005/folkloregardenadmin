@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
 import { useToast } from "@/shared/hooks/use-toast";
 import type {
-  EventTable, EventGuest, FloorPlanElement, Room, Building,
+  EventTable, EventGuest, FloorPlanElement, Building,
   TableShape, FloorPlanElementType, FloorPlanTemplate,
 } from "@shared/types";
 import { DEFAULT_CAPACITY, DEFAULT_TABLE_SIZE, DEFAULT_ELEMENT_SIZE, GRID_SIZE } from "./constants";
@@ -21,10 +21,33 @@ export function useFloorPlanState(eventId: number) {
     queryFn: () => api.get(`/api/events/${eventId}/floor-plan`),
   });
 
-  const { data: buildings = [] } = useQuery<Building[]>({
+  const { data: allBuildings = [] } = useQuery<Building[]>({
     queryKey: ["buildings"],
     queryFn: () => api.get("/api/venue/buildings"),
   });
+
+  const { data: eventSpacesData } = useQuery<{ spaces: string[] }>({
+    queryKey: ["event-spaces", eventId],
+    queryFn: () => api.get(`/api/events/${eventId}/spaces`),
+  });
+
+  // Filter buildings to only those selected as event spaces (by slug match)
+  const buildings = useMemo(() => {
+    const spaceNames = eventSpacesData?.spaces;
+    if (!spaceNames || spaceNames.length === 0) return allBuildings;
+    return allBuildings
+      .map((b) => {
+        // Check if the building slug matches any event space
+        if (spaceNames.includes(b.slug)) return b;
+        // Also check individual room slugs within buildings
+        const matchingRooms = (b.rooms ?? []).filter((r) =>
+          spaceNames.includes(r.slug)
+        );
+        if (matchingRooms.length > 0) return { ...b, rooms: matchingRooms };
+        return null;
+      })
+      .filter((b): b is Building => b !== null);
+  }, [allBuildings, eventSpacesData?.spaces]);
 
   const { data: templates = [] } = useQuery<FloorPlanTemplate[]>({
     queryKey: ["floor-plan-templates"],
@@ -465,7 +488,14 @@ export function useFloorPlanState(eventId: number) {
   }, [tables, mergedGuests, eventId, selectedRoomId, toast]);
 
   const handleUnassignGuest = (guestId: number) => {
-    setGuests((prev) => prev.map((g) => (g.id === guestId ? { ...g, eventTableId: undefined } : g)));
+    setGuests((prev) => {
+      const existing = prev.find((g) => g.id === guestId);
+      if (existing) {
+        return prev.map((g) => (g.id === guestId ? { ...g, eventTableId: undefined } : g));
+      }
+      // Guest not yet in local overrides — add them with no table assignment
+      return [...prev, { id: guestId, eventId, eventTableId: undefined } as EventGuest];
+    });
     setIsDirty(true);
   };
 
@@ -507,13 +537,51 @@ export function useFloorPlanState(eventId: number) {
 
   // ── Side effects ──
 
+  // Batch assign multiple guests to a table (respects capacity)
+  const handleAssignGuests = useCallback((guestIds: number[], tableId: number) => {
+    const table = tables.find((t) => t.id === tableId);
+    if (!table) return;
+    const currentCount = mergedGuests.filter((g) => g.eventTableId === tableId).length;
+    const available = table.capacity - currentCount;
+    if (available <= 0) {
+      toast({ title: `Stůl "${table.tableName}" je plný (${table.capacity} míst)`, variant: "destructive" });
+      return;
+    }
+    const toAssign = guestIds.slice(0, available);
+    const toAssignSet = new Set(toAssign);
+
+    setGuests((prev) => {
+      const existingIds = new Set(prev.map((g) => g.id));
+      const updated = prev.map((g) =>
+        toAssignSet.has(g.id) ? { ...g, eventTableId: tableId } : g
+      );
+      const newGuests = toAssign
+        .filter((id) => !existingIds.has(id))
+        .map((id) => ({ id, eventId, eventTableId: tableId }) as EventGuest);
+      return [...updated, ...newGuests];
+    });
+    setIsDirty(true);
+
+    if (toAssign.length < guestIds.length) {
+      toast({
+        title: `Usazeno ${toAssign.length}/${guestIds.length} — stůl plný`,
+      });
+    }
+  }, [tables, mergedGuests, eventId, toast]);
+
   // Listen for guest drops from canvas — use ref to avoid stale closure
   const handleAssignGuestRef = useRef(handleAssignGuest);
   handleAssignGuestRef.current = handleAssignGuest;
+  const handleAssignGuestsRef = useRef(handleAssignGuests);
+  handleAssignGuestsRef.current = handleAssignGuests;
   useEffect(() => {
     const handler = (e: Event) => {
-      const { tableId, guestId } = (e as CustomEvent).detail;
-      handleAssignGuestRef.current(guestId, tableId);
+      const detail = (e as CustomEvent).detail;
+      if (detail.guestIds) {
+        handleAssignGuestsRef.current(detail.guestIds, detail.tableId);
+      } else {
+        handleAssignGuestRef.current(detail.guestId, detail.tableId);
+      }
     };
     window.addEventListener("floorplan-guest-drop", handler);
     return () => window.removeEventListener("floorplan-guest-drop", handler);
@@ -609,6 +677,7 @@ export function useFloorPlanState(eventId: number) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTableId, selectedElementId, tables, elements, isDirty]);
 
   // ── Derived ──

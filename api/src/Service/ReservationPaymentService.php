@@ -15,7 +15,7 @@ class ReservationPaymentService
 {
     public function __construct(
         private EntityManagerInterface $entityManager,
-        private InvoiceService $invoiceService,
+        private InvoiceCalculationService $invoiceCalculationService,
         private LoggerInterface $logger,
     ) {
     }
@@ -76,7 +76,7 @@ class ReservationPaymentService
         // Vypočítej celkovou cenu pokud ještě není nastavena
         $totalPrice = (float)($reservation->getTotalPrice() ?? 0);
         if ($totalPrice <= 0) {
-            $totalPrice = $this->invoiceService->calculateReservationTotal($reservation);
+            $totalPrice = $this->invoiceCalculationService->calculateReservationTotal($reservation);
             $reservation->setTotalPrice(number_format($totalPrice, 2, '.', ''));
         }
 
@@ -141,7 +141,7 @@ class ReservationPaymentService
             // Přepočítej částku zálohy
             $totalPrice = (float)($reservation->getTotalPrice() ?? 0);
             if ($totalPrice <= 0) {
-                $totalPrice = $this->invoiceService->calculateReservationTotal($reservation);
+                $totalPrice = $this->invoiceCalculationService->calculateReservationTotal($reservation);
                 $reservation->setTotalPrice(number_format($totalPrice, 2, '.', ''));
             }
 
@@ -185,7 +185,7 @@ class ReservationPaymentService
         // Vypočítej celkovou cenu pokud ještě není nastavena
         $totalPrice = (float)($reservation->getTotalPrice() ?? 0);
         if ($totalPrice <= 0) {
-            $totalPrice = $this->invoiceService->calculateReservationTotal($reservation);
+            $totalPrice = $this->invoiceCalculationService->calculateReservationTotal($reservation);
         }
 
         $paidAmount = (float)($reservation->getPaidAmount() ?? 0);
@@ -228,6 +228,7 @@ class ReservationPaymentService
             'remainingAmount' => $remaining,
             'depositPercent' => $depositPercent,
             'depositAmount' => $depositAmount,
+            'currency' => $reservation->getCurrency(),
             'paymentStatus' => $reservation->getPaymentStatus() ?? 'UNPAID',
             'paymentMethod' => $reservation->getPaymentMethod(),
             'isFullyPaid' => $reservation->isFullyPaid(),

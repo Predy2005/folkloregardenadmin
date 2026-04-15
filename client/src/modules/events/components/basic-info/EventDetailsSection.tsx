@@ -32,7 +32,8 @@ export default function EventDetailsSection({ form, existingTags, eventId }: Eve
   const [newTag, setNewTag] = useState("");
 
   const watchedEventType = form.watch("eventType");
-  const watchedTags = form.watch("eventTags") || [];
+  const rawWatchedTags = form.watch("eventTags");
+  const watchedTags = useMemo(() => rawWatchedTags || [], [rawWatchedTags]);
   const guestsTotal = (form.watch("guestsPaid") || 0) + (form.watch("guestsFree") || 0);
   const isFolklorniShow = watchedEventType === "folklorni_show";
 

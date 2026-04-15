@@ -93,12 +93,6 @@ function TypeBreakdownSection({ types }: { types: GuestTypeBreakdown }) {
  * Check-in/presence status
  */
 function PresenceSection({ presence }: { presence: GuestPresenceStatus }) {
-  const getProgressColor = (percentage: number) => {
-    if (percentage >= 80) return "bg-green-500";
-    if (percentage >= 50) return "bg-yellow-500";
-    return "bg-red-500";
-  };
-
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between text-sm">

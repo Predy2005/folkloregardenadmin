@@ -47,7 +47,7 @@ function rect8(name: string, x: number, y: number, rotation = 0): DefaultTable {
 }
 
 // 6-seat rectangular: 60×80 (2 cols × 3 rows of seat squares)
-function rect6(name: string, x: number, y: number, rotation = 0): DefaultTable {
+function _rect6(name: string, x: number, y: number, rotation = 0): DefaultTable {
   return { tableName: name, shape: "rectangle", capacity: 6, widthPx: 60, heightPx: 80, positionX: x, positionY: y, rotation };
 }
 

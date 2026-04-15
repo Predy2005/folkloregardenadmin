@@ -43,7 +43,7 @@ export function StaffInfoForm({ form, watchIsGroup, roleOptions, column }: Staff
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email *</FormLabel>
+                  <FormLabel>Email</FormLabel>
                   <FormControl>
                     <Input type="email" placeholder="email@example.com" {...field} />
                   </FormControl>

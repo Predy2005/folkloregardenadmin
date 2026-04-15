@@ -5,8 +5,7 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import { Button } from "@/shared/components/ui/button";
 import { Label } from "@/shared/components/ui/label";
 import { Badge } from "@/shared/components/ui/badge";
-import { ChevronLeft, ChevronRight, Loader2, Save, StickyNote } from "lucide-react";
-import { cn } from "@/shared/lib/utils";
+import { ChevronRight, Loader2, Save, StickyNote } from "lucide-react";
 
 export default function FloatingNotesPanel() {
   const { notes, updateNote, isDirty, isSaving, lastSaved, saveNotes } = useEventNotes();

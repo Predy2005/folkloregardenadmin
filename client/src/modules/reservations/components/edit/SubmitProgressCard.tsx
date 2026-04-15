@@ -1,13 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Progress } from "@/shared/components/ui/progress";
 import { cn } from "@/shared/lib/utils";
+import type { SubmitProgressCardProps } from "@modules/reservations/types/components/edit/SubmitProgressCard";
 
-export interface SubmitProgressCardProps {
-  isSubmitting: boolean;
-  submitProgress: number;
-  submitResults: { success: boolean; date: string; error?: string }[];
-  reservationCount: number;
-}
+export type { SubmitProgressCardProps };
 
 export function SubmitProgressCard({
   isSubmitting,

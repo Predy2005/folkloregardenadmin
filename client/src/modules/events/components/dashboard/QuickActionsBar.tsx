@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { Banknote, Plus, FileText, UserPlus, CalendarPlus } from "lucide-react";
+import { Banknote, FileText, UserPlus, CalendarPlus } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { QuickAddGuestDialog } from "./QuickAddGuestDialog";
 

@@ -45,12 +45,16 @@ interface DashboardLayoutContextValue {
 
 const DEFAULT_BOX_ORDER = [
   "guests",        // Unified Guest Command Center
+  "floor-plan",    // Read-only floor plan for table service
   "staff-planning",
   "transport",
   "vouchers",
   "expenses",
   "settlement",
 ];
+
+// Boxes that default to full-width in multi-column layouts
+const DEFAULT_FULL_WIDTH_BOXES = new Set(["floor-plan"]);
 
 const DEFAULT_LAYOUT: DashboardLayout = "2col";
 
@@ -182,7 +186,7 @@ export function DashboardLayoutProvider({ children, eventId }: DashboardLayoutPr
   // Reorder using box IDs (more reliable for drag-and-drop)
   const reorderBox = useCallback((activeId: string, overId: string) => {
     setState((prev) => {
-      let workingOrder = [...prev.boxOrder];
+      const workingOrder = [...prev.boxOrder];
 
       // Add missing IDs if they're not in the order
       if (!workingOrder.includes(activeId)) {
@@ -206,7 +210,7 @@ export function DashboardLayoutProvider({ children, eventId }: DashboardLayoutPr
   // Box states
   const getBoxState = useCallback(
     (boxId: string): BoxState => {
-      return state.boxStates[boxId] || { id: boxId, collapsed: false, fullWidth: false };
+      return state.boxStates[boxId] || { id: boxId, collapsed: false, fullWidth: DEFAULT_FULL_WIDTH_BOXES.has(boxId) };
     },
     [state.boxStates]
   );

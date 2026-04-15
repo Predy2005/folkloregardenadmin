@@ -3,9 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
+import { PageHeader } from "@/shared/components/PageHeader";
 import { invalidateContactQueries } from "@/shared/lib/query-helpers";
 import type { Contact, Reservation } from "@shared/types";
-import { RESERVATION_STATUS_LABELS } from "@shared/types";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
@@ -100,7 +100,7 @@ export default function ContactEdit() {
     onError: () => errorToast("Nepodařilo se uložit kontakt"),
   });
 
-  const reservations = reservationsData?.items ?? [];
+  const reservations = useMemo(() => reservationsData?.items ?? [], [reservationsData?.items]);
   const reservationsTotal = reservationsData?.total ?? 0;
 
   // Stats for reservations
@@ -114,14 +114,14 @@ export default function ContactEdit() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/contacts")}>
-            <ArrowLeft className="h-4 w-4 mr-1" /> Zpět
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/contacts")}>
+            <ArrowLeft className="w-5 h-5" />
           </Button>
-          <div>
-            <h1 className="text-2xl font-semibold">{data?.name || "Kontakt"}</h1>
-            {data?.email && <p className="text-sm text-muted-foreground">{data.email}</p>}
-          </div>
+          <PageHeader
+            title={data?.name || "Kontakt"}
+            description={data?.email}
+          />
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => navigate(`/partners/new?fromContact=${id}`)}>

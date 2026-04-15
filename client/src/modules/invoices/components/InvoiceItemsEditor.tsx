@@ -30,7 +30,7 @@ import {
 } from "@/shared/components/ui/popover";
 import { Plus, Trash2, FileText } from "lucide-react";
 import { successToast } from "@/shared/lib/toast-helpers";
-import { formatCurrency, getCurrencySymbol } from "@/shared/lib/formatting";
+import { formatCurrency } from "@/shared/lib/formatting";
 import type { InvoiceItem, Reservation } from "@shared/types";
 import type { InvoiceFormData } from "@modules/invoices/types";
 

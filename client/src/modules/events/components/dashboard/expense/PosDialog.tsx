@@ -63,9 +63,13 @@ interface PosDialogProps {
   onOpenChange: (open: boolean) => void;
   type: "expense" | "income";
   eventId: number;
+  /** Optional — when set, the movement is linked to this table (visible at the table). */
+  eventTableId?: number;
+  /** Optional title prefix shown in the dialog header (e.g. table number). */
+  contextLabel?: string;
 }
 
-export function PosDialog({ open, onOpenChange, type, eventId }: PosDialogProps) {
+export function PosDialog({ open, onOpenChange, type, eventId, eventTableId, contextLabel }: PosDialogProps) {
   const [step, setStep] = useState<PosStep>("category");
   const [amount, setAmount] = useState("0");
   const [category, setCategory] = useState("");
@@ -129,12 +133,12 @@ export function PosDialog({ open, onOpenChange, type, eventId }: PosDialogProps)
 
     if (isExpense) {
       addExpense.mutate(
-        { category, amount: numAmount, description: description || undefined },
+        { category, amount: numAmount, description: description || undefined, eventTableId },
         { onSuccess: () => { resetForm(); onOpenChange(false); } }
       );
     } else {
       addIncome.mutate(
-        { category, amount: numAmount, description: description || undefined },
+        { category, amount: numAmount, description: description || undefined, eventTableId },
         { onSuccess: () => { resetForm(); onOpenChange(false); } }
       );
     }
@@ -165,6 +169,7 @@ export function PosDialog({ open, onOpenChange, type, eventId }: PosDialogProps)
           )}
           <DialogHeader className="flex-1">
             <DialogTitle className="text-white text-lg">
+              {contextLabel && <span className="opacity-80 text-sm mr-2">{contextLabel}</span>}
               {step === "category"
                 ? (isExpense ? "Výdaj — kategorie" : "Příjem — kategorie")
                 : categoryLabel

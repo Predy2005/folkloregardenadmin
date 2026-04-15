@@ -185,7 +185,7 @@ export function BuildingsPage() {
       />
 
       <RoomFormDialog
-        key={roomDialog.room?.id ?? (roomDialog.open ? 'new' : 'closed')}
+        key={roomDialog.room?.id ?? (roomDialog.open ? 'new-room' : 'closed-room')}
         isOpen={roomDialog.open}
         onClose={() => setRoomDialog({ open: false, room: null, buildingId: 0 })}
         room={roomDialog.room}

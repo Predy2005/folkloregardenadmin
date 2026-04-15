@@ -124,7 +124,7 @@ export function StaffFormDialog({
                 name={"email"}
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email *</FormLabel>
+                    <FormLabel>Email</FormLabel>
                     <FormControl>
                       <Input
                         type="email"

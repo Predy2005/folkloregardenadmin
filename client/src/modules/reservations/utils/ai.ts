@@ -65,7 +65,7 @@ export const AiParsedReservationSchema = z.object({
     invoiceEmail: z.string().email().optional(),
     invoicePhone: z.string().optional(),
   }).default({}),
-  extra: z.record(z.any()).optional(),
+  extra: z.record(z.unknown()).optional(),
 });
 
 export type AiParsedReservation = z.infer<typeof AiParsedReservationSchema>;
@@ -167,7 +167,7 @@ async function aiChatCompletion(systemPrompt: string, userMessage: string, onlyP
         server,
         { model: server.model, ...body },
       );
-      console.log('[AI] Server ' + server.endpoint + ' (' + server.model + ') finish_reason=' + finishReason + ', length=' + content.length);
+      console.warn('[AI] Server ' + server.endpoint + ' (' + server.model + ') finish_reason=' + finishReason + ', length=' + content.length);
 
       // If response was truncated (finish_reason=length), try next server with bigger model
       if (finishReason === 'length' && server.priority < AI_SERVERS.length) {
@@ -178,9 +178,10 @@ async function aiChatCompletion(systemPrompt: string, userMessage: string, onlyP
       }
 
       return content;
-    } catch (err: any) {
-      const status = err?.response?.status;
-      const detail = err?.response?.data?.error?.message || err?.message || String(err);
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { status?: number; data?: { error?: { message?: string } } }; message?: string };
+      const status = axiosErr?.response?.status;
+      const detail = axiosErr?.response?.data?.error?.message || axiosErr?.message || String(err);
       console.warn('[AI] Server ' + server.endpoint + ' failed (HTTP ' + (status || 'N/A') + '):', detail);
       // Wrap with more context for user-facing error
       lastError = new Error(
@@ -197,7 +198,7 @@ async function aiChatCompletion(systemPrompt: string, userMessage: string, onlyP
 }
 
 // Utility: try extract JSON object from possibly wrapped content (handles truncated output)
-export function extractFirstJsonObject(text: string): any {
+export function extractFirstJsonObject(text: string): unknown {
   if (!text?.trim()) {
     throw new Error('AI vrátila prázdnou odpověď');
   }
@@ -270,7 +271,7 @@ function repairTruncatedJson(json: string): string | null {
   }
 
   const result = s + closing;
-  console.log(`[AI] Repaired truncated JSON (added "${closing}")`);
+  console.warn(`[AI] Repaired truncated JSON (added "${closing}")`);
   return result;
 }
 
@@ -436,7 +437,7 @@ export function buildMultiReservationSystemPrompt(): string {
 }
 
 // Normalize a reservation entry from AI — maps various field name variants to expected schema
-function normalizeReservationEntry(item: any): any {
+function normalizeReservationEntry(item: Record<string, unknown>): Record<string, unknown> {
   if (!item || typeof item !== 'object') return item;
   return {
     date: item.date || item.reservation_date || item.datum || item.day || null,
@@ -453,7 +454,7 @@ function normalizeReservationEntry(item: any): any {
 }
 
 // Extract first JSON object OR array from AI response
-function extractJsonFromContent(content: string): any {
+function extractJsonFromContent(content: string): unknown {
   if (!content?.trim()) throw new Error('AI vrátila prázdnou odpověď');
   const clean = content.replaceAll(/```[a-z]*\n?|```/gi, '').trim();
 
@@ -489,13 +490,14 @@ function parseMultiReservationResponse(content: string): AiParsedMultiReservatio
   // If AI returned a bare array, unwrap or normalize
   if (Array.isArray(payload)) {
     // Array of full response objects (e.g. [{"contact":{},"reservations":[...]}])
-    if (payload.length > 0 && payload[0]?.reservations) {
+    const first = payload[0] as Record<string, unknown> | undefined;
+    if (payload.length > 0 && first?.reservations) {
       console.warn('[AI] Got array of response objects, unwrapping first');
-      return parseMultiReservationResponse(JSON.stringify(payload[0]));
+      return parseMultiReservationResponse(JSON.stringify(first));
     }
     // Array of reservation entries
     console.warn('[AI] Got array with ' + payload.length + ' items');
-    const normalized = payload.map(normalizeReservationEntry);
+    const normalized = (payload as Record<string, unknown>[]).map(normalizeReservationEntry);
     const arrayResult = AiParsedMultiReservationSchema.safeParse({
       contact: {},
       reservations: normalized,
@@ -508,21 +510,23 @@ function parseMultiReservationResponse(content: string): AiParsedMultiReservatio
     throw new Error('AI vrátila neplatný JSON: ' + content.substring(0, 200));
   }
 
+  const payloadObj = payload as Record<string, unknown>;
+
   // Try multi-reservation format
-  const multiResult = AiParsedMultiReservationSchema.safeParse(payload);
+  const multiResult = AiParsedMultiReservationSchema.safeParse(payloadObj);
   if (multiResult.success) return multiResult.data;
 
   // Maybe the object has a "reservations" key that's valid but contact is missing
-  if (Array.isArray(payload.reservations)) {
+  if (Array.isArray(payloadObj.reservations)) {
     const wrapped = AiParsedMultiReservationSchema.safeParse({
-      contact: payload.contact ?? {},
-      reservations: payload.reservations,
+      contact: payloadObj.contact ?? {},
+      reservations: payloadObj.reservations,
     });
     if (wrapped.success) return wrapped.data;
   }
 
   // Fallback: AI returned single-reservation format — convert it
-  const singleResult = AiParsedReservationSchema.safeParse(payload);
+  const singleResult = AiParsedReservationSchema.safeParse(payloadObj);
   if (singleResult.success) {
     const s = singleResult.data;
     return {
@@ -542,7 +546,7 @@ function parseMultiReservationResponse(content: string): AiParsedMultiReservatio
     };
   }
 
-  const keys = Object.keys(payload).join(', ');
+  const keys = Object.keys(payloadObj).join(', ');
   throw new Error('AI vrátila neočekávaný formát (klíče: ' + (keys || 'žádné') + ')');
 }
 
@@ -623,7 +627,7 @@ function classifyLine(trimmed: string): 'group' | 'date' | 'month' | 'other' {
 }
 
 // Split email text into context header and reservation lines for chunking
-function splitEmailForChunking(text: string): { header: string; reservationLines: string[] } {
+function _splitEmailForChunking(text: string): { header: string; reservationLines: string[] } {
   const lines = text.split('\n');
   const headerLines: string[] = [];
   const reservationLines: string[] = [];
@@ -675,7 +679,7 @@ const CHUNK_SIZE = 10; // Max reservations per AI call
 const MAX_CONCURRENT = 1; // Sequential to avoid overloading server
 
 // Short system prompt for chunk processing (full prompt is too large for some servers)
-function buildChunkSystemPrompt(headerContext: string): string {
+function _buildChunkSystemPrompt(headerContext: string): string {
   const currentYear = new Date().getFullYear();
   return 'Extrahuj rezervace do JSON. Rok ' + currentYear + '. Vrať POUZE JSON bez textu kolem.\n'
     + 'Kontext: ' + headerContext.substring(0, 300) + '\n'
@@ -745,20 +749,21 @@ async function extractEmailMetadata(emailText: string): Promise<EmailMetadata> {
     const content = await aiChatCompletion(prompt, excerpt, true);
     const payload = extractJsonFromContent(content);
     if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
-      defaults.contact = AiMultiReservationContactSchema.parse(payload.contact ?? payload);
-      defaults.adults = payload.adults ?? 0;
-      defaults.children = payload.children ?? 0;
-      defaults.infants = payload.infants ?? 0;
-      defaults.freeTourLeaders = payload.freeTourLeaders ?? payload.free_tour_leaders ?? 0;
-      defaults.freeDrivers = payload.freeDrivers ?? payload.free_drivers ?? 0;
-      defaults.menu = payload.menu ?? null;
-      defaults.pricePerPerson = payload.pricePerPerson ?? payload.price_per_person ?? null;
-      defaults.priceCurrency = payload.priceCurrency ?? payload.price_currency ?? 'CZK';
-      defaults.nationality = payload.nationality ?? defaults.contact.nationality ?? null;
-      defaults.notes = payload.notes ?? null;
+      const obj = payload as Record<string, unknown>;
+      defaults.contact = AiMultiReservationContactSchema.parse(obj.contact ?? payload);
+      defaults.adults = (obj.adults as number) ?? 0;
+      defaults.children = (obj.children as number) ?? 0;
+      defaults.infants = (obj.infants as number) ?? 0;
+      defaults.freeTourLeaders = (obj.freeTourLeaders ?? obj.free_tour_leaders ?? 0) as number;
+      defaults.freeDrivers = (obj.freeDrivers ?? obj.free_drivers ?? 0) as number;
+      defaults.menu = (obj.menu as string) ?? null;
+      defaults.pricePerPerson = (obj.pricePerPerson ?? obj.price_per_person ?? null) as number | null;
+      defaults.priceCurrency = (obj.priceCurrency ?? obj.price_currency ?? 'CZK') as string;
+      defaults.nationality = (obj.nationality as string) ?? defaults.contact.nationality ?? null;
+      defaults.notes = (obj.notes as string) ?? null;
     }
-  } catch (e: any) {
-    console.warn('[AI] Metadata extraction failed:', e?.message);
+  } catch (e: unknown) {
+    console.warn('[AI] Metadata extraction failed:', e instanceof Error ? e.message : String(e));
   }
   return defaults;
 }
@@ -877,15 +882,15 @@ export async function parseMultiReservationWithAI(params: {
   // Strategy 1: Many date patterns (>10) = structured list
   // → Use fast deterministic parser + AI for metadata only
   if (estimatedCount > CHUNK_SIZE) {
-    console.log('[AI] Structured list detected (' + estimatedCount + ' dates), using deterministic parser');
+    console.warn('[AI] Structured list detected (' + estimatedCount + ' dates), using deterministic parser');
     // Try both parsers and use whichever finds more results
     const formatA = parseReservationsDeterministic(text); // "GROUP_CODE\n7-Jun" style
     const formatB = parseTabularReservations(text); // "TOURCODE  DD/MM/YYYY" tabular style
     const reservations = formatA.length >= formatB.length ? formatA : formatB;
-    console.log('[AI] Parser results: formatA=' + formatA.length + ', formatB=' + formatB.length + ', using=' + reservations.length);
+    console.warn('[AI] Parser results: formatA=' + formatA.length + ', formatB=' + formatB.length + ', using=' + reservations.length);
     if (reservations.length > 0) {
       const meta = await extractEmailMetadata(text);
-      console.log('[AI] Deterministic: ' + reservations.length + ' reservations, meta:', JSON.stringify(meta));
+      console.warn('[AI] Deterministic: ' + reservations.length + ' reservations, meta:', JSON.stringify(meta));
       for (const r of reservations) {
         r.adults = meta.adults || r.adults;
         r.children = meta.children || r.children;
@@ -914,15 +919,15 @@ export async function parseMultiReservationWithAI(params: {
   let emailForAi = cleanedEmail;
   if (cleanedEmail.length > maxEmailChars) {
     emailForAi = cleanedEmail.substring(0, maxEmailChars) + '\n\n[... starší část vlákna oříznutá ...]';
-    console.log('[AI] Email truncated from ' + cleanedEmail.length + ' to ' + maxEmailChars + ' chars');
+    console.warn('[AI] Email truncated from ' + cleanedEmail.length + ' to ' + maxEmailChars + ' chars');
   }
-  console.log('[AI] Using full AI parsing (' + emailForAi.length + ' chars, original ' + text.length + ')');
+  console.warn('[AI] Using full AI parsing (' + emailForAi.length + ' chars, original ' + text.length + ')');
   const content = await aiChatCompletion(systemPrompt, emailForAi, true);
   return parseMultiReservationResponse(content);
 }
 
 // Process reservations via structured chunks (group code + date pairs)
-async function processChunkedReservations(
+async function _processChunkedReservations(
   chunkPrompt: string,
   _header: string,
   reservationLines: string[],
@@ -932,21 +937,21 @@ async function processChunkedReservations(
     chunks.push(reservationLines.slice(i, i + CHUNK_SIZE));
   }
 
-  console.log('[AI] Structured chunking: ' + chunks.length + ' chunks of ~' + CHUNK_SIZE);
+  console.warn('[AI] Structured chunking: ' + chunks.length + ' chunks of ~' + CHUNK_SIZE);
 
   const tasks = chunks.map((chunk, idx) => async () => {
     const label = (idx + 1) + '/' + chunks.length;
     const chunkText = chunk.join('\n');
-    console.log('[AI] Chunk ' + label + ': ' + chunk.length + ' entries');
+    console.warn('[AI] Chunk ' + label + ': ' + chunk.length + ' entries');
     const content = await aiChatCompletion(chunkPrompt, chunkText, true);
     return parseMultiReservationResponse(content);
   });
 
-  return mergeChunkResults(await processChunksWithConcurrency(tasks, MAX_CONCURRENT));
+  return _mergeChunkResults(await processChunksWithConcurrency(tasks, MAX_CONCURRENT));
 }
 
 // Fallback: split text into roughly equal parts by lines
-async function processNaiveChunkedReservations(
+async function _processNaiveChunkedReservations(
   chunkPrompt: string,
   text: string,
 ): Promise<AiParsedMultiReservation> {
@@ -964,25 +969,25 @@ async function processNaiveChunkedReservations(
     return parseMultiReservationResponse(content);
   }
 
-  console.log('[AI] Naive chunking: ' + chunks.length + ' chunks of ~' + linesPerChunk + ' lines');
+  console.warn('[AI] Naive chunking: ' + chunks.length + ' chunks of ~' + linesPerChunk + ' lines');
 
   const tasks = chunks.map((chunk, idx) => async () => {
     const label = (idx + 1) + '/' + chunks.length;
-    console.log('[AI] Naive chunk ' + label + ': ' + chunk.length + ' chars');
+    console.warn('[AI] Naive chunk ' + label + ': ' + chunk.length + ' chars');
     const content = await aiChatCompletion(chunkPrompt, chunk, true);
     return parseMultiReservationResponse(content);
   });
 
-  return mergeChunkResults(await processChunksWithConcurrency(tasks, MAX_CONCURRENT));
+  return _mergeChunkResults(await processChunksWithConcurrency(tasks, MAX_CONCURRENT));
 }
 
 // Merge results from multiple chunks
-function mergeChunkResults(results: AiParsedMultiReservation[]): AiParsedMultiReservation {
+function _mergeChunkResults(results: AiParsedMultiReservation[]): AiParsedMultiReservation {
   const merged: AiParsedMultiReservation = {
     contact: results[0].contact,
     reservations: results.flatMap(r => r.reservations),
     priceCurrency: results[0].priceCurrency,
   };
-  console.log('[AI] Merged ' + results.length + ' chunks -> ' + merged.reservations.length + ' total reservations');
+  console.warn('[AI] Merged ' + results.length + ' chunks -> ' + merged.reservations.length + ' total reservations');
   return merged;
 }

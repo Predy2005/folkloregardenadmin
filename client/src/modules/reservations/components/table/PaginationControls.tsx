@@ -1,15 +1,8 @@
 import { Button } from '@/shared/components/ui/button';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import type { PaginationControlsProps } from '@modules/reservations/types/components/table/PaginationControls';
 
-type Props = {
-  page: number;
-  pageSize: number;
-  totalPages: number;
-  totalItems: number;
-  onPageChange: (page: number) => void;
-};
-
-export function PaginationControls({ page, pageSize, totalPages, totalItems, onPageChange }: Props) {
+export function PaginationControls({ page, pageSize, totalPages, totalItems, onPageChange }: PaginationControlsProps) {
   if (totalItems <= 0) return null;
 
   return (

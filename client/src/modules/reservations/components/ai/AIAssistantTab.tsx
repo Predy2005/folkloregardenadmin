@@ -3,25 +3,11 @@ import { Button } from "@/shared/components/ui/button";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { Label } from "@/shared/components/ui/label";
 import { Upload } from "lucide-react";
-import type { AiParsedMultiReservation } from "@modules/reservations/utils/ai";
 import { isAiConfigured } from "@modules/reservations/utils/ai";
 import { ACCEPTED_FILE_TYPES } from "@modules/reservations/utils/fileExtractor";
 import { getCurrencySymbol } from "@/shared/lib/formatting";
 import dayjs from "dayjs";
-
-interface AIAssistantTabProps {
-  aiInput: string;
-  setAiInput: (value: string) => void;
-  aiJson: AiParsedMultiReservation | null;
-  aiError: string | null;
-  aiLoading: boolean;
-  fileProcessing: boolean;
-  fileInputRef: React.RefObject<HTMLInputElement>;
-  handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  handleAiAnalyze: () => void;
-  handleAiApply: () => void;
-  currency: string;
-}
+import type { AIAssistantTabProps } from "@modules/reservations/types/components/ai/AIAssistantTab";
 
 export function AIAssistantTab({
   aiInput,

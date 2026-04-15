@@ -3,7 +3,7 @@
  * All mutations that affect dashboard data should be defined here
  */
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
 import { queryClient } from "@/shared/lib/queryClient";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
@@ -269,6 +269,7 @@ export function useCheckInReservation(eventId: number) {
 // ============================================================================
 
 export function useAddExpense(eventId: number) {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: {
       category: string;
@@ -276,11 +277,16 @@ export function useAddExpense(eventId: number) {
       description?: string;
       paidTo?: string;
       paymentMethod?: string;
+      eventTableId?: number;
     }) => {
       return api.post(`/api/events/${eventId}/expenses`, data);
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       invalidateDashboard(eventId);
+      if (variables.eventTableId) {
+        qc.invalidateQueries({ queryKey: ["table-movements", eventId, variables.eventTableId] });
+      }
+      qc.invalidateQueries({ queryKey: ["table-movements-summary", eventId] });
       successToast("Výdaj přidán");
     },
     onError: (error: Error) => errorToast(error),
@@ -288,17 +294,23 @@ export function useAddExpense(eventId: number) {
 }
 
 export function useAddIncome(eventId: number) {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: {
       category: string;
       amount: number;
       description?: string;
       source?: string;
+      eventTableId?: number;
     }) => {
       return api.post(`/api/events/${eventId}/income`, data);
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       invalidateDashboard(eventId);
+      if (variables.eventTableId) {
+        qc.invalidateQueries({ queryKey: ["table-movements", eventId, variables.eventTableId] });
+      }
+      qc.invalidateQueries({ queryKey: ["table-movements-summary", eventId] });
       successToast("Příjem přidán");
     },
     onError: (error: Error) => errorToast(error),

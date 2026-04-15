@@ -83,6 +83,7 @@ export function RoleFormDialog({ isOpen, setIsOpen, editingRole, onClose }: Role
       });
       expandedModules.closeAll();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, editingRole]);
 
   const createMutation = useMutation({

@@ -5,16 +5,9 @@ import { Button } from '@/shared/components/ui/button';
 import { DialogFooter } from '@/shared/components/ui/dialog';
 import { formatCurrency } from '@/shared/lib/formatting';
 import { useCurrency } from '@/shared/contexts/CurrencyContext';
+import type { ReservationFormFooterProps } from '@modules/reservations/types/components/form/ReservationFormFooter';
 
-type Props = {
-  totalPrice: number;
-  currency?: string;
-  onCancel: () => void;
-  saving: boolean;
-  editing: boolean;
-};
-
-export function ReservationFormFooter({ totalPrice, currency, onCancel, saving, editing }: Props) {
+export function ReservationFormFooter({ totalPrice, currency, onCancel, saving, editing }: ReservationFormFooterProps) {
   const form = useFormContext();
   const { defaultCurrency } = useCurrency();
   const cur = currency ?? defaultCurrency;

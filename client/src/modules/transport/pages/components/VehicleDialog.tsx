@@ -50,7 +50,7 @@ interface VehicleDialogProps {
   onOpenChange: (open: boolean) => void;
   editingVehicle: TransportVehicle | null;
   form: UseFormReturn<VehicleForm>;
-  saveMutation: UseMutationResult<any, Error, VehicleForm>;
+  saveMutation: UseMutationResult<unknown, Error, VehicleForm>;
   onClose: () => void;
 }
 

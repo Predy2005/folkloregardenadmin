@@ -42,7 +42,7 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
             <ThemeToggle />
           </header>
           <main className="flex-1 overflow-y-auto overflow-x-hidden p-6 bg-background">
-            <div className="container_muj mx-auto">
+            <div className="container mx-auto">
               {children}
             </div>
           </main>

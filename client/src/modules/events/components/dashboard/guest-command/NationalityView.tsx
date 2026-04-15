@@ -3,7 +3,6 @@ import { useToggleSet } from "@/shared/hooks/useToggleSet";
 import {
   ChevronDown,
   ChevronRight,
-  Users,
   Phone,
   Minus,
   Plus,
@@ -68,8 +67,6 @@ export function NationalityView({
   const sortedNationalities = Object.entries(breakdown)
     .sort(([, a], [, b]) => b.count - a.count);
 
-  const totalGuests = sortedNationalities.reduce((sum, [, data]) => sum + data.count, 0);
-
   if (sortedNationalities.length === 0) {
     return (
       <div className="p-8 text-center text-muted-foreground">
@@ -87,10 +84,6 @@ export function NationalityView({
         const presencePercentage = data.count > 0
           ? Math.round((data.present / data.count) * 100)
           : 0;
-        const sharePercentage = totalGuests > 0
-          ? Math.round((data.count / totalGuests) * 100)
-          : 0;
-
         // Get reservations for this nationality
         const nationalityReservations = reservations.filter(
           (res) => (res.nationality || "unknown") === nationality

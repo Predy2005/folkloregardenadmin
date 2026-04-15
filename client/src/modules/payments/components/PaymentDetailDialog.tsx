@@ -1,4 +1,5 @@
 import { Button } from "@/shared/components/ui/button";
+import { SectionHeader } from "@/shared/components/SectionHeader";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/shared/components/ui/dialog";
 import { StatusBadge } from "@/shared/components/StatusBadge";
 import { CreditCard, User, Calendar, Phone, Mail, MapPin } from "lucide-react";
@@ -33,7 +34,7 @@ export function PaymentDetailDialog({
           <div className="space-y-6">
             {/* Payment Info */}
             <div className="space-y-4">
-              <h3 className="font-semibold text-lg">Informace o platbě</h3>
+              <SectionHeader title="Informace o platbě" size="lg" />
               <div className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
                 <div>
                   <p className="text-sm text-muted-foreground">Transaction ID</p>
@@ -62,7 +63,7 @@ export function PaymentDetailDialog({
 
             {/* Linked Reservation */}
             <div className="space-y-4">
-              <h3 className="font-semibold text-lg">Přiřazená rezervace</h3>
+              <SectionHeader title="Přiřazená rezervace" size="lg" />
               {linkedReservation ? (
                 <div className="p-4 bg-muted/50 rounded-lg space-y-4">
                   <div className="flex items-center justify-between">

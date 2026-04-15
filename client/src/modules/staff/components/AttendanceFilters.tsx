@@ -2,7 +2,6 @@ import type { StaffMember, Event } from "@shared/types";
 import { Input } from "@/shared/components/ui/input";
 import { Button } from "@/shared/components/ui/button";
 import { Badge } from "@/shared/components/ui/badge";
-import { Checkbox } from "@/shared/components/ui/checkbox";
 import { CheckCircle } from "lucide-react";
 import {
   Select,

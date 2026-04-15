@@ -8,7 +8,7 @@ import { Input } from '@/shared/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/shared/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/shared/components/ui/form';
-import { Plus, Edit, Trash2, Calendar } from 'lucide-react';
+import { Plus, Edit, Trash2 } from 'lucide-react';
 import type { DisabledDate } from '@shared/types';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -68,7 +68,7 @@ type DisabledDateForm = z.infer<typeof disabledDateSchema>;
 
 export default function DisabledDates() {
   const dialog = useFormDialog<DisabledDate>();
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedYear, _setSelectedYear] = useState(new Date().getFullYear());
 
   const czechHolidays = getCzechHolidays(selectedYear);
 
@@ -135,16 +135,6 @@ export default function DisabledDates() {
     },
   });
 
-  const handleCreate = () => {
-    form.reset({
-      dateFrom: '',
-      dateTo: '',
-      reason: '',
-      project: 'reservations',
-    });
-    dialog.openCreate();
-  };
-
   const handleEdit = (date: DisabledDate) => {
     form.reset({
       dateFrom: date.dateFrom,
@@ -190,8 +180,6 @@ export default function DisabledDates() {
 
   const handleAddDateRange = () => {
     const dateFrom = form.getValues('dateFrom');
-    const dateTo = form.getValues('dateTo');
-
     if (!dateFrom) {
       errorToast('Vyplňte alespoň datum "Od"');
       return;

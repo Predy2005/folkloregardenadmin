@@ -27,7 +27,6 @@ import {Plus, Loader2, AlertTriangle} from "lucide-react";
 import {Label} from "@/shared/components/ui/label";
 import {PageHeader} from "@/shared/components/PageHeader";
 import {successToast, errorToast} from "@/shared/lib/toast-helpers";
-import {Badge} from "@/shared/components/ui/badge";
 import {useAuth} from "@/modules/auth/contexts/AuthContext";
 import { filterAndSortEvents } from "../utils/eventFilters";
 import { EventFilters } from "../components/EventFilters";
@@ -167,7 +166,6 @@ export default function Events() {
                         isSuperAdmin={isSuperAdmin} selectedIds={selectedIds}
                         onToggleSelect={toggleSelect} onToggleSelectAll={toggleSelectAll}
                         onDashboard={(event) => setLocation(`/events/${event.id}/dashboard`)}
-                        onView={(event) => { setViewingEvent(event); setIsViewOpen(true); }}
                         onEdit={(event) => setLocation(`/events/${event.id}/edit`)}
                         onDelete={(id) => handleDelete(id)}
                     />

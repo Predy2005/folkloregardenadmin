@@ -48,7 +48,7 @@ export default function TransportCompaniesPage() {
     queryFn: () => api.get<TransportCompany[]>("/api/transport"),
   });
 
-  const { deleteMutation } = useCrudMutations<any>({
+  const { deleteMutation } = useCrudMutations<Record<string, unknown>>({
     endpoint: "/api/transport",
     queryKey: ["/api/transport"],
     entityName: "Dopravce",

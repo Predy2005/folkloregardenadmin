@@ -4,6 +4,7 @@ import { api } from "@/shared/lib/api";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { formatCurrency } from "@/shared/lib/formatting";
 import { useCurrency } from "@/shared/contexts/CurrencyContext";
+import { SectionHeader } from "@/shared/components/SectionHeader";
 import { CurrencySelect } from "@/shared/components/CurrencySelect";
 import type {
   EventTransport, TransportCompany,
@@ -205,7 +206,7 @@ export function TransportTab({ eventId }: TransportTabProps) {
 
       {/* Table */}
       <div className="flex justify-between items-center">
-        <h3 className="font-semibold">Doprava k akci</h3>
+        <SectionHeader title="Doprava k akci" />
         <Button size="sm" onClick={openAdd}>
           <Plus className="h-4 w-4 mr-1" /> Přidat dopravu
         </Button>
@@ -277,7 +278,7 @@ export function TransportTab({ eventId }: TransportTabProps) {
       {/* Reservation transfers (from reservations linked to this event) */}
       {reservationTransfers.length > 0 && (
         <div className="space-y-2 pt-4 border-t">
-          <h3 className="font-semibold text-sm text-muted-foreground">Doprava z rezervací ({reservationTransfers.length})</h3>
+          <SectionHeader title={`Doprava z rezervací (${reservationTransfers.length})`} size="sm" />
           <Table>
             <TableHeader>
               <TableRow>

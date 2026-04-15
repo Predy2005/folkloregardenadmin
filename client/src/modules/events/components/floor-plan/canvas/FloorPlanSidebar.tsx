@@ -1,9 +1,10 @@
 import { useState, useMemo, useCallback } from "react";
-import { Search, X, ChevronDown, ChevronRight, Users, UserPlus, Armchair } from "lucide-react";
+import { Search, X, ChevronDown, ChevronRight, Armchair, GripVertical, Baby, Car, Flag } from "lucide-react";
 import { Input } from "@/shared/components/ui/input";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { ScrollArea } from "@/shared/components/ui/scroll-area";
+import { Checkbox } from "@/shared/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/components/ui/select";
 import { useIsTouchDevice } from "@/hooks/use-mobile";
 import type { EventGuest, EventTable, Room } from "@shared/types";
@@ -40,6 +41,8 @@ export function FloorPlanSidebar({
   const [nationalityFilter, setNationalityFilter] = useState("all");
   const [groupMode, setGroupMode] = useState<GroupMode>("reservation");
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [selectedGuestIds, setSelectedGuestIds] = useState<Set<number>>(new Set());
+  const [lastClickedGuestId, setLastClickedGuestId] = useState<number | null>(null);
 
   const unassignedGuests = useMemo(
     () => guests.filter((g) => !g.eventTableId),
@@ -49,7 +52,9 @@ export function FloorPlanSidebar({
   const nationalities = useMemo(() => {
     const nats = new Map<string, number>();
     unassignedGuests.forEach((g) => {
-      if (g.nationality) nats.set(g.nationality, (nats.get(g.nationality) || 0) + 1);
+      // Trim + non-empty guard: SelectItem value MUST NOT be an empty string.
+      const key = g.nationality?.trim();
+      if (key) nats.set(key, (nats.get(key) || 0) + 1);
     });
     return Array.from(nats.entries()).sort((a, b) => b[1] - a[1]);
   }, [unassignedGuests]);
@@ -176,8 +181,66 @@ export function FloorPlanSidebar({
 
   const isTouch = useIsTouchDevice();
 
+  // All unassigned guest IDs in display order (flat list across all groups)
+  const orderedUnassignedIds = useMemo(
+    () => groups.flatMap((g) => g.guests.filter((gu) => !gu.eventTableId).map((gu) => gu.id)),
+    [groups]
+  );
+
+  const handleGuestClick = (guestId: number, shiftKey: boolean) => {
+    if (shiftKey && lastClickedGuestId !== null) {
+      // Shift+click — select range
+      const list = orderedUnassignedIds;
+      const fromIdx = list.indexOf(lastClickedGuestId);
+      const toIdx = list.indexOf(guestId);
+      if (fromIdx !== -1 && toIdx !== -1) {
+        const start = Math.min(fromIdx, toIdx);
+        const end = Math.max(fromIdx, toIdx);
+        setSelectedGuestIds((prev) => {
+          const next = new Set(prev);
+          for (let i = start; i <= end; i++) next.add(list[i]);
+          return next;
+        });
+        setLastClickedGuestId(guestId);
+        return;
+      }
+    }
+    // Normal click — toggle single
+    setSelectedGuestIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(guestId)) next.delete(guestId);
+      else next.add(guestId);
+      return next;
+    });
+    setLastClickedGuestId(guestId);
+  };
+
+  const selectGroupGuests = (groupGuests: EventGuest[]) => {
+    const ids = groupGuests.filter((g) => !g.eventTableId).map((g) => g.id);
+    const allSelected = ids.every((id) => selectedGuestIds.has(id));
+    setSelectedGuestIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => (allSelected ? next.delete(id) : next.add(id)));
+      return next;
+    });
+  };
+
   const handleDragStart = (e: React.DragEvent, guestId: number) => {
-    e.dataTransfer.setData("guestId", String(guestId));
+    // If this guest is part of a selection, drag all selected
+    if (selectedGuestIds.has(guestId) && selectedGuestIds.size > 1) {
+      e.dataTransfer.setData("guestIds", JSON.stringify(Array.from(selectedGuestIds)));
+    } else {
+      e.dataTransfer.setData("guestId", String(guestId));
+    }
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleGroupDragStart = (e: React.DragEvent, groupGuests: EventGuest[]) => {
+    // Drag selected guests from this group, or all unassigned if none selected
+    const unassigned = groupGuests.filter((g) => !g.eventTableId);
+    const selectedInGroup = unassigned.filter((g) => selectedGuestIds.has(g.id));
+    const ids = selectedInGroup.length > 0 ? selectedInGroup.map((g) => g.id) : unassigned.map((g) => g.id);
+    e.dataTransfer.setData("guestIds", JSON.stringify(ids));
     e.dataTransfer.effectAllowed = "move";
   };
 
@@ -201,12 +264,16 @@ export function FloorPlanSidebar({
           </div>
           <div className="space-y-1 max-h-32 overflow-y-auto">
             {selectedTableGuests.map((g) => (
-              <div key={g.id} className="flex items-center justify-between text-xs bg-white dark:bg-zinc-800 rounded px-2 py-1">
-                <span>
+              <div key={g.id} className="flex items-center gap-1.5 text-xs bg-white dark:bg-zinc-800 rounded px-2 py-1">
+                {g.type === "child" && <span title="Dítě" className="shrink-0 text-orange-500"><Baby className="h-3 w-3" /></span>}
+                {g.type === "infant" && <span title="Miminko" className="shrink-0 text-pink-400"><Baby className="h-3 w-3" /></span>}
+                {g.type === "driver" && <span title="Řidič" className="shrink-0 text-blue-500"><Car className="h-3 w-3" /></span>}
+                {g.type === "guide" && <span title="Průvodce" className="shrink-0 text-green-600"><Flag className="h-3 w-3" /></span>}
+                <span className="flex-1 truncate">
                   {g.firstName} {g.lastName}
                   {g.nationality && <span className="text-muted-foreground ml-1">({g.nationality})</span>}
                 </span>
-                <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => onUnassignGuest(g.id)}>
+                <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => onUnassignGuest(g.id)}>
                   <X className="h-3 w-3" />
                 </Button>
               </div>
@@ -329,6 +396,23 @@ export function FloorPlanSidebar({
             </Button>
           )}
         </div>
+
+        {/* Selection indicator */}
+        {!isTouch && selectedGuestIds.size > 0 && (
+          <div className="flex items-center gap-2 bg-primary/10 rounded px-2 py-1">
+            <span className="text-xs font-medium flex-1">
+              Vybráno: {selectedGuestIds.size} hostů
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-5 text-xs px-1"
+              onClick={() => setSelectedGuestIds(new Set())}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Grouped guest list */}
@@ -340,17 +424,38 @@ export function FloorPlanSidebar({
 
             return (
               <div key={groupKey} className="rounded-md border bg-background">
-                {/* Group header */}
+                {/* Group header — draggable to assign group to table */}
                 <div
-                  className="flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 select-none"
+                  className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-muted/50 select-none ${
+                    !isTouch && group.guests.some((g) => !g.eventTableId) ? "cursor-grab active:cursor-grabbing" : ""
+                  }`}
+                  draggable={!isTouch && group.guests.some((g) => !g.eventTableId)}
+                  onDragStart={!isTouch ? (e) => handleGroupDragStart(e, group.guests) : undefined}
                   onClick={() => toggleGroup(groupKey)}
                 >
+                  {/* Group select checkbox */}
+                  {!isTouch && (() => {
+                    const unassignedIds = group.guests.filter((g) => !g.eventTableId).map((g) => g.id);
+                    const selectedCount = unassignedIds.filter((id) => selectedGuestIds.has(id)).length;
+                    const allSelected = unassignedIds.length > 0 && selectedCount === unassignedIds.length;
+                    const someSelected = selectedCount > 0 && !allSelected;
+                    return unassignedIds.length > 0 ? (
+                      <Checkbox
+                        checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                        onCheckedChange={(_e) => { selectGroupGuests(group.guests); }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-3.5 w-3.5 shrink-0"
+                      />
+                    ) : null;
+                  })()}
                   {isCollapsed ? (
                     <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   ) : (
                     <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   )}
-                  <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  {!isTouch && group.guests.some((g) => !g.eventTableId) && (
+                    <GripVertical className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  )}
                   <span className="text-xs font-medium truncate flex-1">{group.label}</span>
                   <Badge variant="outline" className="text-[10px] px-1 h-4 shrink-0">
                     {group.guests.length}
@@ -378,27 +483,52 @@ export function FloorPlanSidebar({
                   <div className="px-1.5 pb-1.5 space-y-0.5">
                     {group.guests.map((guest) => {
                       const canAssign = selectedTable && selectedTableGuests.length < selectedTable.capacity;
+                      const isChecked = selectedGuestIds.has(guest.id);
                       return (
                         <div
                           key={guest.id}
                           draggable={!isTouch}
                           onDragStart={!isTouch ? (e) => handleDragStart(e, guest.id) : undefined}
-                          onClick={() => handleGuestTap(guest.id)}
+                          onClick={(e) => {
+                            if (isTouch) {
+                              handleGuestTap(guest.id);
+                            } else {
+                              handleGuestClick(guest.id, e.shiftKey);
+                            }
+                          }}
                           className={`flex items-center gap-1.5 px-1.5 rounded text-xs group ${
                             isTouch
                               ? `py-2 min-h-[44px] bg-muted/30 ${canAssign ? "active:bg-primary/20 cursor-pointer" : ""}`
-                              : "py-1 bg-muted/30 hover:bg-muted cursor-grab active:cursor-grabbing"
+                              : `py-1 cursor-pointer select-none ${isChecked ? "bg-primary/10 ring-1 ring-primary/30" : "bg-muted/30"} hover:bg-muted/60`
                           }`}
                         >
+                          {!isTouch && (
+                            <div className={`w-3 h-3 shrink-0 rounded-sm border flex items-center justify-center ${
+                              isChecked ? "bg-primary border-primary" : "border-muted-foreground/40"
+                            }`}>
+                              {isChecked && (
+                                <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                                  <path d="M1.5 4L3 5.5L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              )}
+                            </div>
+                          )}
                           <div className="flex-1 min-w-0 truncate">
                             {guest.firstName || guest.lastName
                               ? `${guest.firstName ?? ""} ${guest.lastName ?? ""}`.trim()
                               : `#${guest.id}`}
                           </div>
                           {guest.type === "child" && (
-                            <Badge variant="outline" className="text-[9px] px-0.5 h-3.5 shrink-0">
-                              dítě
-                            </Badge>
+                            <span title="Dítě" className="shrink-0 text-orange-500"><Baby className="h-3.5 w-3.5" /></span>
+                          )}
+                          {guest.type === "infant" && (
+                            <span title="Miminko" className="shrink-0 text-pink-400"><Baby className="h-3.5 w-3.5" /></span>
+                          )}
+                          {guest.type === "driver" && (
+                            <span title="Řidič" className="shrink-0 text-blue-500"><Car className="h-3.5 w-3.5" /></span>
+                          )}
+                          {guest.type === "guide" && (
+                            <span title="Průvodce" className="shrink-0 text-green-600"><Flag className="h-3.5 w-3.5" /></span>
                           )}
                           {/* Quick assign button — desktop only (touch uses tap) */}
                           {!isTouch && canAssign && (
@@ -406,7 +536,7 @@ export function FloorPlanSidebar({
                               variant="ghost"
                               size="icon"
                               className="h-4 w-4 shrink-0 opacity-0 group-hover:opacity-100"
-                              onClick={() => onAssignGuest(guest.id, selectedTable!.id)}
+                              onClick={(e) => { e.stopPropagation(); onAssignGuest(guest.id, selectedTable!.id); }}
                             >
                               +
                             </Button>

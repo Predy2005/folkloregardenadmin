@@ -142,6 +142,9 @@ class Reservation
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $paymentNote = null;
 
+    #[ORM\Column(type: Types::STRING, length: 3, options: ['default' => 'CZK'])]
+    private string $currency = 'CZK';
+
     #[ORM\Column(name: 'partner_id', type: Types::INTEGER, nullable: true)]
     private ?int $partnerId = null;
 
@@ -619,6 +622,9 @@ class Reservation
     {
         return $this->paymentNote;
     }
+
+    public function getCurrency(): string { return $this->currency; }
+    public function setCurrency(string $currency): static { $this->currency = $currency; return $this; }
 
     public function setPaymentNote(?string $paymentNote): static
     {

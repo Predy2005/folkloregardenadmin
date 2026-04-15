@@ -5,7 +5,8 @@ import { z } from "zod";
 export const staffSchema = z.object({
   firstName: z.string().min(1, "Zadejte jméno"),
   lastName: z.string().min(1, "Zadejte příjmení"),
-  email: z.string().email("Zadejte platný email"),
+  // Email je nepovinný; prázdný string projde, jinak musí být validní e-mail.
+  email: z.string().trim().email("Zadejte platný email").optional().or(z.literal("")),
   phone: z.string().optional(),
   emergencyContact: z.string().optional(),
   dateOfBirth: z.string().optional(),

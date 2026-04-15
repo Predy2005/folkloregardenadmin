@@ -28,8 +28,6 @@ export function FloorPlanTemplatesPage() {
   const deleteTemplate = useDeleteTemplate();
   const duplicateTemplate = useDuplicateTemplate();
 
-  const allRooms = buildings.flatMap((b: Building) => b.rooms ?? []);
-
   const [formDialog, setFormDialog] = useState<{ open: boolean; template: FloorPlanTemplate | null }>({ open: false, template: null });
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; id: number; name: string }>({ open: false, id: 0, name: "" });
   const [seedingDialog, setSeedingDialog] = useState(false);
@@ -130,7 +128,7 @@ export function FloorPlanTemplatesPage() {
           variant: result.errors.length > 0 ? "destructive" : "default",
         });
       }
-    } catch (err) {
+    } catch {
       toast({ title: "Chyba při vytváření šablon", variant: "destructive" });
     }
   };

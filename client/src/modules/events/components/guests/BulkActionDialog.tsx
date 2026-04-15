@@ -6,7 +6,6 @@ import { api } from "@/shared/lib/api";
 import { GUEST_TYPE_LABELS } from "./constants";
 import { NationalityInput } from "@/shared/components/NationalityInput";
 import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
 import {
   Select,
   SelectContent,

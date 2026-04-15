@@ -30,6 +30,16 @@ class CashboxTransfer
     #[ORM\Column(type: Types::STRING, length: 3, options: ['default' => 'CZK'])]
     private string $currency = 'CZK';
 
+    // Cross-currency transfer support
+    #[ORM\Column(name: 'exchange_rate', type: Types::DECIMAL, precision: 15, scale: 6, nullable: true)]
+    private ?string $exchangeRate = null;
+
+    #[ORM\Column(name: 'target_amount', type: Types::DECIMAL, precision: 15, scale: 2, nullable: true)]
+    private ?string $targetAmount = null;
+
+    #[ORM\Column(name: 'target_currency', type: Types::STRING, length: 3, nullable: true)]
+    private ?string $targetCurrency = null;
+
     #[ORM\Column(type: Types::STRING, length: 500, nullable: true)]
     private ?string $description = null;
 
@@ -78,6 +88,15 @@ class CashboxTransfer
 
     public function getCurrency(): string { return $this->currency; }
     public function setCurrency(string $currency): self { $this->currency = $currency; return $this; }
+
+    public function getExchangeRate(): ?string { return $this->exchangeRate; }
+    public function setExchangeRate(?string $v): self { $this->exchangeRate = $v; return $this; }
+
+    public function getTargetAmount(): ?string { return $this->targetAmount; }
+    public function setTargetAmount(?string $v): self { $this->targetAmount = $v; return $this; }
+
+    public function getTargetCurrency(): ?string { return $this->targetCurrency; }
+    public function setTargetCurrency(?string $v): self { $this->targetCurrency = $v; return $this; }
 
     public function getDescription(): ?string { return $this->description; }
     public function setDescription(?string $description): self { $this->description = $description; return $this; }

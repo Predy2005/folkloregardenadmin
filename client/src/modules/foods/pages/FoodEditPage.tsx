@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useLocation, useRoute } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
+import { PageHeader } from "@/shared/components/PageHeader";
 import { queryClient } from "@/shared/lib/queryClient";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { useForm } from "react-hook-form";
@@ -102,14 +103,10 @@ export default function FoodEdit() {
           <Button variant="ghost" size="icon" onClick={() => navigate("/foods")}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold">
-              {isEdit ? `Upravit: ${food?.name}` : "Nové jídlo"}
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              {isEdit ? "Úprava existujícího jídla" : "Vytvoření nového jídla do nabídky"}
-            </p>
-          </div>
+          <PageHeader
+            title={isEdit ? `Upravit: ${food?.name}` : "Nové jídlo"}
+            description={isEdit ? "Úprava existujícího jídla" : "Vytvoření nového jídla do nabídky"}
+          />
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => navigate("/foods")}>

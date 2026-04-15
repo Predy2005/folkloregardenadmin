@@ -1,23 +1,12 @@
 import { Loader2, CreditCard, Receipt, FileText, Banknote, CheckCircle } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
+import { SectionHeader } from '@/shared/components/SectionHeader';
 import { formatCurrency } from '@/shared/lib/formatting';
-import type { PaymentSummary } from '@shared/types';
 import {
   RESERVATION_PAYMENT_STATUS_LABELS,
   RESERVATION_PAYMENT_METHOD_LABELS,
 } from '@shared/types';
-
-type Props = {
-  paymentSummary: PaymentSummary | undefined;
-  isLoading: boolean;
-  isAnyMutationPending: boolean;
-  onCreateDeposit: (percent: number) => void;
-  onCreateFinalInvoice: () => void;
-  onMarkAsPaid: (method: string) => void;
-  isDepositPending: boolean;
-  isFinalPending: boolean;
-  isMarkPaidPending: boolean;
-};
+import type { PaymentSummarySectionProps } from '@modules/reservations/types/components/detail/PaymentSummarySection';
 
 export function PaymentSummarySection({
   paymentSummary,
@@ -29,10 +18,10 @@ export function PaymentSummarySection({
   isDepositPending,
   isFinalPending,
   isMarkPaidPending,
-}: Props) {
+}: PaymentSummarySectionProps) {
   return (
     <div>
-      <h3 className="font-semibold mb-4">Platby a faktury</h3>
+      <SectionHeader title="Platby a faktury" className="mb-4" />
 
       {isLoading ? (
         <div className="flex justify-center py-4">

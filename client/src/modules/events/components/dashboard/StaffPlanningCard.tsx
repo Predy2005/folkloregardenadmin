@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { UserCheck, Phone, RefreshCw } from "lucide-react";
+import { Phone, RefreshCw } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";

@@ -1,16 +1,13 @@
 import dayjs from 'dayjs';
 import { StatusBadge } from '@/shared/components/StatusBadge';
-import type { Reservation } from '@shared/types';
+import { SectionHeader } from '@/shared/components/SectionHeader';
+import type { ReservationInfoSectionProps } from '@modules/reservations/types/components/detail/ReservationInfoSection';
 
-type Props = {
-  reservation: Reservation;
-};
-
-export function ReservationInfoSection({ reservation }: Props) {
+export function ReservationInfoSection({ reservation }: ReservationInfoSectionProps) {
   return (
     <>
       <div>
-        <h3 className="font-semibold mb-3">Základní informace</h3>
+        <SectionHeader title="Základní informace" className="mb-3" />
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <p className="text-muted-foreground">Datum</p>
@@ -42,7 +39,7 @@ export function ReservationInfoSection({ reservation }: Props) {
       </div>
 
       <div>
-        <h3 className="font-semibold mb-3">Kontaktní údaje</h3>
+        <SectionHeader title="Kontaktní údaje" className="mb-3" />
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <p className="text-muted-foreground">Jméno</p>
@@ -77,7 +74,7 @@ export function ReservationInfoSection({ reservation }: Props) {
 
       {!reservation.invoiceSameAsContact && reservation.invoiceName && (
         <div>
-          <h3 className="font-semibold mb-3">Fakturační údaje</h3>
+          <SectionHeader title="Fakturační údaje" className="mb-3" />
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <p className="text-muted-foreground">Jméno</p>
@@ -107,7 +104,7 @@ export function ReservationInfoSection({ reservation }: Props) {
 
       {reservation.transferSelected && (
         <div>
-          <h3 className="font-semibold mb-3">Transfer</h3>
+          <SectionHeader title="Transfer" className="mb-3" />
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <p className="text-muted-foreground">Počet osob</p>

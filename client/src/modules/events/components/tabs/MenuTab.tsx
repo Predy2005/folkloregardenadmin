@@ -51,7 +51,7 @@ export default function MenuTab({ eventId, eventType, menu, isLoading }: MenuTab
     queryFn: () => api.get(`/api/events/${eventId}/guests/by-reservation`),
   });
 
-  const reservations = reservationsData?.groups || [];
+  const reservations = useMemo(() => reservationsData?.groups || [], [reservationsData?.groups]);
 
   const isWedding = eventType === "svatba";
 

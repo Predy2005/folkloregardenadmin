@@ -57,6 +57,12 @@ class CashMovement
     #[ORM\Column(name: 'event_staff_assignment_id', type: Types::INTEGER, nullable: true)]
     private ?int $eventStaffAssignmentId = null;
 
+    #[ORM\Column(name: 'event_table_id', type: Types::INTEGER, nullable: true)]
+    private ?int $eventTableId = null;
+
+    #[ORM\Column(name: 'event_id', type: Types::INTEGER, nullable: true)]
+    private ?int $eventId = null;
+
     #[ORM\Column(name: 'created_at', type: Types::DATETIME_MUTABLE)]
     private \DateTimeInterface $createdAt;
 
@@ -105,6 +111,12 @@ class CashMovement
 
     public function getEventStaffAssignmentId(): ?int { return $this->eventStaffAssignmentId; }
     public function setEventStaffAssignmentId(?int $v): self { $this->eventStaffAssignmentId = $v; return $this; }
+
+    public function getEventTableId(): ?int { return $this->eventTableId; }
+    public function setEventTableId(?int $v): self { $this->eventTableId = $v; return $this; }
+
+    public function getEventId(): ?int { return $this->eventId; }
+    public function setEventId(?int $v): self { $this->eventId = $v; return $this; }
 
     public function getCreatedAt(): \DateTimeInterface { return $this->createdAt; }
 
