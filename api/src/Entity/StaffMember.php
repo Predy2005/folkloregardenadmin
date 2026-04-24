@@ -68,6 +68,10 @@ class StaffMember
     #[ORM\Column(type: Types::DATETIME_MUTABLE)]
     private \DateTimeInterface $updatedAt;
 
+    #[ORM\OneToOne(inversedBy: 'staffMember', targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'user_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?User $user = null;
+
     public function __construct()
     {
         $this->createdAt = new \DateTime();
@@ -115,4 +119,7 @@ class StaffMember
     public function setCreatedAt(\DateTimeInterface $dt): self { $this->createdAt = $dt; return $this; }
     public function getUpdatedAt(): \DateTimeInterface { return $this->updatedAt; }
     public function setUpdatedAt(\DateTimeInterface $dt): self { $this->updatedAt = $dt; return $this; }
+
+    public function getUser(): ?User { return $this->user; }
+    public function setUser(?User $user): self { $this->user = $user; return $this; }
 }

@@ -43,6 +43,10 @@ security:
     - { path: ^/public-api, roles: IS_AUTHENTICATED_ANONYMOUSLY }
     - { path: ^/api/test/, roles: ROLE_ADMIN }
     - { path: ^/api/payment/test, roles: ROLE_ADMIN }
+    - { path: ^/api/mobile/auth/login, roles: IS_AUTHENTICATED_ANONYMOUSLY }
+    - { path: ^/api/mobile/auth/pin-login, roles: IS_AUTHENTICATED_ANONYMOUSLY }
+    - { path: ^/api/mobile/auth/refresh, roles: IS_AUTHENTICATED_ANONYMOUSLY }
+    - { path: ^/api/mobile/auth/logout, roles: IS_AUTHENTICATED_ANONYMOUSLY }
     - { path: ^/api/, roles: IS_AUTHENTICATED_FULLY }
     - { path: ^/smart-drive/, roles: IS_AUTHENTICATED_FULLY }
     - { path: ^/payment/notify, roles: IS_AUTHENTICATED_ANONYMOUSLY }

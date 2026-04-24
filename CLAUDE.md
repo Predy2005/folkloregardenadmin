@@ -33,6 +33,20 @@ php bin/console doctrine:migrations:migrate   # Apply migrations
 php bin/console make:entity --regenerate App\\Entity  # Regenerate getters/setters
 ```
 
+**Production migrace (bez `php bin/console`):** po každé nové Doctrine migraci
+v `api/migrations/` **musí** vzniknout i PHP ekvivalent v
+[`api/prod_migrations/`](api/prod_migrations/README.md). Produkční server
+často nemá CLI/console přístup, takže se migrace spouští přes prohlížeč
+(`run.php?token=...`) nebo SSH (`php run.php`). Každý skript je idempotentní,
+běží v transakci, zapisuje se do `doctrine_migration_versions`, aby Doctrine
+migraci znovu nespustil. **Konvence:** název souboru = timestamp Doctrine verze,
+např. `20260423100000_mobile_auth.php` ← `Version20260423100000.php`.
+
+**Destructive ops:** úplný reset schématu (všechny tabulky) najdeš v
+[`docs/ops/wipe-production-db.md`](docs/ops/wipe-production-db.md) spolu se
+SQL skriptem [`sql/wipe_all_tables.sql`](sql/wipe_all_tables.sql). **Nikdy
+nespouštět bez aktuální zálohy produkce.**
+
 ### Testing
 ```bash
 cd api

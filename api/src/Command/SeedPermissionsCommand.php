@@ -124,6 +124,22 @@ class SeedPermissionsCommand extends Command
             'description' => 'Druhy rezervací',
             'actions' => ['read', 'create', 'update', 'delete'],
         ],
+        'mobile_self' => [
+            'description' => 'Mobilní aplikace – profil',
+            'actions' => ['read'],
+        ],
+        'mobile_events' => [
+            'description' => 'Mobilní aplikace – přiřazené eventy',
+            'actions' => ['read', 'tables', 'menu'],
+        ],
+        'mobile_attendance' => [
+            'description' => 'Mobilní aplikace – docházka personálu',
+            'actions' => ['record'],
+        ],
+        'mobile_transport' => [
+            'description' => 'Mobilní aplikace – transport řidiče',
+            'actions' => ['read', 'update'],
+        ],
     ];
 
     private const ROLES = [
@@ -271,6 +287,42 @@ class SeedPermissionsCommand extends Command
                 'dashboard.read',
                 'reservations.read',
                 'events.read',
+            ],
+        ],
+        'STAFF_WAITER' => [
+            'displayName' => 'Číšník (mobil)',
+            'description' => 'Mobilní role – číšník vidí přiřazené eventy včetně stolů a rozsazení',
+            'priority' => 20,
+            'isSystem' => true,
+            'permissions' => [
+                'mobile_self.read',
+                'mobile_events.read',
+                'mobile_events.tables',
+                'mobile_attendance.record',
+            ],
+        ],
+        'STAFF_COOK' => [
+            'displayName' => 'Kuchař (mobil)',
+            'description' => 'Mobilní role – kuchař vidí přiřazené eventy a menu/porce',
+            'priority' => 20,
+            'isSystem' => true,
+            'permissions' => [
+                'mobile_self.read',
+                'mobile_events.read',
+                'mobile_events.menu',
+                'mobile_attendance.record',
+            ],
+        ],
+        'STAFF_DRIVER' => [
+            'displayName' => 'Řidič (mobil)',
+            'description' => 'Mobilní role – řidič vidí přiřazené transporty a aktualizuje jejich stav',
+            'priority' => 20,
+            'isSystem' => true,
+            'permissions' => [
+                'mobile_self.read',
+                'mobile_transport.read',
+                'mobile_transport.update',
+                'mobile_attendance.record',
             ],
         ],
     ];
@@ -474,6 +526,10 @@ class SeedPermissionsCommand extends Command
             'send_email' => 'Odeslání emailu',
             'redeem' => 'Uplatnění',
             'close' => 'Uzavření',
+            'reopen' => 'Znovuotevření',
+            'tables' => 'Stoly a rozsazení',
+            'menu' => 'Menu a porce',
+            'record' => 'Záznam',
             default => ucfirst($action),
         };
     }

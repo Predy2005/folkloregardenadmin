@@ -55,12 +55,31 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(mappedBy: 'user', targetEntity: UserPermission::class, orphanRemoval: true, cascade: ['persist', 'remove'])]
     private Collection $userPermissions;
 
+    #[ORM\Column(name: 'mobile_pin', type: 'string', length: 255, nullable: true)]
+    private ?string $mobilePin = null;
+
+    #[ORM\Column(name: 'pin_device_id', type: 'string', length: 255, nullable: true)]
+    private ?string $pinDeviceId = null;
+
+    #[ORM\Column(name: 'pin_enabled', type: 'boolean', options: ['default' => false])]
+    private bool $pinEnabled = false;
+
+    #[ORM\OneToOne(mappedBy: 'user', targetEntity: StaffMember::class)]
+    private ?StaffMember $staffMember = null;
+
+    #[ORM\OneToOne(mappedBy: 'user', targetEntity: TransportDriver::class)]
+    private ?TransportDriver $transportDriver = null;
+
+    #[ORM\OneToMany(mappedBy: 'user', targetEntity: UserDevice::class, orphanRemoval: true, cascade: ['persist', 'remove'])]
+    private Collection $devices;
+
     public function __construct()
     {
         $this->createdAt = new \DateTime();
         $this->updatedAt = new \DateTime();
         $this->userRoles = new ArrayCollection();
         $this->userPermissions = new ArrayCollection();
+        $this->devices = new ArrayCollection();
     }
 
     #[ORM\PreUpdate]
@@ -386,6 +405,96 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         // Clear any temporary sensitive data
     }
 
+    public function getMobilePin(): ?string
+    {
+        return $this->mobilePin;
+    }
+
+    public function setMobilePin(?string $mobilePin): self
+    {
+        $this->mobilePin = $mobilePin;
+        return $this;
+    }
+
+    public function getPinDeviceId(): ?string
+    {
+        return $this->pinDeviceId;
+    }
+
+    public function setPinDeviceId(?string $pinDeviceId): self
+    {
+        $this->pinDeviceId = $pinDeviceId;
+        return $this;
+    }
+
+    public function isPinEnabled(): bool
+    {
+        return $this->pinEnabled;
+    }
+
+    public function setPinEnabled(bool $pinEnabled): self
+    {
+        $this->pinEnabled = $pinEnabled;
+        return $this;
+    }
+
+    public function getStaffMember(): ?StaffMember
+    {
+        return $this->staffMember;
+    }
+
+    public function setStaffMember(?StaffMember $staffMember): self
+    {
+        $this->staffMember = $staffMember;
+        return $this;
+    }
+
+    public function getTransportDriver(): ?TransportDriver
+    {
+        return $this->transportDriver;
+    }
+
+    public function setTransportDriver(?TransportDriver $transportDriver): self
+    {
+        $this->transportDriver = $transportDriver;
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, UserDevice>
+     */
+    public function getDevices(): Collection
+    {
+        return $this->devices;
+    }
+
+    public function addDevice(UserDevice $device): self
+    {
+        if (!$this->devices->contains($device)) {
+            $this->devices->add($device);
+            $device->setUser($this);
+        }
+        return $this;
+    }
+
+    public function removeDevice(UserDevice $device): self
+    {
+        if ($this->devices->removeElement($device)) {
+            if ($device->getUser() === $this) {
+                $device->setUser(null);
+            }
+        }
+        return $this;
+    }
+
+    /**
+     * True if this User is linked to either a StaffMember or a TransportDriver.
+     */
+    public function isMobileUser(): bool
+    {
+        return $this->staffMember !== null || $this->transportDriver !== null;
+    }
+
     public function toArray(bool $includePermissions = false): array
     {
         $data = [
@@ -397,6 +506,9 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
             'lastLoginIp' => $this->lastLoginIp,
             'createdAt' => $this->createdAt?->format('c'),
             'updatedAt' => $this->updatedAt?->format('c'),
+            'pinEnabled' => $this->pinEnabled,
+            'staffMemberId' => $this->staffMember?->getId(),
+            'transportDriverId' => $this->transportDriver?->getId(),
         ];
 
         if ($includePermissions) {

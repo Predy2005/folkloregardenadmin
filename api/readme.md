@@ -212,6 +212,112 @@ Controllery a API endpointy (App\Controller)
 10) TestReservationEmailController
 - GET /api/test/reservation-email – odešle testovací potvrzovací e‑mail (HTML) s demo daty
 
+11) MobileAuthController (prefix /api/mobile/auth) — autentizace mobilní aplikace
+- POST /api/mobile/auth/login
+  - Body: { identifier, password, deviceId? }
+  - Výstup: { accessToken, accessTokenExpiresIn, refreshToken, refreshTokenExpiresAt, user }
+  - Access token má TTL 2 h (custom `exp` claim), refresh token 14 dní (tabulka refresh_token).
+- POST /api/mobile/auth/pin-login
+  - Body: { identifier, pin, deviceId }
+  - Stejný výstup. PIN login vyžaduje deviceId; při prvním úspěchu se zařízení naváže (user.pin_device_id), další loginy z jiného zařízení budou odmítnuty.
+- POST /api/mobile/auth/refresh
+  - Body: { refreshToken, deviceId? }
+  - Rotace: původní refresh se zneplatní, vrátí se nový pár. Při nesouladu deviceId se zneplatní celý řetězec (obrana proti odcizení).
+- POST /api/mobile/auth/logout
+  - Body: { refreshToken } — zneplatní konkrétní refresh (access JWT doběhne svůj 2 h TTL).
+- GET /api/mobile/auth/me
+  - Vyžaduje Bearer JWT. Vrací: { id, username, email, roles, permissions, staffMemberId, staffMemberName, transportDriverId, transportDriverName, pinEnabled }.
+
+Poznámka: žádný z těchto endpointů nevyžaduje autentizaci v access_control
+(`/login`, `/pin-login`, `/refresh`, `/logout`), `/me` používá standardní JWT.
+
+12) MobileMeController (prefix /api/mobile/me) — osobní data přihlášeného personálu
+Všechny cesty vyžadují Bearer JWT + mobilní permission (`mobile_*`). Data jsou
+scoped přes User → StaffMember / TransportDriver, přes tyto endpointy nelze
+dostat cizí záznamy. Finanční pole (mzda, cena transportu, fakturace) nejsou
+v odpovědích uvedena.
+
+Staff (číšník/kuchař) — potřebuje roli STAFF_WAITER nebo STAFF_COOK:
+- GET /api/mobile/me/events?from=YYYY-MM-DD&to=YYYY-MM-DD
+  - Seznam eventů, kde je přihlášený přiřazen. Řazeno DESC podle data.
+  - Položka: { eventId, name, eventType, date, startTime, venue, guestsTotal, status, myAssignmentId, myAttendanceStatus, myAttendedAt }
+  - Permission: `mobile_events.read`
+- GET /api/mobile/me/events/{id}
+  - Detail podle role: číšník (permission `mobile_events.tables`) vidí `tables`; kuchař (`mobile_events.menu`) vidí `menu` + `beverages`. Vždy `schedule`.
+  - Permission: `mobile_events.read` (dílčí sekce nad tím)
+- POST /api/mobile/me/attendance/checkin
+  - Body: { eventId, at? }
+  - Označí EventStaffAssignment PRESENT a vytvoří/obnoví StaffAttendance checkInTime.
+  - Permission: `mobile_attendance.record`
+- POST /api/mobile/me/attendance/checkout
+  - Body: { eventId, at? }
+  - Nastaví checkOutTime na nejbližším otevřeném StaffAttendance, dopočítá hoursWorked.
+  - Permission: `mobile_attendance.record`
+
+Řidič — role STAFF_DRIVER:
+- GET /api/mobile/me/transports?from=YYYY-MM-DD
+  - Seznam EventTransport, kde je přihlášený driver.
+  - Položka: { id, eventId, eventName, eventDate, eventStartTime, venue, transportType, scheduledTime, pickupLocation, dropoffLocation, passengerCount, executionStatus, vehicle:{...}, notes }
+  - Permission: `mobile_transport.read`
+- GET /api/mobile/me/transports/{id}
+  - Detail transportu + kontakt na organizátora eventu (phone, person).
+  - Permission: `mobile_transport.read`
+- PUT /api/mobile/me/transports/{id}/status
+  - Body: { status: "IN_PROGRESS" | "DONE" } — mění EventTransport.executionStatus
+  - Permission: `mobile_transport.update`
+
+Provisioning mobilního přístupu se dělá přes StaffMemberController a
+TransportController (endpointy `/mobile-account` na jednotlivých záznamech, viz
+MobileAccountProvisioningService). Login identifier = email uživatele.
+
+Mobilní role (STAFF_WAITER / STAFF_COOK / STAFF_DRIVER) se **odvozuje
+automaticky** z `StaffMember.position` přes mapu
+`MobileAccountProvisioningService::POSITION_TO_ROLE`:
+- Kuchyně (HEAD_CHEF, CHEF, SOUS_CHEF, PREP_COOK) → STAFF_COOK
+- DRIVER → STAFF_DRIVER
+- Všechny ostatní pozice (MANAGER, COORDINATOR, HEAD_WAITER, WAITER, BARTENDER,
+  HOSTESS, MUSICIAN, DANCER, SOUND_TECH, PHOTOGRAPHER, SECURITY, CLEANER) →
+  STAFF_WAITER (pohled na sál se stoly a rozsazením)
+
+POST body pro `/mobile-account` už neobsahuje `role` — odvozuje se. Pokud má
+staff prázdnou/neznámou pozici, endpoint vrací 400 s výzvou vyplnit pozici.
+
+Sync po změně pozice: `POST /api/staff/{id}/mobile-account/sync-role` —
+odebere staré mobilní role a přiřadí novou podle aktuální `position`. UI to
+vykresluje přes `roleMismatch: true` v GET odpovědi.
+
+13) MobileDeviceController (prefix /api/mobile/devices) — FCM push registrace
+Všechny cesty: IS_AUTHENTICATED_FULLY + permission `mobile_self.read`.
+Uživatel smí vidět/editovat pouze svá zařízení.
+- GET /api/mobile/devices — seznam svých zařízení
+- POST /api/mobile/devices/register
+  - Body: { fcmToken, platform: "ios"|"android"|"web", deviceId?, deviceName? }
+  - Upsert podle FCM tokenu (unique index). Mobilka volá po loginu a při obnově tokenu.
+- DELETE /api/mobile/devices/{id} — odebrat konkrétní (vlastní) záznam
+- DELETE /api/mobile/devices/by-token — body { fcmToken }; používá se při sign-out v mobilce (která zná jen token, ne ID)
+
+Push notifikace (FCM)
+- FcmClient (App\Service\Push\FcmClient) — OAuth2 (JWT RS256) → HTTP v1 endpoint
+  https://fcm.googleapis.com/v1/projects/{projectId}/messages:send
+- PushNotificationService (App\Service\Push\PushNotificationService) — doménové
+  notifyStaffAssignedToEvent(), notifyDriverAssignedToTransport(),
+  notifyDriverTransportChanged(), notifyDriverTransportCancelled(),
+  notifyUser(User, title, body, data) pro custom zprávy.
+- Automatické odstraňování mrtvých tokenů: při `UNREGISTERED` nebo
+  `INVALID_ARGUMENT token` se záznam UserDevice smaže.
+- Triggery:
+  - EventStaffController::createStaffAssignment() → notifyStaffAssignedToEvent
+  - TransportController::createEventAssignment() → notifyDriverAssignedToTransport
+  - TransportController::updateEventAssignment() → změna řidiče (cancel starému + assignment novému), nebo notifyDriverTransportChanged při změně času/lokace/počtu osob
+  - TransportController::deleteEventAssignment() → notifyDriverTransportCancelled
+- Konfigurace (.env):
+  - FCM_PROJECT_ID (volitelné – pokud není, bere se z service account JSON `project_id`)
+  - FCM_SERVICE_ACCOUNT_FILE=%kernel.project_dir%/config/fcm/service-account.json
+    nebo
+  - FCM_SERVICE_ACCOUNT_JSON (JSON inline, pro cloud deploys bez persistent FS)
+- Pokud ENV nejsou vyplněné, FcmClient::isConfigured() vrátí false a
+  PushNotificationService bezpečně přeskakuje odesílání — aplikace běží normálně.
+
 E‑maily
 - K odesílání slouží Symfony Mailer (MAILER_DSN v prostředí). Potvrzení rezervace je odesíláno z adresy info@folkloregarden.cz na info@folkloregarden.cz a v kopii na e‑mail zákazníka.
 - Šablona e‑mailu je generována v ReservationController::generateConfirmationEmail(). Lokalizace položek jídel dle FoodMenu, ceny dle SpecialDateRules, podpora CZ/EN (dle národnosti).

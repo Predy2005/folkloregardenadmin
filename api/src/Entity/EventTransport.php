@@ -13,6 +13,9 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\HasLifecycleCallbacks]
 class EventTransport
 {
+    public const EXECUTION_IN_PROGRESS = 'IN_PROGRESS';
+    public const EXECUTION_DONE = 'DONE';
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column(type: Types::INTEGER)]
@@ -60,6 +63,9 @@ class EventTransport
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $notes = null;
+
+    #[ORM\Column(name: 'execution_status', type: Types::STRING, length: 30, nullable: true)]
+    private ?string $executionStatus = null;
 
     #[ORM\Column(type: Types::DATETIME_MUTABLE)]
     private \DateTimeInterface $createdAt;
@@ -125,6 +131,9 @@ class EventTransport
 
     public function getNotes(): ?string { return $this->notes; }
     public function setNotes(?string $v): self { $this->notes = $v; return $this; }
+
+    public function getExecutionStatus(): ?string { return $this->executionStatus; }
+    public function setExecutionStatus(?string $v): self { $this->executionStatus = $v; return $this; }
 
     public function getCreatedAt(): \DateTimeInterface { return $this->createdAt; }
     public function getUpdatedAt(): \DateTimeInterface { return $this->updatedAt; }

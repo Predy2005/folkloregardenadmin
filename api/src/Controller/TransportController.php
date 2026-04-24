@@ -11,6 +11,8 @@ use App\Repository\TransportCompanyRepository;
 use App\Repository\TransportVehicleRepository;
 use App\Repository\TransportDriverRepository;
 use App\Repository\EventTransportRepository;
+use App\Service\MobileAccountProvisioningService;
+use App\Service\Push\PushNotificationService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -27,6 +29,7 @@ class TransportController extends AbstractController
         private readonly TransportVehicleRepository $vehicleRepo,
         private readonly TransportDriverRepository $driverRepo,
         private readonly EventTransportRepository $eventTransportRepo,
+        private readonly PushNotificationService $push,
     ) {}
 
     // ─── Companies ───────────────────────────────────────────────────────
@@ -292,6 +295,119 @@ class TransportController extends AbstractController
         return $this->json(['status' => 'deleted']);
     }
 
+    // ─── Driver mobile account (PR #3) ─────────────────────────────────
+
+    #[Route('/drivers/{did}/mobile-account', methods: ['GET'])]
+    #[IsGranted('transport.read')]
+    public function getDriverMobileAccount(
+        int $did,
+        MobileAccountProvisioningService $provisioner
+    ): JsonResponse {
+        $d = $this->driverRepo->find($did);
+        if (!$d) return $this->json(['error' => 'Not found'], 404);
+        return $this->json($provisioner->describe($d->getUser()));
+    }
+
+    #[Route('/drivers/{did}/mobile-account', methods: ['POST'])]
+    #[IsGranted('transport.update')]
+    public function createDriverMobileAccount(
+        int $did,
+        Request $request,
+        MobileAccountProvisioningService $provisioner
+    ): JsonResponse {
+        $d = $this->driverRepo->find($did);
+        if (!$d) return $this->json(['error' => 'Not found'], 404);
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        $generatePassword = (bool)($data['generatePassword'] ?? true);
+        $pin = isset($data['pin']) ? (string)$data['pin'] : null;
+        $pinDeviceId = isset($data['pinDeviceId']) ? (string)$data['pinDeviceId'] : null;
+
+        try {
+            $result = $provisioner->provisionForTransportDriver($d, $generatePassword, $pin, $pinDeviceId);
+        } catch (\InvalidArgumentException | \DomainException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 500);
+        }
+
+        return $this->json([
+            'status' => 'created',
+            'userId' => $result['user']->getId(),
+            'email' => $result['user']->getEmail(),
+            'plainPassword' => $result['plainPassword'], // zobrazí se POUZE TEĎ
+            'role' => MobileAccountProvisioningService::ROLE_DRIVER,
+        ], 201);
+    }
+
+    #[Route('/drivers/{did}/mobile-account/password', methods: ['PUT'])]
+    #[IsGranted('transport.update')]
+    public function resetDriverMobilePassword(
+        int $did,
+        MobileAccountProvisioningService $provisioner
+    ): JsonResponse {
+        $d = $this->driverRepo->find($did);
+        if (!$d || !$d->getUser()) {
+            return $this->json(['error' => 'Řidič nemá mobilní účet.'], 404);
+        }
+        $plain = $provisioner->resetPassword($d->getUser());
+        return $this->json(['status' => 'reset', 'plainPassword' => $plain]);
+    }
+
+    #[Route('/drivers/{did}/mobile-account/pin', methods: ['PUT'])]
+    #[IsGranted('transport.update')]
+    public function setDriverMobilePin(
+        int $did,
+        Request $request,
+        MobileAccountProvisioningService $provisioner
+    ): JsonResponse {
+        $d = $this->driverRepo->find($did);
+        if (!$d || !$d->getUser()) {
+            return $this->json(['error' => 'Řidič nemá mobilní účet.'], 404);
+        }
+        $data = json_decode($request->getContent(), true) ?? [];
+        $pin = isset($data['pin']) ? (string)$data['pin'] : '';
+        $deviceId = isset($data['deviceId']) ? (string)$data['deviceId'] : null;
+        try {
+            $provisioner->setPin($d->getUser(), $pin, $deviceId);
+        } catch (\InvalidArgumentException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        }
+        return $this->json(['status' => 'pin_set']);
+    }
+
+    #[Route('/drivers/{did}/mobile-account/pin', methods: ['DELETE'])]
+    #[IsGranted('transport.update')]
+    public function disableDriverMobilePin(
+        int $did,
+        MobileAccountProvisioningService $provisioner
+    ): JsonResponse {
+        $d = $this->driverRepo->find($did);
+        if (!$d || !$d->getUser()) {
+            return $this->json(['error' => 'Řidič nemá mobilní účet.'], 404);
+        }
+        $provisioner->disablePin($d->getUser());
+        return $this->json(['status' => 'pin_disabled']);
+    }
+
+    #[Route('/drivers/{did}/mobile-account', methods: ['DELETE'])]
+    #[IsGranted('transport.update')]
+    public function revokeDriverMobileAccount(
+        int $did,
+        MobileAccountProvisioningService $provisioner
+    ): JsonResponse {
+        $d = $this->driverRepo->find($did);
+        if (!$d || !$d->getUser()) {
+            return $this->json(['error' => 'Řidič nemá mobilní účet.'], 404);
+        }
+        try {
+            $provisioner->revoke($d->getUser());
+        } catch (\DomainException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        }
+        return $this->json(['status' => 'revoked']);
+    }
+
     // ─── Event Transport (by event ID) ─────────────────────────────────
 
     #[Route('/by-event/{eventId}', methods: ['GET'])]
@@ -362,6 +478,16 @@ class TransportController extends AbstractController
         $this->em->persist($et);
         $this->em->flush();
 
+        // Push notifikace řidiči, pokud má mobilní účet
+        $driverUser = $et->getDriver()?->getUser();
+        if ($driverUser) {
+            try {
+                $this->push->notifyDriverAssignedToTransport($driverUser, $et);
+            } catch (\Throwable) {
+                // Push nesmí zabít hlavní operaci
+            }
+        }
+
         return $this->json(['status' => 'created', 'id' => $et->getId()], 201);
     }
 
@@ -374,6 +500,13 @@ class TransportController extends AbstractController
 
         $data = json_decode($request->getContent(), true) ?? [];
 
+        // Zachytit původní stav kvůli detekci změn relevantních pro řidiče
+        $oldDriverId = $et->getDriver()?->getId();
+        $oldScheduledTime = $et->getScheduledTime()?->format('H:i');
+        $oldPickup = $et->getPickupLocation();
+        $oldDropoff = $et->getDropoffLocation();
+        $oldPassengerCount = $et->getPassengerCount();
+
         if (isset($data['vehicleId'])) {
             $et->setVehicle($data['vehicleId'] ? $this->vehicleRepo->find($data['vehicleId']) : null);
         }
@@ -384,6 +517,42 @@ class TransportController extends AbstractController
         $this->applyAssignmentData($et, $data);
         $this->em->flush();
 
+        try {
+            $newDriverId = $et->getDriver()?->getId();
+            if ($oldDriverId !== $newDriverId) {
+                // Řidič se změnil — starý (pokud měl účet) dostane cancel, nový dostane assignment
+                if ($oldDriverId !== null) {
+                    $oldDriver = $this->driverRepo->find($oldDriverId);
+                    if ($oldDriver && ($oldUser = $oldDriver->getUser())) {
+                        $this->push->notifyDriverTransportCancelled($oldUser, $et);
+                    }
+                }
+                if (($newUser = $et->getDriver()?->getUser()) !== null) {
+                    $this->push->notifyDriverAssignedToTransport($newUser, $et);
+                }
+            } else {
+                // Stejný řidič — hláska o změně jen pokud se změnily relevantní údaje
+                $changes = [];
+                if ($oldScheduledTime !== $et->getScheduledTime()?->format('H:i')) {
+                    $changes[] = 'čas ' . ($et->getScheduledTime()?->format('H:i') ?? '—');
+                }
+                if ($oldPickup !== $et->getPickupLocation()) {
+                    $changes[] = 'vyzvednutí';
+                }
+                if ($oldDropoff !== $et->getDropoffLocation()) {
+                    $changes[] = 'cíl';
+                }
+                if ($oldPassengerCount !== $et->getPassengerCount()) {
+                    $changes[] = 'počet osob ' . ($et->getPassengerCount() ?? '?');
+                }
+                if ($changes !== [] && ($driverUser = $et->getDriver()?->getUser()) !== null) {
+                    $this->push->notifyDriverTransportChanged($driverUser, $et, implode(', ', $changes));
+                }
+            }
+        } catch (\Throwable) {
+            // Push nesmí zabít kritickou operaci
+        }
+
         return $this->json(['status' => 'updated']);
     }
 
@@ -393,6 +562,15 @@ class TransportController extends AbstractController
     {
         $et = $this->eventTransportRepo->find($aid);
         if (!$et) return $this->json(['error' => 'Not found'], 404);
+
+        // Push řidiči ještě před smazáním (má přístup k užitečným polím)
+        $driverUser = $et->getDriver()?->getUser();
+        if ($driverUser) {
+            try {
+                $this->push->notifyDriverTransportCancelled($driverUser, $et);
+            } catch (\Throwable) {
+            }
+        }
 
         $this->em->remove($et);
         $this->em->flush();

@@ -7,6 +7,7 @@ use App\Repository\StaffMemberRepository;
 use App\Repository\EventStaffAssignmentRepository;
 use App\Repository\StaffAttendanceRepository;
 use App\Repository\EventRepository;
+use App\Service\MobileAccountProvisioningService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -347,6 +348,148 @@ class StaffMemberController extends AbstractController
         return $this->json(['status' => 'deleted']);
     }
 
+    // ─── Mobile account (PR #3) ────────────────────────────────────────
+
+    #[Route('/{id}/mobile-account', methods: ['GET'])]
+    #[IsGranted('staff.read')]
+    public function getMobileAccount(
+        int $id,
+        StaffMemberRepository $repo,
+        MobileAccountProvisioningService $provisioner
+    ): JsonResponse {
+        $staff = $repo->find($id);
+        if (!$staff) {
+            return $this->json(['error' => 'Not found'], 404);
+        }
+        $expected = MobileAccountProvisioningService::deriveMobileRoleFromPosition($staff->getPosition());
+        return $this->json($provisioner->describe($staff->getUser(), $expected));
+    }
+
+    #[Route('/{id}/mobile-account', methods: ['POST'])]
+    #[IsGranted('staff.update')]
+    public function createMobileAccount(
+        int $id,
+        Request $request,
+        StaffMemberRepository $repo,
+        MobileAccountProvisioningService $provisioner
+    ): JsonResponse {
+        $staff = $repo->find($id);
+        if (!$staff) {
+            return $this->json(['error' => 'Not found'], 404);
+        }
+        $data = json_decode($request->getContent(), true) ?? [];
+        // Role už neakceptujeme z body — odvozuje se z staff.position.
+        $generatePassword = (bool)($data['generatePassword'] ?? true);
+        $pin = isset($data['pin']) ? (string)$data['pin'] : null;
+        $pinDeviceId = isset($data['pinDeviceId']) ? (string)$data['pinDeviceId'] : null;
+
+        try {
+            $result = $provisioner->provisionForStaffMember($staff, $generatePassword, $pin, $pinDeviceId);
+        } catch (\InvalidArgumentException | \DomainException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], 500);
+        }
+
+        return $this->json([
+            'status' => 'created',
+            'userId' => $result['user']->getId(),
+            'email' => $result['user']->getEmail(),
+            'plainPassword' => $result['plainPassword'], // zobrazí se POUZE TEĎ
+            'role' => $result['role'], // derivovaná z staff.position
+        ], 201);
+    }
+
+    #[Route('/{id}/mobile-account/sync-role', methods: ['POST'])]
+    #[IsGranted('staff.update')]
+    public function syncMobileRole(
+        int $id,
+        StaffMemberRepository $repo,
+        MobileAccountProvisioningService $provisioner
+    ): JsonResponse {
+        $staff = $repo->find($id);
+        if (!$staff || !$staff->getUser()) {
+            return $this->json(['error' => 'Staff member nemá mobilní účet.'], 404);
+        }
+        try {
+            $newRole = $provisioner->syncRoleWithPosition($staff);
+        } catch (\DomainException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        }
+        return $this->json(['status' => 'synced', 'role' => $newRole]);
+    }
+
+    #[Route('/{id}/mobile-account/password', methods: ['PUT'])]
+    #[IsGranted('staff.update')]
+    public function resetMobilePassword(
+        int $id,
+        StaffMemberRepository $repo,
+        MobileAccountProvisioningService $provisioner
+    ): JsonResponse {
+        $staff = $repo->find($id);
+        if (!$staff || !$staff->getUser()) {
+            return $this->json(['error' => 'Staff member nemá mobilní účet.'], 404);
+        }
+        $plain = $provisioner->resetPassword($staff->getUser());
+        return $this->json(['status' => 'reset', 'plainPassword' => $plain]);
+    }
+
+    #[Route('/{id}/mobile-account/pin', methods: ['PUT'])]
+    #[IsGranted('staff.update')]
+    public function setMobilePin(
+        int $id,
+        Request $request,
+        StaffMemberRepository $repo,
+        MobileAccountProvisioningService $provisioner
+    ): JsonResponse {
+        $staff = $repo->find($id);
+        if (!$staff || !$staff->getUser()) {
+            return $this->json(['error' => 'Staff member nemá mobilní účet.'], 404);
+        }
+        $data = json_decode($request->getContent(), true) ?? [];
+        $pin = isset($data['pin']) ? (string)$data['pin'] : '';
+        $deviceId = isset($data['deviceId']) ? (string)$data['deviceId'] : null;
+        try {
+            $provisioner->setPin($staff->getUser(), $pin, $deviceId);
+        } catch (\InvalidArgumentException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        }
+        return $this->json(['status' => 'pin_set']);
+    }
+
+    #[Route('/{id}/mobile-account/pin', methods: ['DELETE'])]
+    #[IsGranted('staff.update')]
+    public function disableMobilePin(
+        int $id,
+        StaffMemberRepository $repo,
+        MobileAccountProvisioningService $provisioner
+    ): JsonResponse {
+        $staff = $repo->find($id);
+        if (!$staff || !$staff->getUser()) {
+            return $this->json(['error' => 'Staff member nemá mobilní účet.'], 404);
+        }
+        $provisioner->disablePin($staff->getUser());
+        return $this->json(['status' => 'pin_disabled']);
+    }
+
+    #[Route('/{id}/mobile-account', methods: ['DELETE'])]
+    #[IsGranted('staff.update')]
+    public function revokeMobileAccount(
+        int $id,
+        StaffMemberRepository $repo,
+        MobileAccountProvisioningService $provisioner
+    ): JsonResponse {
+        $staff = $repo->find($id);
+        if (!$staff || !$staff->getUser()) {
+            return $this->json(['error' => 'Staff member nemá mobilní účet.'], 404);
+        }
+        try {
+            $provisioner->revoke($staff->getUser());
+        } catch (\DomainException $e) {
+            return $this->json(['error' => $e->getMessage()], 400);
+        }
+        return $this->json(['status' => 'revoked']);
+    }
 
     private function normalizeNumberForRate(mixed $value): ?string
     {

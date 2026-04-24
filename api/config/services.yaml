@@ -30,5 +30,38 @@ services:
     tags:
       - { name: kernel.event_listener, event: lexik_jwt_authentication.on_jwt_created, method: onJWTCreated }
 
+  # AI assistant: tag all tools so ToolRegistry gets them injected
+  _instanceof:
+    App\Service\Assistant\Tool\ToolInterface:
+      tags: ['app.assistant_tool']
+
+  App\Service\Assistant\ToolRegistry:
+    arguments:
+      $tools: !tagged_iterator app.assistant_tool
+
+  App\Service\Assistant\AiGatewayService:
+    arguments:
+      $server1Url: '%env(default::AI_SERVER_1_URL)%'
+      $server1Key: '%env(default::AI_SERVER_1_KEY)%'
+      $server1Model: '%env(default::AI_SERVER_1_MODEL)%'
+      $server2Url: '%env(default::AI_SERVER_2_URL)%'
+      $server2Key: '%env(default::AI_SERVER_2_KEY)%'
+      $server2Model: '%env(default::AI_SERVER_2_MODEL)%'
+
+  # Push notifikace pro mobilní aplikaci — Expo Push Service (rozhodnutí §0.1
+  # migration-mobile-backend.md: Expo Notifications, ne FCM direct).
+  # Anonymous provoz nevyžaduje konfiguraci; access token zvyšuje rate limity.
+  App\Service\Push\ExpoPushClient:
+    arguments:
+      $accessToken: '%env(default::EXPO_ACCESS_TOKEN)%'
+
+  # FcmClient zůstává jako legacy (kdyby se v budoucnu vracelo k FCM direct).
+  # Nikdo ho dnes neinjectuje; PushNotificationService používá ExpoPushClient.
+  App\Service\Push\FcmClient:
+    arguments:
+      $projectId: '%env(default::FCM_PROJECT_ID)%'
+      $serviceAccountFile: '%env(default::FCM_SERVICE_ACCOUNT_FILE)%'
+      $serviceAccountJson: '%env(default::FCM_SERVICE_ACCOUNT_JSON)%'
+
   # add more service definitions when explicit configuration is needed
   # please note that last definitions always *replace* previous ones

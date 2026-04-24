@@ -20,6 +20,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/shared/components/ui/dialog";
+import { Separator } from "@/shared/components/ui/separator";
+import { MobileAccountCard } from "@/shared/components/MobileAccountCard";
 import { Loader2 } from "lucide-react";
 import { z } from "zod";
 
@@ -48,7 +50,7 @@ interface DriverDialogProps {
 export function DriverDialog({ open, onOpenChange, editingDriver, form, saveMutation, onClose }: DriverDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editingDriver ? "Upravit ridice" : "Pridat ridice"}</DialogTitle>
         </DialogHeader>
@@ -127,6 +129,19 @@ export function DriverDialog({ open, onOpenChange, editingDriver, form, saveMuta
             </DialogFooter>
           </form>
         </Form>
+
+        {editingDriver && (
+          <>
+            <Separator className="my-4" />
+            <MobileAccountCard
+              basePath={`/api/transport/drivers/${editingDriver.id}`}
+              entityEmail={editingDriver.email ?? null}
+              canCreate={!!editingDriver.email}
+              derivedRole="STAFF_DRIVER"
+              supportsSyncRole={false}
+            />
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

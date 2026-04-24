@@ -26,6 +26,8 @@ import { ArrowLeft, Save, Loader2 } from "lucide-react";
 import { StaffInfoForm } from "../components/StaffInfoForm";
 import { StaffRatesCard } from "../components/StaffRatesCard";
 import { StaffAssignmentsTab } from "../components/StaffAssignmentsTab";
+import { MobileAccountCard } from "@/shared/components/MobileAccountCard";
+import { deriveMobileRoleFromPosition } from "@/shared/lib/mobileRoles";
 
 export default function StaffEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -192,12 +194,24 @@ export default function StaffEditPage() {
           <TabsList>
             <TabsTrigger value="profile">Profil</TabsTrigger>
             <TabsTrigger value="history">Historie práce</TabsTrigger>
+            <TabsTrigger value="mobile">Mobilní přístup</TabsTrigger>
           </TabsList>
           <TabsContent value="profile" className="mt-6">
             {profileForm}
           </TabsContent>
           <TabsContent value="history" className="mt-6">
             {id && <StaffAssignmentsTab staffId={id} />}
+          </TabsContent>
+          <TabsContent value="mobile" className="mt-6">
+            {id && (
+              <MobileAccountCard
+                basePath={`/api/staff/${id}`}
+                entityEmail={member?.email ?? null}
+                canCreate={!!member?.email}
+                derivedRole={deriveMobileRoleFromPosition(member?.position)}
+                supportsSyncRole
+              />
+            )}
           </TabsContent>
         </Tabs>
       )}

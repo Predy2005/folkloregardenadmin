@@ -6,6 +6,7 @@ use App\Entity\User;
 use App\Repository\EventRepository;
 use App\Service\StaffRequirementService;
 use App\Service\CashboxService;
+use App\Service\Push\PushNotificationService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -32,6 +33,7 @@ class EventStaffController extends AbstractController
         private readonly EntityManagerInterface $em,
         private readonly StaffRequirementService $staffRequirementService,
         private readonly CashboxService $cashboxService,
+        private readonly PushNotificationService $push,
     ) {
     }
 
@@ -459,6 +461,20 @@ class EventStaffController extends AbstractController
         $this->em->flush();
 
         $staffRole = $staffRoleId ? $staffRoleRepo->find($staffRoleId) : null;
+
+        // Push notifikace — pokud má staff připojený mobilní účet
+        if ($staffMember && ($linkedUser = $staffMember->getUser()) !== null) {
+            try {
+                $roleHint = match (strtoupper($staffMember->getPosition() ?? '')) {
+                    'WAITER', 'CISNIK' => 'WAITER',
+                    'COOK', 'KUCHAR' => 'COOK',
+                    default => null,
+                };
+                $this->push->notifyStaffAssignedToEvent($linkedUser, $event, $roleHint);
+            } catch (\Throwable) {
+                // Push nesmí zabít kritickou operaci — ticho spolknout
+            }
+        }
 
         return $this->json([
             'id' => $assignment->getId(),
