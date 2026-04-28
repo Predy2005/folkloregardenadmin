@@ -1,14 +1,17 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -24,10 +27,15 @@ import {
   useTransportStatusMutation,
   type TransportStatus,
 } from "@/hooks/mutations/useTransportStatus";
-import {
-  useCheckInMutation,
-  useCheckOutMutation,
-} from "@/hooks/mutations/useAttendance";
+import { useEventResponseMutation } from "@/hooks/mutations/useEventResponse";
+
+const DECLINE_REASONS = [
+  "Nemoc",
+  "Dovolená",
+  "Rodinné důvody",
+  "Jiné",
+] as const;
+type DeclineReasonOption = (typeof DECLINE_REASONS)[number];
 
 function InfoRow({
   label,
@@ -160,7 +168,7 @@ function EventBody({
         </Text>
       </View>
 
-      <AttendanceActions detail={detail} colors={colors} />
+      <ResponseActions detail={detail} colors={colors} />
 
       <View
         style={[
@@ -216,27 +224,6 @@ function EventBody({
                   </Text>
                 )}
               </View>
-            </View>
-          ))}
-        </View>
-      )}
-
-      {detail.tables && detail.tables.length > 0 && (
-        <View
-          style={[
-            styles.section,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-        >
-          <Text style={[styles.sectionTitle, { color: colors.primary }]}>
-            Stoly
-          </Text>
-          {detail.tables.map((t) => (
-            <View key={t.id} style={styles.tableRow}>
-              <Feather name="grid" size={14} color={colors.mutedForeground} />
-              <Text style={[styles.tableText, { color: colors.foreground }]}>
-                {t.name} · {t.room} · {t.capacity} míst
-              </Text>
             </View>
           ))}
         </View>
@@ -409,33 +396,30 @@ function TransportBody({
   );
 }
 
-// ─── Staff attendance actions ───────────────────────────────────────────
+// ─── Staff response actions (Potvrdit / Odhlásit) ───────────────────────
 
-function AttendanceActions({
+function ResponseActions({
   detail,
   colors,
 }: {
   detail: EventDetail;
   colors: ReturnType<typeof useColors>;
 }) {
-  const checkIn = useCheckInMutation();
-  const checkOut = useCheckOutMutation();
-  const isPresent = detail.myAttendanceStatus === "PRESENT";
-  const pending = isPresent ? checkOut.isPending : checkIn.isPending;
+  const mutation = useEventResponseMutation();
+  const [declineOpen, setDeclineOpen] = useState(false);
 
-  async function run() {
+  const status = detail.myAssignmentStatus;
+  const locked =
+    detail.responseLockedAt !== null &&
+    new Date(detail.responseLockedAt).getTime() <= Date.now();
+
+  async function confirm() {
     try {
-      const action = isPresent ? checkOut : checkIn;
-      const result = await action.mutateAsync(detail.eventId);
-      void Haptics.notificationAsync(
-        Haptics.NotificationFeedbackType.Success,
-      );
-      if (result.queued) {
-        Alert.alert(
-          "Uloženo pro pozdější synchronizaci",
-          "Jsi offline. Jakmile bude signál, zápis se odešle.",
-        );
-      }
+      await mutation.mutateAsync({
+        eventId: detail.eventId,
+        response: "CONFIRMED",
+      });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert(
@@ -445,39 +429,277 @@ function AttendanceActions({
     }
   }
 
-  const label = isPresent ? "Odhlásit se z akce" : "Přihlásit se na akci";
-  const icon = isPresent ? "log-out" : "log-in";
+  async function decline(reason: string) {
+    try {
+      await mutation.mutateAsync({
+        eventId: detail.eventId,
+        response: "DECLINED",
+        reason,
+      });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setDeclineOpen(false);
+    } catch (e) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert(
+        "Nepodařilo se uložit",
+        e instanceof Error ? e.message : "Zkus to prosím znovu.",
+      );
+    }
+  }
+
+  // Lock — po 4h před akcí už se nedá nic měnit. Stav zachovaný.
+  if (locked) {
+    return (
+      <View
+        style={[
+          styles.actionPanel,
+          { backgroundColor: colors.secondary, borderColor: colors.border },
+        ]}
+      >
+        <Feather name="lock" size={16} color={colors.mutedForeground} />
+        <Text style={[styles.actionPanelText, { color: colors.foreground }]}>
+          {status === "CONFIRMED"
+            ? "Účast potvrzena (změny už nejsou možné)"
+            : status === "DECLINED"
+              ? "Odhlášeno (změny už nejsou možné)"
+              : "Účast nelze měnit (méně než 4 h před akcí)"}
+        </Text>
+      </View>
+    );
+  }
 
   return (
-    <TouchableOpacity
-      style={[
-        styles.actionButton,
-        {
-          backgroundColor: isPresent ? colors.warning : colors.primary,
-        },
-        pending && styles.actionButtonDisabled,
-      ]}
-      onPress={() => void run()}
-      disabled={pending}
-      activeOpacity={0.8}
-    >
-      {pending ? (
-        <ActivityIndicator color="#fff" />
-      ) : (
-        <>
-          <Feather name={icon} size={18} color="#fff" />
-          <Text style={styles.actionButtonText}>{label}</Text>
-          {isPresent && detail.myAttendedAt ? (
-            <Text style={styles.actionButtonMeta}>
-              ({new Date(detail.myAttendedAt).toLocaleTimeString("cs-CZ", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })})
-            </Text>
-          ) : null}
-        </>
+    <View style={styles.responseWrap}>
+      {status === "CONFIRMED" && detail.myConfirmedAt && (
+        <View
+          style={[
+            styles.responseStatusPill,
+            { backgroundColor: colors.success + "18" },
+          ]}
+        >
+          <Feather name="check-circle" size={14} color={colors.success} />
+          <Text style={[styles.responseStatusText, { color: colors.success }]}>
+            Účast potvrzena{" "}
+            {new Date(detail.myConfirmedAt).toLocaleDateString("cs-CZ")}
+          </Text>
+        </View>
       )}
-    </TouchableOpacity>
+      {status === "DECLINED" && detail.myDeclineReason && (
+        <View
+          style={[
+            styles.responseStatusPill,
+            { backgroundColor: colors.warning + "18" },
+          ]}
+        >
+          <Feather name="x-circle" size={14} color={colors.warning} />
+          <Text style={[styles.responseStatusText, { color: colors.warning }]}>
+            Odhlášeno: {detail.myDeclineReason}
+          </Text>
+        </View>
+      )}
+
+      <View style={styles.responseButtonsRow}>
+        <TouchableOpacity
+          style={[
+            styles.responseButton,
+            {
+              backgroundColor:
+                status === "CONFIRMED" ? colors.success : colors.primary,
+              opacity: status === "CONFIRMED" ? 0.55 : 1,
+            },
+            mutation.isPending && styles.actionButtonDisabled,
+          ]}
+          onPress={() => void confirm()}
+          disabled={mutation.isPending || status === "CONFIRMED"}
+          activeOpacity={0.8}
+        >
+          {mutation.isPending ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Feather name="check" size={18} color="#fff" />
+              <Text style={styles.actionButtonText}>
+                {status === "CONFIRMED" ? "Potvrzeno" : "Potvrdit účast"}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.responseButton,
+            {
+              backgroundColor:
+                status === "DECLINED" ? colors.warning : colors.destructive,
+              opacity: status === "DECLINED" ? 0.55 : 1,
+            },
+            mutation.isPending && styles.actionButtonDisabled,
+          ]}
+          onPress={() => setDeclineOpen(true)}
+          disabled={mutation.isPending || status === "DECLINED"}
+          activeOpacity={0.8}
+        >
+          <Feather name="x" size={18} color="#fff" />
+          <Text style={styles.actionButtonText}>
+            {status === "DECLINED" ? "Odhlášen" : "Odhlásit se"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <DeclineDialog
+        open={declineOpen}
+        onClose={() => setDeclineOpen(false)}
+        onSubmit={(reason) => void decline(reason)}
+        pending={mutation.isPending}
+        colors={colors}
+      />
+    </View>
+  );
+}
+
+function DeclineDialog({
+  open,
+  onClose,
+  onSubmit,
+  pending,
+  colors,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (reason: string) => void;
+  pending: boolean;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const [option, setOption] = useState<DeclineReasonOption>("Nemoc");
+  const [customText, setCustomText] = useState("");
+
+  function handleSubmit() {
+    const reason =
+      option === "Jiné" ? customText.trim() : option;
+    if (!reason) return;
+    onSubmit(reason);
+  }
+
+  const submitDisabled =
+    pending || (option === "Jiné" && customText.trim() === "");
+
+  return (
+    <Modal
+      visible={open}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable
+          style={[
+            styles.modalCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+          onPress={(e) => e.stopPropagation()}
+        >
+          <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+            Odhlásit se z akce
+          </Text>
+          <Text
+            style={[styles.modalSubtitle, { color: colors.mutedForeground }]}
+          >
+            Vyber důvod — manažer ho uvidí v CRM.
+          </Text>
+
+          <View style={styles.modalOptions}>
+            {DECLINE_REASONS.map((opt) => {
+              const active = option === opt;
+              return (
+                <TouchableOpacity
+                  key={opt}
+                  onPress={() => setOption(opt)}
+                  style={[
+                    styles.modalOption,
+                    {
+                      borderColor: active ? colors.primary : colors.border,
+                      backgroundColor: active
+                        ? colors.primary + "12"
+                        : "transparent",
+                    },
+                  ]}
+                  activeOpacity={0.7}
+                >
+                  <Feather
+                    name={active ? "check-circle" : "circle"}
+                    size={16}
+                    color={active ? colors.primary : colors.mutedForeground}
+                  />
+                  <Text
+                    style={[
+                      styles.modalOptionText,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    {opt}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {option === "Jiné" && (
+            <TextInput
+              value={customText}
+              onChangeText={setCustomText}
+              placeholder="Napiš důvod…"
+              placeholderTextColor={colors.mutedForeground}
+              style={[
+                styles.modalInput,
+                {
+                  borderColor: colors.border,
+                  color: colors.foreground,
+                  backgroundColor: colors.background,
+                },
+              ]}
+              multiline
+              maxLength={500}
+            />
+          )}
+
+          <View style={styles.modalActions}>
+            <TouchableOpacity
+              onPress={onClose}
+              style={[styles.modalBtn, { borderColor: colors.border }]}
+              disabled={pending}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[styles.modalBtnText, { color: colors.foreground }]}
+              >
+                Zrušit
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleSubmit}
+              style={[
+                styles.modalBtn,
+                {
+                  backgroundColor: colors.destructive,
+                  borderColor: colors.destructive,
+                  opacity: submitDisabled ? 0.5 : 1,
+                },
+              ]}
+              disabled={submitDisabled}
+              activeOpacity={0.8}
+            >
+              {pending ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={[styles.modalBtnText, { color: "#fff" }]}>
+                  Odhlásit
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -671,14 +893,104 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     marginTop: 2,
   },
-  tableRow: {
+  responseWrap: {
+    gap: 10,
+  },
+  responseButtonsRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  responseButton: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 14,
+    paddingVertical: 14,
+    minHeight: 52,
+  },
+  responseStatusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  responseStatusText: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 20,
+    gap: 14,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.2,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    lineHeight: 18,
+  },
+  modalOptions: {
     gap: 8,
   },
-  tableText: {
+  modalOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  modalOptionText: {
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     fontSize: 14,
     fontFamily: "Inter_400Regular",
+    minHeight: 80,
+    textAlignVertical: "top",
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 4,
+  },
+  modalBtn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    minHeight: 44,
+  },
+  modalBtnText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
   },
   menuRow: {
     flexDirection: "row",

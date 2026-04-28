@@ -26,7 +26,7 @@ export type DrinkOption = "none" | "welcome" | "allin";
 export const DRINK_OPTION_LABELS: Record<DrinkOption, string> = {
   none: "Bez nápoje",
   welcome: "Welcome drink",
-  allin: "All inclusive",
+  allin: "Neomezeně",
 };
 
 export interface ReservationPerson {
@@ -86,11 +86,14 @@ export interface Reservation {
     | "AUTHORIZED"
     | "CONFIRMED";
   contactName: string;
-  contactEmail: string;
+  /** Volitelný — kontakty importované z xlsx ho někdy nemají. */
+  contactEmail?: string | null;
   contactPhone: string;
   contactNationality: string;
   clientComeFrom?: string;
   contactNote?: string;
+  /** Kdo objednávku provedl (např. zaměstnanec CK), pokud je to jiný člověk než kontakt. */
+  orderedBy?: string | null;
   invoiceSameAsContact: boolean;
   invoiceName?: string;
   invoiceCompany?: string;
@@ -137,6 +140,24 @@ export interface ReservationFood {
   isChildrenMenu: boolean;
   externalId?: string;
   surcharge: number;  // příplatek k základní ceně (0 = v ceně, 75 = +75 Kč)
+  /** Interní poznámka k jídlu (pro kuchyň/personál). Nezobrazuje se hostovi. */
+  notes?: string | null;
+  /** Volný text alergenů (čárkami oddělené, např. "Lepek, Mléko, Vejce"). */
+  allergens?: string | null;
+}
+
+/** Kontaktní osoba u partnera (zaměstnanec / asistent / průvodce CK). */
+export interface PartnerContact {
+  id: number;
+  partnerId: number;
+  firstName: string;
+  lastName: string | null;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ReservationType {
@@ -911,8 +932,11 @@ export interface EventStaffAssignment {
   paymentAmount?: number;
   paymentStatus: string; // 'PENDING', 'PAID'
   notes?: string;
+  /** Důvod odhlášení (z mobilní app při assignmentStatus = DECLINED). */
+  declineReason?: string | null;
   assignedAt?: string;
-  confirmedAt?: string;
+  /** Kdy personál v mobilní app potvrdil účast (assignmentStatus = CONFIRMED). */
+  confirmedAt?: string | null;
   attendedAt?: string;
   staffMember?: StaffMember;
 }
@@ -1700,6 +1724,8 @@ export interface StaffAssignmentWithContact {
   roleId: number | null;
   assignmentStatus: string;
   attendanceStatus: string;
+  confirmedAt?: string | null;
+  declineReason?: string | null;
   hoursWorked: number;
   paymentAmount: number | null;
   paymentStatus: string;

@@ -260,6 +260,12 @@ export const menuItems: MenuItem[] = [
         icon: Building2,
         permission: PERMISSIONS.USERS_READ,
       },
+      {
+        title: "Nápověda (AI)",
+        url: "/help-topics",
+        icon: FileText,
+        permission: PERMISSIONS.USERS_READ,
+      },
     ],
   },
   {

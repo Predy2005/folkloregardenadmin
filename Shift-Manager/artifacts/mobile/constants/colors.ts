@@ -1,40 +1,56 @@
+/**
+ * Barvy sjednocené s hlavním CRM (`client/src/index.css`). Hodnoty jsou
+ * převody z `--primary: 1 83% 47%` a příbuzných CSS HSL tokenů.
+ *
+ * Logo paleta (`assets/images/logo.svg`):
+ *   - červená  #DC1A15  (primary, tint)
+ *   - zelená   #0E7834  (accent, success, info — listová linka loga)
+ *   - tmavá    #21150C  (text na logu)
+ */
 const colors = {
   light: {
-    text: "#1a1a2e",
-    tint: "#2d6a4f",
+    text: "#262626",
+    tint: "#DC1A15",
 
-    background: "#f8faf9",
-    foreground: "#1a1a2e",
+    background: "#FFFFFF",
+    foreground: "#262626",
 
-    card: "#ffffff",
-    cardForeground: "#1a1a2e",
+    card: "#FFFFFF",
+    cardForeground: "#262626",
 
-    primary: "#2d6a4f",
-    primaryForeground: "#ffffff",
+    // Brand primary — červená z loga / CRM `--primary`
+    primary: "#DC1A15",
+    primaryForeground: "#FFFFFF",
 
-    secondary: "#e8f5e9",
-    secondaryForeground: "#1a1a2e",
+    // CRM `--secondary: 0 0% 96%` — neutrální světle šedá.
+    secondary: "#F5F5F5",
+    secondaryForeground: "#262626",
 
-    muted: "#f1f4f2",
-    mutedForeground: "#6b7c74",
+    muted: "#F5F5F5",
+    mutedForeground: "#737373",
 
-    accent: "#52b788",
-    accentForeground: "#ffffff",
+    // CRM `--accent: 142 30% 95%` — jemný zelenkavý odstín pro hover/aktivní state
+    accent: "#F1F7F3",
+    accentForeground: "#262626",
 
-    destructive: "#e63946",
-    destructiveForeground: "#ffffff",
+    // CRM `--destructive: 0 84% 60%`
+    destructive: "#EF4444",
+    destructiveForeground: "#FFFFFF",
 
-    border: "#dde8e2",
-    input: "#dde8e2",
+    // CRM `--border: 0 0% 92%`
+    border: "#EBEBEB",
+    input: "#EBEBEB",
 
-    warning: "#f4a261",
-    warningForeground: "#ffffff",
+    warning: "#F4A261",
+    warningForeground: "#FFFFFF",
 
-    info: "#457b9d",
-    infoForeground: "#ffffff",
+    // Info/success — zelená z loga (`#0E7834`). Driver flow (TransportCard,
+    // "Jedu" tlačítko) tím dostává barvu konzistentní s CRM akcentem.
+    info: "#0E7834",
+    infoForeground: "#FFFFFF",
 
-    success: "#2d6a4f",
-    successForeground: "#ffffff",
+    success: "#0E7834",
+    successForeground: "#FFFFFF",
   },
   radius: 12,
 };

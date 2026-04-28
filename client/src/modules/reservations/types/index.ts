@@ -23,6 +23,8 @@ export interface ReservationEntry {
   persons: PersonEntry[];
   status: "RECEIVED" | "WAITING_PAYMENT" | "PAID" | "CANCELLED" | "AUTHORIZED" | "CONFIRMED";
   contactNote: string;
+  /** Kdo objednávku provedl (volitelné — např. zaměstnanec CK). */
+  orderedBy: string;
   transfers: TransferEntry[];
   reservationTypeId?: number;
 }

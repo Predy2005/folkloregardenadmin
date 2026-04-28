@@ -136,7 +136,8 @@ export function DriverDialog({ open, onOpenChange, editingDriver, form, saveMuta
             <MobileAccountCard
               basePath={`/api/transport/drivers/${editingDriver.id}`}
               entityEmail={editingDriver.email ?? null}
-              canCreate={!!editingDriver.email}
+              entityPhone={editingDriver.phone ?? null}
+              canCreate={!!(editingDriver.email?.trim() || editingDriver.phone?.trim())}
               derivedRole="STAFF_DRIVER"
               supportsSyncRole={false}
             />

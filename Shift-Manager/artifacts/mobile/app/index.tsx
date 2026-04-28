@@ -1,53 +1,45 @@
 import { Redirect } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { Logo } from "@/components/Logo";
 import { useAuth } from "@/stores/authStore";
 import { useColors } from "@/hooks/useColors";
-import { secureGet } from "@/lib/secureStorage";
 
 /**
  * Routing gate po bootu aplikace.
  *
- *   loading                              → spinner
- *   !user && fg.identifier v SecureStore → /pin-unlock (PIN rychlý login)
- *   !user                                → /login
- *   user && role === null                → informační fallback (nemá mobilní roli)
- *   user && role ∈ {"staff", "driver"}   → /(tabs)
+ *   loading                            → spinner
+ *   !user                              → /pin-unlock (PIN-only login je default)
+ *   user && role === null              → informační fallback (nemá mobilní roli)
+ *   user && role ∈ {"staff", "driver"} → /(tabs)
+ *
+ * PIN je primární login — personál nemá e-mail, jen telefon, takže zadání
+ * 4-6místného globálně unikátního PINu je nejjednodušší cesta. Heslový login
+ * je dostupný jako fallback z odkazu na PIN obrazovce.
  *
  * Role už není volitelná uživatelem — derivuje se ze `user.roles` vrácených
  * z /api/mobile/auth/me (STAFF_WAITER/COOK → "staff", STAFF_DRIVER → "driver").
- * Pokud backend žádnou mobilní roli nevrátí, admin musí staff-member na
- * profilu doplnit pozici a znovu vytvořit mobilní účet.
  */
 export default function IndexScreen() {
   const { user, role, isLoading } = useAuth();
   const colors = useColors();
-  const [hasStoredIdentifier, setHasStoredIdentifier] = useState<
-    boolean | null
-  >(null);
 
-  useEffect(() => {
-    void (async () => {
-      const id = await secureGet("identifier");
-      setHasStoredIdentifier(!!id);
-    })();
-  }, []);
-
-  if (isLoading || hasStoredIdentifier === null) {
+  if (isLoading) {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <Logo size={96} />
+        <Text style={[styles.appName, { color: colors.foreground }]}>
+          Folklore Garden
+        </Text>
+        <ActivityIndicator size="small" color={colors.primary} />
       </View>
     );
   }
 
   if (!user) {
-    // `/pin-unlock` je nová route z PR5; expo-router typedRoutes vygeneruje
-    // typy až při `expo start`, do té doby zalijeme cast na `never`.
-    const target = hasStoredIdentifier
-      ? ("/pin-unlock" as never)
-      : ("/login" as const);
-    return <Redirect href={target} />;
+    // expo-router typedRoutes vygeneruje typy až při `expo start`,
+    // do té doby zalijeme cast na `never`.
+    return <Redirect href={"/pin-unlock" as never} />;
   }
 
   if (role === null) {
@@ -72,7 +64,13 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
+    gap: 16,
+  },
+  appName: {
+    fontSize: 22,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.4,
+    marginTop: 4,
   },
   title: {
     fontSize: 18,

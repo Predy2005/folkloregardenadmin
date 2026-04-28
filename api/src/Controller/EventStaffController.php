@@ -45,6 +45,43 @@ class EventStaffController extends AbstractController
         return self::EVENT_TYPE_TO_FRONTEND[$eventType] ?? $eventType;
     }
 
+    /**
+     * Změní `attendanceStatus` na assignmentu a — pokud došlo k přechodu
+     * do `PRESENT` — pošle personálu push notifikaci „Účast potvrzena".
+     *
+     * Single source of truth pro update přítomnosti — volá se z:
+     *   - updateStaffAttendance (per-řádka v edit eventu)
+     *   - updateStaffRolePresence (hromadný presence count v dashboardu)
+     *   - updateStaffAssignment (obecný PUT assignmentu)
+     *
+     * Vrací bool — `true` pokud se status reálně změnil.
+     */
+    private function transitionAttendanceAndNotify(
+        \App\Entity\EventStaffAssignment $assignment,
+        string $newStatus,
+        \App\Entity\Event $event
+    ): bool {
+        $prev = $assignment->getAttendanceStatus();
+        if ($prev === $newStatus) {
+            return false;
+        }
+        $assignment->setAttendanceStatus($newStatus);
+
+        if ($newStatus === 'PRESENT' && $prev !== 'PRESENT') {
+            $sm = $this->em->getRepository(\App\Entity\StaffMember::class)
+                ->find($assignment->getStaffMemberId());
+            if ($sm && ($linkedUser = $sm->getUser()) !== null) {
+                try {
+                    $this->push->notifyStaffAttendanceConfirmed($linkedUser, $event);
+                } catch (\Throwable) {
+                    // Push nesmí zabít kritickou operaci.
+                }
+            }
+        }
+
+        return true;
+    }
+
     // ========================================================================
     // STAFF REQUIREMENTS ENDPOINTS
     // ========================================================================
@@ -287,7 +324,7 @@ class EventStaffController extends AbstractController
             return $this->json(['error' => 'Assignment not found'], 404);
         }
 
-        $assignment->setAttendanceStatus($status);
+        $this->transitionAttendanceAndNotify($assignment, $status, $event);
         $this->em->flush();
 
         return $this->json([
@@ -349,14 +386,14 @@ class EventStaffController extends AbstractController
         $maxCount = count($assignments);
         $presentCount = max(0, min($presentCount, $maxCount));
 
-        // Update presence - first N are PRESENT, rest are CONFIRMED
+        // Update presence - first N are PRESENT, rest are CONFIRMED.
+        // Helper se postará i o push notifikaci při přechodu do PRESENT.
         $updatedCount = 0;
         foreach ($assignments as $index => $assignment) {
             $shouldBePresent = $index < $presentCount;
             $newStatus = $shouldBePresent ? 'PRESENT' : 'CONFIRMED';
 
-            if ($assignment->getAttendanceStatus() !== $newStatus) {
-                $assignment->setAttendanceStatus($newStatus);
+            if ($this->transitionAttendanceAndNotify($assignment, $newStatus, $event)) {
                 $updatedCount++;
             }
         }
@@ -394,6 +431,8 @@ class EventStaffController extends AbstractController
                 'staffMemberId' => $a->getStaffMemberId(),
                 'staffRoleId' => $a->getStaffRoleId(),
                 'assignmentStatus' => $a->getAssignmentStatus(),
+                'confirmedAt' => $a->getConfirmedAt()?->format('c'),
+                'declineReason' => $a->getDeclineReason(),
                 'attendanceStatus' => $a->getAttendanceStatus(),
                 'hoursWorked' => (float) $a->getHoursWorked(),
                 'paymentAmount' => $a->getPaymentAmount() !== null ? (float) $a->getPaymentAmount() : null,
@@ -481,6 +520,8 @@ class EventStaffController extends AbstractController
             'staffMemberId' => $assignment->getStaffMemberId(),
             'staffRoleId' => $assignment->getStaffRoleId(),
             'assignmentStatus' => $assignment->getAssignmentStatus(),
+            'confirmedAt' => $assignment->getConfirmedAt()?->format('c'),
+            'declineReason' => $assignment->getDeclineReason(),
             'attendanceStatus' => $assignment->getAttendanceStatus(),
             'hoursWorked' => (float) $assignment->getHoursWorked(),
             'paymentAmount' => $assignment->getPaymentAmount() !== null ? (float) $assignment->getPaymentAmount() : null,
@@ -518,7 +559,10 @@ class EventStaffController extends AbstractController
         if (isset($data['staffMemberId'])) $assignment->setStaffMemberId($data['staffMemberId']);
         if (array_key_exists('staffRoleId', $data)) $assignment->setStaffRoleId($data['staffRoleId']);
         if (isset($data['assignmentStatus'])) $assignment->setAssignmentStatus($data['assignmentStatus']);
-        if (isset($data['attendanceStatus'])) $assignment->setAttendanceStatus($data['attendanceStatus']);
+        // Attendance přes helper — sjednocená logika + push notifikace.
+        if (isset($data['attendanceStatus'])) {
+            $this->transitionAttendanceAndNotify($assignment, (string) $data['attendanceStatus'], $event);
+        }
         if (isset($data['hoursWorked'])) $assignment->setHoursWorked((string) $data['hoursWorked']);
         if (array_key_exists('paymentAmount', $data)) {
             $assignment->setPaymentAmount($data['paymentAmount'] !== null ? (string) $data['paymentAmount'] : null);
@@ -539,6 +583,8 @@ class EventStaffController extends AbstractController
             'staffMemberId' => $assignment->getStaffMemberId(),
             'staffRoleId' => $assignment->getStaffRoleId(),
             'assignmentStatus' => $assignment->getAssignmentStatus(),
+            'confirmedAt' => $assignment->getConfirmedAt()?->format('c'),
+            'declineReason' => $assignment->getDeclineReason(),
             'attendanceStatus' => $assignment->getAttendanceStatus(),
             'hoursWorked' => (float) $assignment->getHoursWorked(),
             'paymentAmount' => $assignment->getPaymentAmount() !== null ? (float) $assignment->getPaymentAmount() : null,
@@ -571,8 +617,23 @@ class EventStaffController extends AbstractController
             return $this->json(['error' => 'Staff assignment not found'], 404);
         }
 
+        // Push notifikace musíme získat PŘED removem — po flushi je StaffMember pryč.
+        $linkedUser = null;
+        $staffMember = $this->em->getRepository(\App\Entity\StaffMember::class)->find($assignment->getStaffMemberId());
+        if ($staffMember) {
+            $linkedUser = $staffMember->getUser();
+        }
+
         $this->em->remove($assignment);
         $this->em->flush();
+
+        if ($linkedUser !== null) {
+            try {
+                $this->push->notifyStaffRemovedFromEvent($linkedUser, $event);
+            } catch (\Throwable) {
+                // Push nesmí zabít kritickou operaci — ticho spolknout
+            }
+        }
 
         return $this->json(['status' => 'deleted']);
     }
@@ -638,6 +699,16 @@ class EventStaffController extends AbstractController
 
         $cashbox = $this->cashboxService->getEventCashbox($event);
 
+        // Push: výplata proběhla — informuj personál.
+        $sm = $this->em->getRepository(\App\Entity\StaffMember::class)->find($assignment->getStaffMemberId());
+        if ($sm && ($linkedUser = $sm->getUser()) !== null) {
+            try {
+                $this->push->notifyStaffPaid($linkedUser, $event, $amount);
+            } catch (\Throwable) {
+                // Push nesmí zabít platební operaci.
+            }
+        }
+
         return $this->json([
             'success' => true,
             'movementId' => $movement->getId(),
@@ -672,6 +743,26 @@ class EventStaffController extends AbstractController
             $result = $this->cashboxService->payAllStaff($event, $user);
         } catch (\RuntimeException $e) {
             return $this->json(['error' => $e->getMessage()], 400);
+        }
+
+        // Push pro každého NOVĚ proplaceného personálu. `results` obsahuje
+        // jen řádky, které tato volání reálně proplatila (ne historicky PAID).
+        $assignmentRepo = $this->em->getRepository(\App\Entity\EventStaffAssignment::class);
+        $smRepo = $this->em->getRepository(\App\Entity\StaffMember::class);
+        foreach ($result['results'] as $row) {
+            $a = $assignmentRepo->find($row['assignmentId']);
+            if (!$a) {
+                continue;
+            }
+            $sm = $smRepo->find($a->getStaffMemberId());
+            $linkedUser = $sm?->getUser();
+            if ($linkedUser !== null) {
+                try {
+                    $this->push->notifyStaffPaid($linkedUser, $event, $row['amount']);
+                } catch (\Throwable) {
+                    // Pokračuj — ostatní notify projdou.
+                }
+            }
         }
 
         return $this->json([

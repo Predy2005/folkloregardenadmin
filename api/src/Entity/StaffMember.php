@@ -72,6 +72,15 @@ class StaffMember
     #[ORM\JoinColumn(name: 'user_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
     private ?User $user = null;
 
+    /**
+     * Relativní cesta k profilové fotce (vůči `uploads/staff_photos/`).
+     * Mobilka/web ji uplodují přes `POST /api/mobile/me/photo` (resp. admin
+     * UI). Hodnota typu `staff_<id>_<timestamp>.jpg` — slouží jen jako klíč
+     * pro file storage.
+     */
+    #[ORM\Column(name: 'photo_path', type: Types::STRING, length: 500, nullable: true)]
+    private ?string $photoPath = null;
+
     public function __construct()
     {
         $this->createdAt = new \DateTime();
@@ -122,4 +131,7 @@ class StaffMember
 
     public function getUser(): ?User { return $this->user; }
     public function setUser(?User $user): self { $this->user = $user; return $this; }
+
+    public function getPhotoPath(): ?string { return $this->photoPath; }
+    public function setPhotoPath(?string $p): self { $this->photoPath = $p; return $this; }
 }

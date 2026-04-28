@@ -12,6 +12,7 @@ use App\Repository\RefreshTokenRepository;
 use App\Repository\RoleRepository;
 use App\Repository\UserRepository;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 /**
@@ -79,7 +80,18 @@ class MobileAccountProvisioningService
         private readonly UserRepository $userRepo,
         private readonly RoleRepository $roleRepo,
         private readonly RefreshTokenRepository $refreshRepo,
+        #[Autowire('%kernel.secret%')]
+        private readonly string $appSecret,
     ) {
+    }
+
+    /**
+     * Spočítá deterministický HMAC-SHA256 hash z PINu pro lookup + uniqueness.
+     * Sdílený s MobileAuthService — obě strany musí počítat shodně.
+     */
+    public static function computePinLookupHash(string $pin, string $secret): string
+    {
+        return hash_hmac('sha256', $pin, $secret);
     }
 
     /**
@@ -103,8 +115,13 @@ class MobileAccountProvisioningService
             throw new \DomainException('Staff member už má přiřazený mobilní účet.');
         }
 
-        if (!$staff->getEmail()) {
-            throw new \DomainException('Staff member musí mít vyplněný e-mail pro mobilní přihlášení.');
+        // Staff se může přihlásit emailem NEBO telefonem — preferujeme email
+        // (uniqueness silnější), telefon je fallback pro lidi co email nemají.
+        $identifier = $this->resolveIdentifier($staff->getEmail(), $staff->getPhone());
+        if ($identifier === null) {
+            throw new \DomainException(
+                'Pro mobilní přihlášení musí mít staff member vyplněný buď e-mail nebo telefon.'
+            );
         }
 
         $derivedRole = self::deriveMobileRoleFromPosition($staff->getPosition());
@@ -115,9 +132,9 @@ class MobileAccountProvisioningService
             ));
         }
 
-        $this->ensureEmailFree($staff->getEmail());
+        $this->ensureIdentifierFree($identifier, $staff->getEmail());
 
-        [$user, $plainPassword] = $this->createUser($staff->getEmail(), $generatePassword);
+        [$user, $plainPassword] = $this->createUser($identifier, $staff->getEmail(), $generatePassword);
         if ($pin !== null && $pin !== '') {
             $this->applyPin($user, $pin, $pinDeviceId);
         }
@@ -145,13 +162,16 @@ class MobileAccountProvisioningService
             throw new \DomainException('Řidič už má přiřazený mobilní účet.');
         }
 
-        if (!$driver->getEmail()) {
-            throw new \DomainException('Řidič musí mít vyplněný e-mail pro mobilní přihlášení.');
+        $identifier = $this->resolveIdentifier($driver->getEmail(), $driver->getPhone());
+        if ($identifier === null) {
+            throw new \DomainException(
+                'Pro mobilní přihlášení musí mít řidič vyplněný buď e-mail nebo telefon.'
+            );
         }
 
-        $this->ensureEmailFree($driver->getEmail());
+        $this->ensureIdentifierFree($identifier, $driver->getEmail());
 
-        [$user, $plainPassword] = $this->createUser($driver->getEmail(), $generatePassword);
+        [$user, $plainPassword] = $this->createUser($identifier, $driver->getEmail(), $generatePassword);
         if ($pin !== null && $pin !== '') {
             $this->applyPin($user, $pin, $pinDeviceId);
         }
@@ -190,6 +210,7 @@ class MobileAccountProvisioningService
     public function disablePin(User $user): void
     {
         $user->setMobilePin(null);
+        $user->setMobilePinLookupHash(null);
         $user->setPinDeviceId(null);
         $user->setPinEnabled(false);
         $this->refreshRepo->revokeAllForUser($user);
@@ -247,7 +268,8 @@ class MobileAccountProvisioningService
         return [
             'hasAccount' => true,
             'userId' => $user->getId(),
-            'email' => $user->getEmail(),
+            'username' => $user->getUsername(),  // identifier použitý pro mobilní login (email NEBO telefon)
+            'email' => $user->getEmail(),         // null pokud staff má jen telefon
             'pinEnabled' => $user->isPinEnabled(),
             'mobileRoles' => $mobileRoles,
             'expectedRole' => $expectedRole,
@@ -289,13 +311,15 @@ class MobileAccountProvisioningService
     // ─── Interní ─────────────────────────────────────────────────────────
 
     /**
+     * @param string      $username  Identifier pro mobilní login (email nebo normalizovaný phone).
+     * @param string|null $email     Skutečný e-mail (nullable — staff se může přihlašovat jen telefonem).
      * @return array{0: User, 1: ?string} User a plaintext heslo (pokud bylo generováno).
      */
-    private function createUser(string $email, bool $generatePassword): array
+    private function createUser(string $username, ?string $email, bool $generatePassword): array
     {
         $user = new User();
-        $user->setUsername($email);
-        $user->setEmail($email);
+        $user->setUsername($username);
+        $user->setEmail($email); // může být null pokud staff má jen telefon
         $user->setRoles(['ROLE_USER']);
 
         $plainPassword = null;
@@ -312,12 +336,54 @@ class MobileAccountProvisioningService
         return [$user, $plainPassword];
     }
 
+    /**
+     * Normalizuje telefon do podoby vhodné pro porovnání: trim + odstranění
+     * běžných formátovacích znaků (mezery, pomlčky, závorky, tečky).
+     * Vrací `null` pro prázdný / appendix-only vstup.
+     *
+     *   "+420 777 123 456"  →  "+420777123456"
+     *   "777-123-456"       →  "777123456"
+     *   "(420) 777.123.456" →  "420777123456"
+     */
+    private function normalizePhone(?string $phone): ?string
+    {
+        if ($phone === null) return null;
+        $cleaned = preg_replace('/[\s\-().]/u', '', trim($phone)) ?? '';
+        return $cleaned === '' ? null : $cleaned;
+    }
+
+    /**
+     * Vrátí identifier pro mobilní login: preferuje e-mail (silnější
+     * uniqueness), fallback na normalizovaný telefon. `null` znamená
+     * "ani jedno není vyplněné" — caller hodí domain error.
+     */
+    private function resolveIdentifier(?string $email, ?string $phone): ?string
+    {
+        $email = $email !== null ? trim($email) : '';
+        if ($email !== '') {
+            return $email;
+        }
+        return $this->normalizePhone($phone);
+    }
+
     private function applyPin(User $user, string $pin, ?string $deviceId): void
     {
         if (!preg_match('/^\d{4,6}$/', $pin)) {
             throw new \InvalidArgumentException('PIN musí být 4 až 6 číslic.');
         }
+
+        // Globální unikátnost — mobilní login pracuje JEN s PINem (bez identifieru),
+        // takže dva uživatelé se stejným PINem by se nedali rozlišit.
+        $lookupHash = self::computePinLookupHash($pin, $this->appSecret);
+        $existing = $this->userRepo->findOneBy(['mobilePinLookupHash' => $lookupHash]);
+        if ($existing !== null && $existing->getId() !== $user->getId()) {
+            throw new PinAlreadyTakenException(
+                sprintf('PIN %s už používá jiný uživatel. Zvolte jiný.', $pin)
+            );
+        }
+
         $user->setMobilePin($this->hasher->hashPassword($user, $pin));
+        $user->setMobilePinLookupHash($lookupHash);
         $user->setPinDeviceId($deviceId);
         $user->setPinEnabled(true);
     }
@@ -336,9 +402,19 @@ class MobileAccountProvisioningService
         $this->em->persist($ur);
     }
 
-    private function ensureEmailFree(string $email): void
+    /**
+     * Ověří, že identifier (= username pro mobilní login) i případný e-mail
+     * jsou v `user` tabulce volné. Pokud ne, hodí domain error s popisem,
+     * který existuje a kde ho admin najde.
+     */
+    private function ensureIdentifierFree(string $identifier, ?string $email): void
     {
-        if ($this->userRepo->findOneBy(['email' => $email])) {
+        if ($this->userRepo->findOneBy(['username' => $identifier])) {
+            throw new \DomainException(
+                sprintf('Uživatel s identifikátorem "%s" už existuje (username). Nejdřív ho smaž z /users.', $identifier)
+            );
+        }
+        if ($email !== null && $email !== '' && $this->userRepo->findOneBy(['email' => $email])) {
             throw new \DomainException(
                 sprintf('Uživatel s e-mailem "%s" už existuje. Nejdřív ho smaž z /users.', $email)
             );

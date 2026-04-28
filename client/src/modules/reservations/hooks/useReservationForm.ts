@@ -40,6 +40,7 @@ const defaultReservation: ReservationEntry = {
   persons: [],
   status: "RECEIVED",
   contactNote: "",
+  orderedBy: "",
   transfers: [],
   reservationTypeId: undefined,
 };
@@ -204,7 +205,7 @@ export function useReservationForm() {
       const reservation = data.reservation;
       setSharedContact({
         contactName: reservation.contactName,
-        contactEmail: reservation.contactEmail,
+        contactEmail: reservation.contactEmail ?? "",
         contactPhone: reservation.contactPhone,
         contactNationality: reservation.contactNationality,
         clientComeFrom: reservation.clientComeFrom || "",
@@ -247,6 +248,7 @@ export function useReservationForm() {
         })) || [],
         status: reservation.status,
         contactNote: reservation.contactNote || "",
+        orderedBy: reservation.orderedBy || "",
         transfers: loadedTransfers,
         reservationTypeId: reservation.reservationTypeId,
       }]);
@@ -532,6 +534,8 @@ export function useReservationForm() {
     handleTypeChange: persons.handleTypeChange,
     handleMenuChange: persons.handleMenuChange,
     removePerson: persons.removePerson,
+    removePersonsAt: persons.removePersonsAt,
+    setPersonsCount: persons.setPersonsCount,
     addBulkPersons: persons.addBulkPersons,
     applyBulkPriceChange: persons.applyBulkPriceChange,
     applyBulkMenuChange: persons.applyBulkMenuChange,

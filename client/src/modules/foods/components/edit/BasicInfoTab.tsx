@@ -17,6 +17,8 @@ export const foodSchema = z.object({
   surcharge: z.coerce.number().min(0, "Příplatek musí být kladné číslo"),
   isChildrenMenu: z.boolean().default(false),
   externalId: z.string().optional(),
+  notes: z.string().optional(),
+  allergens: z.string().optional(),
 });
 
 export type FoodForm = z.infer<typeof foodSchema>;
@@ -167,6 +169,48 @@ export function BasicInfoTab({ form }: BasicInfoTabProps) {
                       Označí toto jídlo jako dětské menu
                     </FormDescription>
                   </div>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="allergens"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Alergeny</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      rows={2}
+                      placeholder="Lepek, Mléko, Vejce, Sója…"
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Seznam alergenů — typicky čárkami oddělený, lze i volným textem ("Obsahuje stopy ořechů").
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Poznámka</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      rows={3}
+                      placeholder="Interní poznámka pro kuchyň/personál (např. způsob přípravy, omezení)…"
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Interní poznámka — nezobrazuje se hostovi.
+                  </FormDescription>
+                  <FormMessage />
                 </FormItem>
               )}
             />

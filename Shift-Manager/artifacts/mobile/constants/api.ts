@@ -32,11 +32,16 @@ export const MOBILE_PATHS = {
   logout: "/api/mobile/auth/logout",
   me: "/api/mobile/auth/me",
 
+  // Self-profile edit (PATCH) + photo (POST/DELETE multipart). `me` výše je
+  // GET /api/mobile/auth/me (bootstrap), tohle je editace navázaného profilu.
+  meProfile: "/api/mobile/me",
+  mePhoto: "/api/mobile/me/photo",
+
   // Staff data
   events: "/api/mobile/me/events",
+  eventHistory: "/api/mobile/me/events/history",
   eventDetail: (id: number | string) => `/api/mobile/me/events/${id}`,
-  checkIn: "/api/mobile/me/attendance/checkin",
-  checkOut: "/api/mobile/me/attendance/checkout",
+  eventRespond: (id: number | string) => `/api/mobile/me/events/${id}/respond`,
 
   // Driver data
   transports: "/api/mobile/me/transports",

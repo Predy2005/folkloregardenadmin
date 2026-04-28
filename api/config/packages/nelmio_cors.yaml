@@ -8,6 +8,19 @@ nelmio_cors:
     expose_headers: [ 'Authorization' ]
     max_age: 3600
   paths:
+    # Mobilní API — povoleno všem origins. Bearer auth, žádné cookies →
+    # `allow_credentials: false` umožňuje použít wildcard `*`. Pokrývá:
+    # Expo Go (native fetch), Expo web mode (localhost:8081, LAN IP),
+    # standalone build (custom URL scheme), prod app.
+    # POŘADÍ MATTERS: tento entry musí být PŘED `^/` (nelmio matchuje první).
+    '^/api/mobile/':
+      allow_origin: [ '*' ]
+      allow_credentials: false
+      allow_headers: [ '*' ]
+      allow_methods: [ 'GET', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE' ]
+      expose_headers: [ 'Authorization' ]
+      max_age: 3600
+
     '^/':
       origin_regex: true
       allow_credentials: true

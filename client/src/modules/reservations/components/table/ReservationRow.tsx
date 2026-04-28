@@ -25,7 +25,7 @@ export function ReservationRow({ reservation, onView, onEdit, onDelete, onSendPa
             {dayjs(reservation.date).format('DD.MM.YYYY HH:mm')}
           </span>
           <span className="font-medium">{reservation.contactName}</span>
-          <span className="text-sm text-muted-foreground">{reservation.contactEmail}</span>
+          <span className="text-sm text-muted-foreground">{reservation.contactEmail || ""}</span>
         </div>
       </TableCell>
       <TableCell className="font-mono text-sm">{reservation.contactPhone}</TableCell>

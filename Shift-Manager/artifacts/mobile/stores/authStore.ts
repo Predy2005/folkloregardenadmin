@@ -23,15 +23,30 @@ import {
 export interface MobileUser {
   id: number;
   username: string;
-  email: string;
+  email: string | null;
   roles: string[];
   permissions: string[];
   isSuperAdmin?: boolean;
   pinEnabled?: boolean;
+
+  // Staff member fields (přítomné jen pokud má personal mobilní účet)
   staffMemberId?: number | null;
   staffMemberName?: string | null;
+  staffMemberFirstName?: string | null;
+  staffMemberLastName?: string | null;
+  staffMemberPosition?: string | null;
+  staffMemberPhone?: string | null;
+  staffMemberEmail?: string | null;
+  staffMemberPhotoUrl?: string | null;
+
+  // Transport driver fields
   transportDriverId?: number | null;
   transportDriverName?: string | null;
+  transportDriverFirstName?: string | null;
+  transportDriverLastName?: string | null;
+  transportDriverPhone?: string | null;
+  transportDriverEmail?: string | null;
+  transportDriverPhotoUrl?: string | null;
 }
 
 interface LoginResponse {
@@ -47,6 +62,12 @@ interface AuthState {
   isLoading: boolean;
   login: (identifier: string, password: string) => Promise<void>;
   loginWithPin: (identifier: string, pin: string) => Promise<void>;
+  /**
+   * PIN-only login — bez identifieru. Backend hledá uživatele podle
+   * deterministického HMAC hashe PINu (globálně unikátní). Vhodné pro
+   * personál, který nemá e-mail.
+   */
+  loginWithPinOnly: (pin: string) => Promise<void>;
   logout: () => Promise<void>;
   /** Znovu načte /me — např. po network reconnect nebo po refreshi appky. */
   reloadUser: () => Promise<void>;
@@ -123,6 +144,28 @@ export const useAuthStore = create<AuthState>()((set) => ({
     void registerPush();
   },
 
+  async loginWithPinOnly(pin) {
+    const deviceId = await getOrCreateDeviceId();
+    const response = await fetch(`${API_BASE_URL}${MOBILE_PATHS.pinLogin}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin, deviceId }),
+    });
+    if (!response.ok) {
+      const err = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(err.error ?? "PIN přihlášení se nezdařilo");
+    }
+    const data = (await response.json()) as LoginResponse;
+    await persistTokens(data);
+    // Identifier z odpovědi (username = email nebo telefon) — uloží se pro
+    // budoucí "Jiný účet" UX a pro logging/profil. PIN-flow ho nepotřebuje.
+    if (data.user.username) {
+      await secureSet("identifier", data.user.username);
+    }
+    set({ user: data.user });
+    void registerPush();
+  },
+
   async logout() {
     // Odregistruj push token před zneplatněním access tokenu — poté už
     // apiFetch nemá jak autentizovat DELETE /devices/by-token.
@@ -183,6 +226,7 @@ export function useAuth() {
       isLoading: s.isLoading,
       login: s.login,
       loginWithPin: s.loginWithPin,
+      loginWithPinOnly: s.loginWithPinOnly,
       logout: s.logout,
       reloadUser: s.reloadUser,
     })),

@@ -133,9 +133,11 @@ return function (ProductionMigrationRunner $runner) {
                 ['mobile_transport',  'read',   'Mobilní aplikace – transport řidiče - Zobrazení'],
                 ['mobile_transport',  'update', 'Mobilní aplikace – transport řidiče - Úprava'],
             ];
+            // Explicit casts kvůli PostgreSQL — bez nich `SELECT $1, $2, $3`
+            // nedokáže určit typ parametrů a hodí 42P08 "Ambiguous parameter".
             $insertPerm = $db->prepare(
                 'INSERT INTO permission (module, action, description)
-                 SELECT :m, :a, :d
+                 SELECT CAST(:m AS VARCHAR), CAST(:a AS VARCHAR), CAST(:d AS VARCHAR)
                  WHERE NOT EXISTS (SELECT 1 FROM permission WHERE module = :m AND action = :a)'
             );
             foreach ($permissions as [$m, $a, $d]) {
@@ -151,7 +153,7 @@ return function (ProductionMigrationRunner $runner) {
             ];
             $insertRole = $db->prepare(
                 'INSERT INTO role (name, display_name, description, is_system, priority, created_at, updated_at)
-                 SELECT :n, :dn, :d, TRUE, 20, NOW(), NOW()
+                 SELECT CAST(:n AS VARCHAR), CAST(:dn AS VARCHAR), CAST(:d AS VARCHAR), TRUE, 20, NOW(), NOW()
                  WHERE NOT EXISTS (SELECT 1 FROM role WHERE name = :n)'
             );
             foreach ($roles as [$n, $dn, $d]) {
@@ -169,8 +171,9 @@ return function (ProductionMigrationRunner $runner) {
                 'INSERT INTO role_permission (role_id, permission_id)
                  SELECT r.id, p.id FROM role r
                  CROSS JOIN permission p
-                 WHERE r.name = :role
-                   AND p.module = :module AND p.action = :action'
+                 WHERE r.name = CAST(:role AS VARCHAR)
+                   AND p.module = CAST(:module AS VARCHAR)
+                   AND p.action = CAST(:action AS VARCHAR)'
             );
             $mappings = [
                 ['STAFF_WAITER', 'mobile_self',       'read'],

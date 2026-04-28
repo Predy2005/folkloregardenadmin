@@ -36,8 +36,8 @@ class Event
     #[ORM\Column(type: Types::TIME_MUTABLE)]
     private \DateTimeInterface $eventTime;
 
-    #[ORM\Column(type: Types::INTEGER, options: ['default' => 120])]
-    private int $durationMinutes = 120;
+    #[ORM\Column(type: Types::INTEGER, options: ['default' => 150])]
+    private int $durationMinutes = 150;
 
     // Počet osob
     #[ORM\Column(type: Types::INTEGER, options: ['default' => 0])]

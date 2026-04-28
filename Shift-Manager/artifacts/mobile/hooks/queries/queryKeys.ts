@@ -10,6 +10,7 @@ export const eventKeys = {
   all: ["events"] as const,
   lists: () => [...eventKeys.all, "list"] as const,
   list: () => [...eventKeys.lists()] as const,
+  history: () => [...eventKeys.all, "history"] as const,
   details: () => [...eventKeys.all, "detail"] as const,
   detail: (id: number | string) => [...eventKeys.details(), String(id)] as const,
 } as const;

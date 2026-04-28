@@ -12,19 +12,13 @@ interface AiServer {
 
 const AI_SERVERS: AiServer[] = [
   {
-    endpoint: "https://ai2.ai-servis.online",
-    apiKey: "sk-lm-RWjTUYjr:6SG1lQK5XJYzN1wgAPyD",
-    //model: 'qwen2.5-14b-instruct-1m',
-    model: "openai/gpt-oss-20b",
+    endpoint: "https://api.openai.com",
+    apiKey:
+      "<REDACTED-OPENAI-KEY>",
+    model: "gpt-4.1-mini",
     priority: 1,
   },
-  {
-    endpoint: "https://ai1.ai-servis.online",
-    apiKey: "sk-lm-y4kZpbN3:mQJmOGnRCFFxPGlMiZNF",
-    model: "google/gemma-3-4b",
-    priority: 2,
-  },
-].sort((a, b) => a.priority - b.priority);
+];
 
 export const isAiConfigured = () => AI_SERVERS.length > 0;
 
@@ -119,7 +113,7 @@ function getClientForServer(server: AiServer): AxiosInstance {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${server.apiKey}`,
       },
-      timeout: 180_000,
+      timeout: 240_000,
     });
     aiClients.set(server.endpoint, client);
   }
@@ -140,12 +134,12 @@ async function aiRequest(
   return { content, finishReason };
 }
 
-// Send a chat completion request, trying servers in priority order
-// onlyPrimary=true → use only ai2 (large model), skip ai1 to avoid crashing it
-async function aiChatCompletion(systemPrompt: string, userMessage: string, onlyPrimary = false): Promise<string> {
+// Send a chat completion request, trying servers in priority order.
+// Pokud primární server selže (timeout, 5xx, network error), automaticky padá na další v pořadí.
+async function aiChatCompletion(systemPrompt: string, userMessage: string): Promise<string> {
   if (AI_SERVERS.length === 0) throw new Error('Žádné AI servery nejsou nakonfigurované');
 
-  // Fixed max_tokens — 4096 works on ai2, higher may exceed context window
+  // 4096 je bezpečný limit pro oba modely (OpenAI gpt-4.1-mini i gemma-4-31b).
   const maxTokens = 4096;
 
   const body = {
@@ -157,7 +151,7 @@ async function aiChatCompletion(systemPrompt: string, userMessage: string, onlyP
     max_tokens: maxTokens,
   };
 
-  const servers = onlyPrimary ? AI_SERVERS.slice(0, 1) : AI_SERVERS;
+  const servers = AI_SERVERS;
   let lastError: unknown;
   let truncatedContent: string | null = null;
 
@@ -304,9 +298,15 @@ export function resolveMenuToFoodId(menuName: string, foods: ReservationFood[]):
 // MULTI-RESERVATION PARSING (for emails with multiple dates)
 // ============================================================================
 
-// Schema for a single reservation entry in multi-reservation response
+// Schema for a single reservation entry in multi-reservation response.
+// `date` je nově nepovinné — některé poptávkové emaily ho neobsahují (klient
+// jen vybere menu, datum se domluví později). UI s prázdným datem zacházet umí.
 export const AiMultiReservationEntrySchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // YYYY-MM-DD
+  date: z
+    .string()
+    .nullable()
+    .optional()
+    .refine((v) => !v || /^\d{4}-\d{2}-\d{2}$/.test(v), { message: 'Datum musí být YYYY-MM-DD' }),
   adults: z.number().int().nonnegative().default(0),
   children: z.number().int().nonnegative().default(0),
   infants: z.number().int().nonnegative().default(0),
@@ -335,10 +335,12 @@ export const AiMultiReservationContactSchema = z.object({
   invoicePhone: z.string().optional(),
 });
 
-// Main schema for multi-reservation AI response
+// Main schema for multi-reservation AI response.
+// Pole `reservations` může být prázdné — AI nemusí najít žádnou rezervaci
+// (poptávka bez data, jen kontakt) a UI z toho udělá jednu prázdnou rezervaci.
 export const AiParsedMultiReservationSchema = z.object({
   contact: AiMultiReservationContactSchema.default({}),
-  reservations: z.array(AiMultiReservationEntrySchema).min(1),
+  reservations: z.array(AiMultiReservationEntrySchema).default([]),
   priceCurrency: z.string().default('CZK'),
 });
 
@@ -425,7 +427,10 @@ export function buildMultiReservationSystemPrompt(): string {
     '- "Return transfer", "transfer back to hotel", "drop-off" = ODVOZ Z AKCE = ulož do transferAddress.',
     '- Pokud je zmíněna adresa hotelu a kontext naznačuje odvoz zpět, nastav transferAddress na adresu a transferCount na počet osob.',
     '',
-    'Vrať pouze JSON dle schématu. Pole reservations musí obsahovat alespoň jednu položku.',
+    'Vrať pouze JSON dle schématu.',
+    '- Pokud email obsahuje konkrétní rezervaci/poptávku (i bez data), vlož ji do reservations.',
+    '- Pokud datum není uvedeno, nastav date: null (NE prázdný string, NE vynech rezervaci) a do notes napiš "Datum bude doplněno". Ostatní pole (počty, menu, cena, kontakt) vyplň podle textu.',
+    '- Pokud email vůbec neobsahuje žádnou rezervační informaci (jen pozdrav, podpis), vrať prázdné reservations: [].',
     'NEKOMBINUJ skupiny na stejný den - každá skupina je samostatná rezervace!',
     '',
     'SPECIÁLNÍ PŘÍPAD - seznam skupin bez detailů:',
@@ -546,8 +551,19 @@ function parseMultiReservationResponse(content: string): AiParsedMultiReservatio
     };
   }
 
+  // Žádný známý formát neprošel — sestavíme co nejvíce použitelnou chybu
+  // (původní hláška "neočekávaný formát (klíče: contact, reservations)" byla
+  // matoucí; teď ukážeme i konkrétní pole, které selhalo, abychom mohli
+  // doladit prompt nebo schema).
   const keys = Object.keys(payloadObj).join(', ');
-  throw new Error('AI vrátila neočekávaný formát (klíče: ' + (keys || 'žádné') + ')');
+  const multiIssues = multiResult.error?.issues
+    ?.slice(0, 3)
+    .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
+    .join('; ');
+  throw new Error(
+    `AI vrátila neočekávaný formát (klíče: ${keys || 'žádné'})` +
+    (multiIssues ? `. Detail: ${multiIssues}` : ''),
+  );
 }
 
 // Estimate how many reservation entries are in the text (heuristic: count date-like patterns)
@@ -746,7 +762,7 @@ async function extractEmailMetadata(emailText: string): Promise<EmailMetadata> {
     priceCurrency: 'CZK', nationality: null, notes: null,
   };
   try {
-    const content = await aiChatCompletion(prompt, excerpt, true);
+    const content = await aiChatCompletion(prompt, excerpt);
     const payload = extractJsonFromContent(content);
     if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
       const obj = payload as Record<string, unknown>;
@@ -922,7 +938,7 @@ export async function parseMultiReservationWithAI(params: {
     console.warn('[AI] Email truncated from ' + cleanedEmail.length + ' to ' + maxEmailChars + ' chars');
   }
   console.warn('[AI] Using full AI parsing (' + emailForAi.length + ' chars, original ' + text.length + ')');
-  const content = await aiChatCompletion(systemPrompt, emailForAi, true);
+  const content = await aiChatCompletion(systemPrompt, emailForAi);
   return parseMultiReservationResponse(content);
 }
 
@@ -943,7 +959,7 @@ async function _processChunkedReservations(
     const label = (idx + 1) + '/' + chunks.length;
     const chunkText = chunk.join('\n');
     console.warn('[AI] Chunk ' + label + ': ' + chunk.length + ' entries');
-    const content = await aiChatCompletion(chunkPrompt, chunkText, true);
+    const content = await aiChatCompletion(chunkPrompt, chunkText);
     return parseMultiReservationResponse(content);
   });
 
@@ -965,7 +981,7 @@ async function _processNaiveChunkedReservations(
 
   // If only one chunk, just send it directly
   if (chunks.length <= 1) {
-    const content = await aiChatCompletion(chunkPrompt, text, true);
+    const content = await aiChatCompletion(chunkPrompt, text);
     return parseMultiReservationResponse(content);
   }
 
@@ -974,7 +990,7 @@ async function _processNaiveChunkedReservations(
   const tasks = chunks.map((chunk, idx) => async () => {
     const label = (idx + 1) + '/' + chunks.length;
     console.warn('[AI] Naive chunk ' + label + ': ' + chunk.length + ' chars');
-    const content = await aiChatCompletion(chunkPrompt, chunk, true);
+    const content = await aiChatCompletion(chunkPrompt, chunk);
     return parseMultiReservationResponse(content);
   });
 

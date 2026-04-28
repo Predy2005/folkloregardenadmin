@@ -30,6 +30,11 @@ services:
     tags:
       - { name: kernel.event_listener, event: lexik_jwt_authentication.on_jwt_created, method: onJWTCreated }
 
+  # Mobile profile service — pro upload fotek potřebuje absolutní path k public/.
+  App\Service\MobileProfileService:
+    arguments:
+      $publicDir: '%kernel.project_dir%/public'
+
   # AI assistant: tag all tools so ToolRegistry gets them injected
   _instanceof:
     App\Service\Assistant\Tool\ToolInterface:
@@ -44,9 +49,6 @@ services:
       $server1Url: '%env(default::AI_SERVER_1_URL)%'
       $server1Key: '%env(default::AI_SERVER_1_KEY)%'
       $server1Model: '%env(default::AI_SERVER_1_MODEL)%'
-      $server2Url: '%env(default::AI_SERVER_2_URL)%'
-      $server2Key: '%env(default::AI_SERVER_2_KEY)%'
-      $server2Model: '%env(default::AI_SERVER_2_MODEL)%'
 
   # Push notifikace pro mobilní aplikaci — Expo Push Service (rozhodnutí §0.1
   # migration-mobile-backend.md: Expo Notifications, ne FCM direct).

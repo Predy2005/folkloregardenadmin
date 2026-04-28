@@ -24,6 +24,14 @@ security:
       logout:
         path: /auth/logout
         target: /
+    # Mobilní auth endpointy — bez JWT authenticatoru. Login/pin-login vrací
+    # token, refresh ho rotuje (sám parsuje refresh token z body), logout
+    # zneplatňuje refresh token. Žádné z těchto akcí nepoužívá Bearer JWT.
+    # MUSÍ být PŘED firewallem `main` (pattern: ^/), který by jinak matchnul.
+    mobile_auth:
+      pattern: ^/api/mobile/auth/(login|pin-login|refresh|logout)$
+      stateless: true
+      security: false
     main:
       pattern: ^/
       stateless: true

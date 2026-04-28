@@ -12,6 +12,7 @@ use App\Repository\TransportVehicleRepository;
 use App\Repository\TransportDriverRepository;
 use App\Repository\EventTransportRepository;
 use App\Service\MobileAccountProvisioningService;
+use App\Service\PinAlreadyTakenException;
 use App\Service\Push\PushNotificationService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -325,6 +326,8 @@ class TransportController extends AbstractController
 
         try {
             $result = $provisioner->provisionForTransportDriver($d, $generatePassword, $pin, $pinDeviceId);
+        } catch (PinAlreadyTakenException $e) {
+            return $this->json(['error' => $e->getMessage()], 409);
         } catch (\InvalidArgumentException | \DomainException $e) {
             return $this->json(['error' => $e->getMessage()], 400);
         } catch (\RuntimeException $e) {
@@ -370,6 +373,8 @@ class TransportController extends AbstractController
         $deviceId = isset($data['deviceId']) ? (string)$data['deviceId'] : null;
         try {
             $provisioner->setPin($d->getUser(), $pin, $deviceId);
+        } catch (PinAlreadyTakenException $e) {
+            return $this->json(['error' => $e->getMessage()], 409);
         } catch (\InvalidArgumentException $e) {
             return $this->json(['error' => $e->getMessage()], 400);
         }

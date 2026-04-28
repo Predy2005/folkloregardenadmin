@@ -2,7 +2,9 @@ import { z } from "zod";
 
 export const partnerSchema = z.object({
   name: z.string().min(1, "Zadejte nazev partnera"),
-  partnerType: z.enum(["HOTEL", "RECEPTION", "DISTRIBUTOR", "OTHER"]),
+  // Kategorie partnera je nově dynamická — slug existující kategorie z `partner_category`.
+  // Default kategorie: TRAVEL_AGENCY, GUIDE, HOTEL, OTHER (uživatel může přidat další).
+  partnerType: z.string().min(1, "Vyberte kategorii partnera"),
   contactPerson: z.string().optional(),
   email: z.string().email("Zadejte platny email").or(z.literal("")),
   phone: z.string().optional(),
@@ -31,9 +33,17 @@ export const partnerSchema = z.object({
 
 export type PartnerForm = z.infer<typeof partnerSchema>;
 
+/**
+ * @deprecated Kategorie jsou nyní dynamické v tabulce `partner_category` —
+ * čti `usePartnerCategories()` z `@modules/partners/hooks/usePartnerCategories`.
+ * Tato konstanta zůstává jen jako fallback, když API není dostupné, nebo pro
+ * překlad legacy slugů (RECEPTION/DISTRIBUTOR), které už v dropdownu nejsou.
+ */
 export const PARTNER_TYPE_LABELS: Record<string, string> = {
+  TRAVEL_AGENCY: "Cestovní kancelář",
+  GUIDE: "Průvodce",
   HOTEL: "Hotel",
+  OTHER: "Ostatní",
   RECEPTION: "Recepce",
   DISTRIBUTOR: "Distributor",
-  OTHER: "Ostatni",
 };

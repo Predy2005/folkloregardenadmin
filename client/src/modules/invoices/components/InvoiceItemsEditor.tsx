@@ -117,7 +117,7 @@ export default function InvoiceItemsEditor({
         customerZipcode: reservation.invoiceZipcode || "",
         customerIco: reservation.invoiceIc || "",
         customerDic: reservation.invoiceDic || "",
-        customerEmail: reservation.invoiceEmail || reservation.contactEmail,
+        customerEmail: reservation.invoiceEmail || reservation.contactEmail || "",
         customerPhone: reservation.invoicePhone || reservation.contactPhone,
         variableSymbol: String(reservation.id),
         items,

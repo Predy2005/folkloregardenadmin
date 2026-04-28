@@ -29,13 +29,17 @@ class ReservationFoodsController extends AbstractController
     {
         $data = json_decode($request->getContent(), true);
 
+        $emptyToNull = static fn($v) => is_string($v) && trim($v) !== '' ? $v : null;
+
         $food = new ReservationFoods();
         $food->setName($data['name'] ?? '');
-        $food->setDescription($data['description'] ?? null);
+        $food->setDescription($emptyToNull($data['description'] ?? null));
         $food->setPrice((int) ($data['price'] ?? 0));
         $food->setSurcharge((int) ($data['surcharge'] ?? 0));
         $food->setIsChildrenMenu($data['isChildrenMenu'] ?? $data['isChildMenu'] ?? false);
         $food->setExternalId(!empty($data['externalId']) ? $data['externalId'] : null);
+        $food->setNotes($emptyToNull($data['notes'] ?? null));
+        $food->setAllergens($emptyToNull($data['allergens'] ?? null));
 
         $em->persist($food);
         $em->flush();
@@ -137,6 +141,14 @@ class ReservationFoodsController extends AbstractController
         }
         if (array_key_exists('externalId', $data)) {
             $food->setExternalId(!empty($data['externalId']) ? $data['externalId'] : null);
+        }
+        if (array_key_exists('notes', $data)) {
+            $val = $data['notes'];
+            $food->setNotes(is_string($val) && trim($val) !== '' ? $val : null);
+        }
+        if (array_key_exists('allergens', $data)) {
+            $val = $data['allergens'];
+            $food->setAllergens(is_string($val) && trim($val) !== '' ? $val : null);
         }
 
         $em->flush();

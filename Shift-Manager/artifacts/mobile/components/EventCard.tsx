@@ -21,13 +21,55 @@ export interface EventListItem {
   guestsTotal: number;
   status: string;
   myAssignmentId: number;
+  myAssignmentStatus: "ASSIGNED" | "CONFIRMED" | "DECLINED";
+  myConfirmedAt: string | null;
+  myDeclineReason: string | null;
   myAttendanceStatus: "PENDING" | "PRESENT";
   myAttendedAt: string | null;
+  myPaymentStatus: string;
+  myPaymentAmount: string | null;
+  myHoursWorked: string;
+  responseLockedAt: string | null;
 }
 
 interface EventCardProps {
   event: EventListItem;
   onPress?: () => void;
+  /** Když true, ukáže se navíc payment badge — používá Historie tab. */
+  showPayment?: boolean;
+}
+
+interface AssignmentBadgeStyle {
+  label: string;
+  color: keyof ReturnType<typeof useColors>;
+  icon: keyof typeof Feather.glyphMap;
+}
+
+function getAssignmentBadge(
+  status: EventListItem["myAssignmentStatus"],
+): AssignmentBadgeStyle {
+  switch (status) {
+    case "CONFIRMED":
+      return { label: "Potvrzeno", color: "success", icon: "check-circle" };
+    case "DECLINED":
+      return { label: "Odhlášen", color: "warning", icon: "x-circle" };
+    default:
+      return {
+        label: "Čeká na potvrzení",
+        color: "info",
+        icon: "clock",
+      };
+  }
+}
+
+function getPaymentBadge(
+  status: string,
+): { label: string; color: keyof ReturnType<typeof useColors> } | null {
+  const s = status?.toUpperCase();
+  if (s === "PAID") return { label: "Zaplaceno", color: "success" };
+  if (s === "PENDING") return { label: "Čeká platba", color: "warning" };
+  if (s === "CANCELLED") return { label: "Zrušená platba", color: "destructive" };
+  return null;
 }
 
 function getStatusColor(status: string, colors: ReturnType<typeof useColors>) {
@@ -66,14 +108,20 @@ function getStatusLabel(status: string) {
   }
 }
 
-export function EventCard({ event, onPress }: EventCardProps) {
+export function EventCard({ event, onPress, showPayment = false }: EventCardProps) {
   const colors = useColors();
   const statusColor = getStatusColor(event.status, colors);
   const date = new Date(event.date);
   const dayName = date.toLocaleDateString("cs-CZ", { weekday: "short" });
   const dayNum = date.getDate();
   const month = date.toLocaleDateString("cs-CZ", { month: "short" });
-  const isPresent = event.myAttendanceStatus === "PRESENT";
+
+  const assignmentBadge = getAssignmentBadge(event.myAssignmentStatus);
+  const paymentBadge = showPayment ? getPaymentBadge(event.myPaymentStatus) : null;
+  const assignmentColor = colors[assignmentBadge.color] as string;
+  const paymentColor = paymentBadge
+    ? (colors[paymentBadge.color] as string)
+    : null;
 
   return (
     <TouchableOpacity
@@ -108,19 +156,40 @@ export function EventCard({ event, onPress }: EventCardProps) {
           </View>
         </View>
 
-        {isPresent && (
+        <View style={styles.pillsRow}>
           <View
             style={[
               styles.attendancePill,
-              { backgroundColor: colors.success + "18" },
+              { backgroundColor: assignmentColor + "18" },
             ]}
           >
-            <Feather name="check-circle" size={11} color={colors.success} />
-            <Text style={[styles.attendanceText, { color: colors.success }]}>
-              Check-in hotový
+            <Feather name={assignmentBadge.icon} size={11} color={assignmentColor} />
+            <Text style={[styles.attendanceText, { color: assignmentColor }]}>
+              {assignmentBadge.label}
             </Text>
           </View>
-        )}
+
+          {paymentBadge && paymentColor && (
+            <View
+              style={[
+                styles.attendancePill,
+                { backgroundColor: paymentColor + "18" },
+              ]}
+            >
+              <Feather
+                name={paymentBadge.label === "Zaplaceno" ? "dollar-sign" : "clock"}
+                size={11}
+                color={paymentColor}
+              />
+              <Text style={[styles.attendanceText, { color: paymentColor }]}>
+                {paymentBadge.label}
+                {event.myPaymentAmount
+                  ? ` · ${event.myPaymentAmount} Kč`
+                  : ""}
+              </Text>
+            </View>
+          )}
+        </View>
 
         <View style={styles.meta}>
           <View style={styles.metaItem}>
@@ -218,6 +287,11 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 11,
     fontFamily: "Inter_500Medium",
+  },
+  pillsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
   },
   attendancePill: {
     flexDirection: "row",

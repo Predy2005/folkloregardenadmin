@@ -10,6 +10,8 @@ use App\Repository\RefreshTokenRepository;
 use App\Repository\UserRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
+use Symfony\Component\PasswordHasher\Hasher\PasswordHasherFactoryInterface;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 /**
@@ -33,8 +35,26 @@ class MobileAuthService
         private readonly UserRepository $userRepo,
         private readonly RefreshTokenRepository $refreshRepo,
         private readonly UserPasswordHasherInterface $hasher,
+        private readonly PasswordHasherFactoryInterface $hasherFactory,
         private readonly JWTTokenManagerInterface $jwtManager,
+        #[Autowire('%kernel.secret%')]
+        private readonly string $appSecret,
     ) {
+    }
+
+    /**
+     * Verifikuje PIN proti hashi v `User::mobilePin`. NELZE použít
+     * `UserPasswordHasher::isPasswordValid()`, protože ten ověřuje plaintext
+     * proti `User::getPassword()` (běžné heslo) — ne proti mobilnímu PINu.
+     * Místo toho saháme přímo na hasher factory + raw `verify()`.
+     */
+    private function verifyMobilePin(User $user, string $pin): bool
+    {
+        $hash = $user->getMobilePin();
+        if ($hash === null || $hash === '') {
+            return false;
+        }
+        return $this->hasherFactory->getPasswordHasher($user)->verify($hash, $pin);
     }
 
     /**
@@ -70,8 +90,47 @@ class MobileAuthService
             throw new AuthException('Neplatné přihlašovací údaje.');
         }
 
-        // Pozn.: použijeme PasswordHasher i pro PIN (je to hash jako heslo).
-        if (!$this->hasher->isPasswordValid($user, $pin)) {
+        if (!$this->verifyMobilePin($user, $pin)) {
+            throw new AuthException('Neplatné přihlašovací údaje.');
+        }
+
+        // Device binding: pokud už je nastaveno, musí sedět.
+        $boundDevice = $user->getPinDeviceId();
+        if ($boundDevice !== null && $boundDevice !== '' && $boundDevice !== $deviceId) {
+            throw new AuthException('Tento PIN je vázaný na jiné zařízení. Požádej administrátora o reset.');
+        }
+        if ($boundDevice === null || $boundDevice === '') {
+            $user->setPinDeviceId($deviceId);
+        }
+
+        return $this->issueTokens($user, $deviceId);
+    }
+
+    /**
+     * Login pouze PINem + deviceId (bez identifieru). Najde uživatele podle
+     * deterministického HMAC hashe PINu (`mobile_pin_lookup_hash` má unique
+     * index, takže globální unikátnost zaručuje, že match je jednoznačný).
+     * Pak ověří bcrypt hash + device binding (trust-on-first-use).
+     *
+     * @return array{user: User, accessToken: string, refreshToken: RefreshToken, accessTokenPlain: string, refreshTokenPlain: string}
+     */
+    public function loginWithPinOnly(string $pin, string $deviceId): array
+    {
+        if ($deviceId === '') {
+            throw new AuthException('Chybí deviceId pro PIN login.');
+        }
+        if (!preg_match('/^\d{4,6}$/', $pin)) {
+            throw new AuthException('Neplatné přihlašovací údaje.');
+        }
+
+        $lookupHash = MobileAccountProvisioningService::computePinLookupHash($pin, $this->appSecret);
+        $user = $this->userRepo->findOneBy(['mobilePinLookupHash' => $lookupHash]);
+        if ($user === null || !$user->isPinEnabled() || $user->getMobilePin() === null) {
+            throw new AuthException('Neplatné přihlašovací údaje.');
+        }
+
+        // Defense-in-depth: bcrypt verifikace navíc nad lookup hashem.
+        if (!$this->verifyMobilePin($user, $pin)) {
             throw new AuthException('Neplatné přihlašovací údaje.');
         }
 
@@ -136,6 +195,9 @@ class MobileAuthService
      */
     public function describeUser(User $user): array
     {
+        $staff = $user->getStaffMember();
+        $driver = $user->getTransportDriver();
+
         return [
             'id' => $user->getId(),
             'username' => $user->getUsername(),
@@ -144,13 +206,41 @@ class MobileAuthService
             'permissions' => $user->getEffectivePermissions(),
             'isSuperAdmin' => $user->isSuperAdmin(),
             'pinEnabled' => $user->isPinEnabled(),
-            'staffMemberId' => $user->getStaffMember()?->getId(),
-            'staffMemberName' => $user->getStaffMember()
-                ? trim(($user->getStaffMember()->getFirstName()) . ' ' . ($user->getStaffMember()->getLastName()))
+
+            // Staff member fields (null pokud user není svázaný s personálem).
+            // Mobilka je používá pro profile screen + edit form.
+            'staffMemberId' => $staff?->getId(),
+            'staffMemberName' => $staff
+                ? trim($staff->getFirstName() . ' ' . $staff->getLastName())
                 : null,
-            'transportDriverId' => $user->getTransportDriver()?->getId(),
-            'transportDriverName' => $user->getTransportDriver()?->getFullName(),
+            'staffMemberFirstName' => $staff?->getFirstName(),
+            'staffMemberLastName' => $staff?->getLastName(),
+            'staffMemberPosition' => $staff?->getPosition(),
+            'staffMemberPhone' => $staff?->getPhone(),
+            'staffMemberEmail' => $staff?->getEmail(),
+            'staffMemberPhotoUrl' => self::buildPhotoUrl('staff', $staff?->getPhotoPath()),
+
+            // Transport driver fields
+            'transportDriverId' => $driver?->getId(),
+            'transportDriverName' => $driver?->getFullName(),
+            'transportDriverFirstName' => $driver?->getFirstName(),
+            'transportDriverLastName' => $driver?->getLastName(),
+            'transportDriverPhone' => $driver?->getPhone(),
+            'transportDriverEmail' => $driver?->getEmail(),
+            'transportDriverPhotoUrl' => self::buildPhotoUrl('driver', $driver?->getPhotoPath()),
         ];
+    }
+
+    /**
+     * Relativní URL k profilové fotce — mobilka si ji prefixne base URL.
+     * Vrací null pokud photoPath neexistuje.
+     */
+    private static function buildPhotoUrl(string $kind, ?string $photoPath): ?string
+    {
+        if ($photoPath === null || $photoPath === '') return null;
+        return $kind === 'staff'
+            ? '/uploads/staff_photos/' . $photoPath
+            : '/uploads/driver_photos/' . $photoPath;
     }
 
     // ─── Interní ─────────────────────────────────────────────────────────

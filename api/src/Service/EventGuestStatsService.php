@@ -264,6 +264,8 @@ class EventGuestStatsService
                 'roleId' => $assignment->getStaffRoleId(),
                 'assignmentStatus' => $assignment->getAssignmentStatus(),
                 'attendanceStatus' => $assignment->getAttendanceStatus(),
+                'confirmedAt' => $assignment->getConfirmedAt()?->format(\DateTimeInterface::ATOM),
+                'declineReason' => $assignment->getDeclineReason(),
                 'hoursWorked' => (float) $assignment->getHoursWorked(),
                 'paymentAmount' => $assignment->getPaymentAmount() ? (float) $assignment->getPaymentAmount() : null,
                 'paymentStatus' => $assignment->getPaymentStatus(),

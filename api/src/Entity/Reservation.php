@@ -30,7 +30,7 @@ class Reservation
     #[ORM\Column(type: Types::STRING, length: 255)]
     private ?string $contactName = null;
 
-    #[ORM\Column(type: Types::STRING, length: 255)]
+    #[ORM\Column(type: Types::STRING, length: 255, nullable: true)]
     private ?string $contactEmail = null;
 
     #[ORM\Column(type: Types::STRING, length: 50)]
@@ -44,6 +44,13 @@ class Reservation
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $contactNote = null;
+
+    /**
+     * Kdo objednávku provedl (pokud je to jiný člověk než kontaktní osoba/majitel).
+     * Typicky zaměstnanec CK, asistent, recepce hotelu apod.
+     */
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $orderedBy = null;
 
     // Fakturační údaje
     #[ORM\Column(type: Types::BOOLEAN)]
@@ -201,7 +208,7 @@ class Reservation
         return $this->contactEmail;
     }
 
-    public function setContactEmail(string $contactEmail): static
+    public function setContactEmail(?string $contactEmail): static
     {
         $this->contactEmail = $contactEmail;
         return $this;
@@ -237,6 +244,17 @@ class Reservation
     public function setContactNote(?string $contactNote): static
     {
         $this->contactNote = $contactNote;
+        return $this;
+    }
+
+    public function getOrderedBy(): ?string
+    {
+        return $this->orderedBy;
+    }
+
+    public function setOrderedBy(?string $orderedBy): static
+    {
+        $this->orderedBy = $orderedBy;
         return $this;
     }
 

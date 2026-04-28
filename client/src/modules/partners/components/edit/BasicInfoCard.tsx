@@ -21,6 +21,7 @@ import {
 import { Loader2, Search } from "lucide-react";
 import { CurrencySelect } from "@/shared/components/CurrencySelect";
 import type { PartnerForm } from "../edit/types";
+import { usePartnerCategories } from "@modules/partners/hooks/usePartnerCategories";
 
 interface BasicInfoCardProps {
   form: UseFormReturn<PartnerForm>;
@@ -29,6 +30,7 @@ interface BasicInfoCardProps {
 }
 
 export function BasicInfoCard({ form, aresLoading, onAresLookup }: BasicInfoCardProps) {
+  const { data: categories } = usePartnerCategories(true);
   return (
     <Card>
       <CardHeader>
@@ -53,18 +55,22 @@ export function BasicInfoCard({ form, aresLoading, onAresLookup }: BasicInfoCard
           name="partnerType"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Typ partnera</FormLabel>
+              <FormLabel>Kategorie partnera</FormLabel>
               <Select onValueChange={field.onChange} value={field.value}>
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder="Vyberte typ" />
+                    <SelectValue placeholder="Vyberte kategorii" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="HOTEL">Hotel</SelectItem>
-                  <SelectItem value="RECEPTION">Recepce</SelectItem>
-                  <SelectItem value="DISTRIBUTOR">Distributor</SelectItem>
-                  <SelectItem value="OTHER">Ostatni</SelectItem>
+                  {(categories ?? []).map((c) => (
+                    <SelectItem key={c.id} value={c.slug}>{c.name}</SelectItem>
+                  ))}
+                  {field.value && !(categories ?? []).some((c) => c.slug === field.value) && (
+                    // Pokud má partner slug kategorie, která už neexistuje (smazaná),
+                    // ukážeme ho tady, aby byl select nadále valid a neresetoval se.
+                    <SelectItem value={field.value}>{field.value} (smazaná kategorie)</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
               <FormMessage />

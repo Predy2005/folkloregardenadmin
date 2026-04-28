@@ -5,8 +5,12 @@ server/public
 api/vendor
 vite.config.ts.*
 *.tar.gz
+.claude
+.qodo
+podklady
 
 # Environment variables
 .env
 .env.local
 .env.production
+ Shift-Manager/node_modules

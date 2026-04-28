@@ -58,6 +58,15 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(name: 'mobile_pin', type: 'string', length: 255, nullable: true)]
     private ?string $mobilePin = null;
 
+    /**
+     * Deterministický HMAC-SHA256 hash z PINu — slouží pro lookup uživatele
+     * podle samotného PINu (bcrypt v `mobile_pin` má per-user salt, takže
+     * podle něj nelze hledat). Unique index vynutí globální unikátnost
+     * PINu napříč všemi mobilními uživateli.
+     */
+    #[ORM\Column(name: 'mobile_pin_lookup_hash', type: 'string', length: 64, nullable: true, unique: true)]
+    private ?string $mobilePinLookupHash = null;
+
     #[ORM\Column(name: 'pin_device_id', type: 'string', length: 255, nullable: true)]
     private ?string $pinDeviceId = null;
 
@@ -413,6 +422,17 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setMobilePin(?string $mobilePin): self
     {
         $this->mobilePin = $mobilePin;
+        return $this;
+    }
+
+    public function getMobilePinLookupHash(): ?string
+    {
+        return $this->mobilePinLookupHash;
+    }
+
+    public function setMobilePinLookupHash(?string $mobilePinLookupHash): self
+    {
+        $this->mobilePinLookupHash = $mobilePinLookupHash;
         return $this;
     }
 

@@ -58,12 +58,16 @@ class MobileAuthController extends AbstractController
         $pin = isset($data['pin']) ? (string)$data['pin'] : '';
         $deviceId = isset($data['deviceId']) ? (string)$data['deviceId'] : '';
 
-        if ($identifier === '' || $pin === '' || $deviceId === '') {
-            return $this->json(['error' => 'Pole "identifier", "pin" a "deviceId" jsou povinná.'], 400);
+        if ($pin === '' || $deviceId === '') {
+            return $this->json(['error' => 'Pole "pin" a "deviceId" jsou povinná.'], 400);
         }
 
         try {
-            $result = $this->auth->loginWithPin($identifier, $pin, $deviceId);
+            // Identifier je volitelný — bez něj jde o login jen PINem (globálně
+            // unikátní), s ním zachovává původní per-user PIN flow.
+            $result = $identifier === ''
+                ? $this->auth->loginWithPinOnly($pin, $deviceId)
+                : $this->auth->loginWithPin($identifier, $pin, $deviceId);
         } catch (AuthException $e) {
             return $this->json(['error' => $e->getMessage()], 401);
         }

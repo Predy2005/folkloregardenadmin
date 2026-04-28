@@ -160,15 +160,38 @@ export function useAIAssistant({
       const defaultAdultPrice = pricing?.adultPrice ?? 1250;
       const defaultChildPrice = pricing?.childPrice ?? 800;
 
-      const newReservations: ReservationEntry[] = aiJson.reservations.map((r: AiMultiReservationEntry) => {
+      // Pokud AI nenašla žádnou rezervaci (typicky poptávka bez data),
+      // založíme jednu prázdnou s defaulty z kontaktu — uživatel doplní datum
+      // a počty ručně. Bez tohoto fallbacku by skončil úkol s prázdným
+      // seznamem rezervací a uživatel by nevěděl, co dělat.
+      const aiReservations: AiMultiReservationEntry[] = aiJson.reservations.length > 0
+        ? aiJson.reservations
+        : [{
+            date: null,
+            adults: 0,
+            children: 0,
+            infants: 0,
+            freeTourLeaders: 0,
+            freeDrivers: 0,
+            menu: null,
+            groupCode: null,
+            pricePerPerson: null,
+            transferAddress: null,
+            transferCount: null,
+            notes: 'AI nenašla v textu konkrétní datum/počty — doplň ručně.',
+          }];
+
+      const newReservations: ReservationEntry[] = aiReservations.map((r: AiMultiReservationEntry) => {
         const persons: PersonEntry[] = [];
 
         const groupMenu = findMenuMatch(r.menu);
         const adultPrice = r.pricePerPerson ?? defaultAdultPrice;
         const groupNationality = aiJson.contact?.nationality || "";
 
+        // Default nápojový balíček: "Neomezeně" (allin) pro všechny kromě kojenců.
+        // Klient si pak hromadně upraví, pokud někdo nechce balíček.
         for (let i = 0; i < r.adults; i++) {
-          persons.push({ type: "adult", menu: groupMenu, price: adultPrice, nationality: groupNationality, drinkOption: "none", drinkName: "", drinkPrice: 0, drinkItemId: null });
+          persons.push({ type: "adult", menu: groupMenu, price: adultPrice, nationality: groupNationality, drinkOption: "allin", drinkName: "", drinkPrice: 0, drinkItemId: null });
         }
 
         const childMenu = foods?.find(f => f.isChildrenMenu)?.name || "Dětské menu";
@@ -176,7 +199,7 @@ export function useAIAssistant({
           ? Math.round(r.pricePerPerson * 0.64)
           : defaultChildPrice;
         for (let i = 0; i < r.children; i++) {
-          persons.push({ type: "child", menu: childMenu, price: childPrice, nationality: groupNationality, drinkOption: "none", drinkName: "", drinkPrice: 0, drinkItemId: null });
+          persons.push({ type: "child", menu: childMenu, price: childPrice, nationality: groupNationality, drinkOption: "allin", drinkName: "", drinkPrice: 0, drinkItemId: null });
         }
 
         for (let i = 0; i < r.infants; i++) {
@@ -184,11 +207,11 @@ export function useAIAssistant({
         }
 
         for (let i = 0; i < r.freeTourLeaders; i++) {
-          persons.push({ type: "guide", menu: "Bez jídla", price: 0, nationality: "", drinkOption: "none", drinkName: "", drinkPrice: 0, drinkItemId: null });
+          persons.push({ type: "guide", menu: "Bez jídla", price: 0, nationality: "", drinkOption: "allin", drinkName: "", drinkPrice: 0, drinkItemId: null });
         }
 
         for (let i = 0; i < r.freeDrivers; i++) {
-          persons.push({ type: "driver", menu: "Bez jídla", price: 0, nationality: "", drinkOption: "none", drinkName: "", drinkPrice: 0, drinkItemId: null });
+          persons.push({ type: "driver", menu: "Bez jídla", price: 0, nationality: "", drinkOption: "allin", drinkName: "", drinkPrice: 0, drinkItemId: null });
         }
 
         const noteParts: string[] = [];
@@ -198,17 +221,26 @@ export function useAIAssistant({
         if (r.notes) noteParts.push(r.notes);
 
         return {
-          date: r.date,
+          // Datum je nepovinné — když ho AI nenašla, nechá prázdné a UI ho označí jako povinné.
+          date: r.date ?? "",
           persons,
           status: "RECEIVED" as const,
           contactNote: noteParts.join(" | "),
+          orderedBy: "",
           transfers: [],
         };
       });
 
       setReservations(newReservations);
       setActiveTabIndex(0);
-      successToast(`AI načetl ${newReservations.length} rezervací do formuláře`);
+      const missingDate = newReservations.some((r) => !r.date);
+      if (missingDate) {
+        successToast(
+          `AI načetla ${newReservations.length} rezervací, ale nenašla datum — doplň ho prosím ručně.`,
+        );
+      } else {
+        successToast(`AI načetl ${newReservations.length} rezervací do formuláře`);
+      }
     } catch (e: unknown) {
       errorToast(e instanceof Error ? e.message : "Chyba při aplikaci AI dat");
     }

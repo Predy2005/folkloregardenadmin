@@ -11,12 +11,19 @@ import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/stores/authStore";
 
 function NativeTabLayout({ role }: { role: string | null }) {
+  const isDriver = role === "driver";
   return (
     <NativeTabs>
       <NativeTabs.Trigger name="index">
-        <Icon sf={{ default: role === "driver" ? "car" : "calendar", selected: role === "driver" ? "car" : "calendar" }} />
-        <Label>{role === "driver" ? "Přepravy" : "Akce"}</Label>
+        <Icon sf={{ default: isDriver ? "car" : "calendar", selected: isDriver ? "car" : "calendar" }} />
+        <Label>{isDriver ? "Přepravy" : "Akce"}</Label>
       </NativeTabs.Trigger>
+      {!isDriver && (
+        <NativeTabs.Trigger name="history">
+          <Icon sf={{ default: "clock.arrow.circlepath", selected: "clock.arrow.circlepath" }} />
+          <Label>Historie</Label>
+        </NativeTabs.Trigger>
+      )}
       <NativeTabs.Trigger name="profile">
         <Icon sf={{ default: "person.circle", selected: "person.circle.fill" }} />
         <Label>Profil</Label>
@@ -76,6 +83,20 @@ function ClassicTabLayout({ role }: { role: string | null }) {
               />
             ) : (
               <Feather name={role === "driver" ? "truck" : "calendar"} size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="history"
+        options={{
+          title: "Historie",
+          // Skrytý tab pro řidiče — soubor exportuje Redirect, ale ať tlačítko nevidí.
+          href: role === "driver" ? null : undefined,
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="clock.arrow.circlepath" tintColor={color} size={24} />
+            ) : (
+              <Feather name="clock" size={22} color={color} />
             ),
         }}
       />

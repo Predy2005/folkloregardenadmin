@@ -1,8 +1,11 @@
 const SUGGESTIONS = [
-  "Kde založím pokladnu?",
-  "Najdi rezervace na červen",
-  "Jaké akce máme naplánované?",
-  "Najdi kontakt Novák",
+  "Najdi rezervace Novák",
+  "Jaké akce máme tento měsíc?",
+  "Kde nastavím pokladnu?",
+  "Rozsaď hosty této akce",
+  "Navrhni parametry nové folklore show pro 80 lidí",
+  "Založ rezervaci 20.6.2026, Jan Svoboda, 4 osoby, 777123456",
+  "Přidej kontakt Petr Novák, petr@example.cz",
 ];
 
 interface ChatSuggestionsProps {

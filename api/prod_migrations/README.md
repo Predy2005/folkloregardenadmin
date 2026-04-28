@@ -13,10 +13,19 @@ Každá migrace:
 
 ```
 prod_migrations/
-├── _runner.php                         # Sdílený runner (PDO, .env, tracking, auth)
-├── run.php                             # Entry point — spustí všechny pending migrace
-├── 20260423100000_mobile_auth.php      # Mobilní auth schéma + seed permissions/rolí
-├── 20260423100100_refresh_token.php    # refresh_token tabulka
+├── _runner.php                                 # Sdílený runner (PDO, .env, tracking, auth)
+├── run.php                                     # Entry point — spustí všechny pending migrace
+├── 20260423100000_mobile_auth.php              # Mobilní auth schéma + seed permissions/rolí
+├── 20260423100100_refresh_token.php            # refresh_token tabulka
+├── 20260425160000_profile_photo.php            # staff_member.photo_path
+├── 20260427070000_pin_lookup_hash.php          # user.pin_lookup_hash
+├── 20260427120000_decline_reason.php           # event_staff_assignment.decline_reason
+├── 20260428085420_reservation_ordered_by.php   # reservation.ordered_by
+├── 20260428111718_reservation_email_nullable.php  # reservation.contact_email DROP NOT NULL
+├── 20260428113803_food_notes_allergens.php     # reservation_foods.notes + .allergens
+├── 20260428114400_partner_category.php         # partner_category + 4 default + remap RECEPTION/DISTRIBUTOR
+├── 20260428120554_partner_contact.php          # partner_contact (FK CASCADE)
+├── 20260428121513_event_duration_default.php   # event.duration_minutes default 120 → 150
 └── README.md
 ```
 
@@ -61,19 +70,36 @@ Po zaběhnutí skript vypíše přehled (viz logy). Pro další kontrolu:
 
 ```sql
 -- Verze zapsané Doctrinou i prod runnerem
-SELECT version FROM doctrine_migration_versions ORDER BY version DESC LIMIT 10;
+SELECT version FROM doctrine_migration_versions ORDER BY version DESC LIMIT 15;
 
--- Konkrétní kontroly pro aktuální sadu:
-\d "user"                                   -- mobile_pin, pin_device_id, pin_enabled
-\d staff_member                             -- user_id + FK
+-- Konkrétní kontroly pro aktuální sadu (mobilní + duben 2026):
+\d "user"                                   -- mobile_pin, pin_device_id, pin_enabled, pin_lookup_hash
+\d staff_member                             -- user_id + FK, photo_path
 \d transport_driver                         -- user_id + FK
-\d user_device                              -- nová tabulka
-\d refresh_token                            -- nová tabulka
+\d user_device                              -- nová tabulka (FCM registrace)
+\d refresh_token                            -- nová tabulka (mobilní auth)
 \d event_transport                          -- execution_status
+\d event_staff_assignment                   -- decline_reason
+\d reservation                              -- ordered_by, contact_email NULLABLE
+\d reservation_foods                        -- notes, allergens
+\d partner_category                         -- nová tabulka
+\d partner_contact                          -- nová tabulka
 
+-- Default kategorie partnerů (mělo by být 4):
+SELECT slug, name FROM partner_category ORDER BY display_order;
+-- TRAVEL_AGENCY, GUIDE, HOTEL, OTHER
+
+-- Žádný partner nemá legacy hodnotu RECEPTION/DISTRIBUTOR (po remappingu na OTHER):
+SELECT DISTINCT partner_type FROM partner;
+
+-- Default doby trvání akce na 150:
+SELECT column_default FROM information_schema.columns
+ WHERE table_name = 'event' AND column_name = 'duration_minutes';
+-- '150'
+
+-- Mobilní permissions / role:
 SELECT module, action FROM permission WHERE module LIKE 'mobile_%' ORDER BY 1,2;
 -- 7 řádků
-
 SELECT name FROM role WHERE name LIKE 'STAFF_%' ORDER BY 1;
 -- STAFF_COOK, STAFF_DRIVER, STAFF_WAITER
 ```

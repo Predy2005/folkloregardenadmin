@@ -30,6 +30,7 @@ const Contacts = lazy(() => import("@modules/contacts/pages/ContactsPage"));
 const ContactEdit = lazy(() => import("@modules/contacts/pages/ContactEditPage"));
 const Partners = lazy(() => import("@modules/partners/pages/PartnersPage"));
 const PartnerEdit = lazy(() => import("@modules/partners/pages/PartnerEditPage"));
+const PartnerCategories = lazy(() => import("@modules/partners/pages/PartnerCategoriesPage"));
 const Vouchers = lazy(() => import("@modules/partners/pages/VouchersPage"));
 const Payments = lazy(() => import("@modules/payments/pages/PaymentsPage"));
 const Invoices = lazy(() => import("@modules/invoices/pages/InvoicesPage"));
@@ -57,6 +58,7 @@ const Pricing = lazy(() => import("@modules/admin/pages/PricingPage"));
 const DisabledDates = lazy(() => import("@modules/admin/pages/DisabledDatesPage"));
 const ReservationTypes = lazy(() => import("@modules/admin/pages/ReservationTypesPage"));
 const CashCategories = lazy(() => import("@modules/admin/pages/CashMovementCategoriesPage"));
+const HelpTopics = lazy(() => import("@modules/admin/pages/HelpTopicsPage"));
 const Profile = lazy(() => import("@modules/auth/pages/ProfilePage"));
 
 interface AuthenticatedRoutesProps {
@@ -105,6 +107,7 @@ export function AuthenticatedRoutes({ layout }: AuthenticatedRoutesProps) {
       <Route path="/contacts"><P component={Contacts} /></Route>
       <Route path="/contacts/:id/edit"><P component={ContactEdit} /></Route>
       <Route path="/partners"><P component={Partners} /></Route>
+      <Route path="/partner-categories"><P component={PartnerCategories} /></Route>
       <Route path="/partners/new"><P component={PartnerEdit} /></Route>
       <Route path="/partners/:id/edit"><P component={PartnerEdit} /></Route>
       <Route path="/vouchers"><P component={Vouchers} /></Route>
@@ -146,6 +149,7 @@ export function AuthenticatedRoutes({ layout }: AuthenticatedRoutesProps) {
       <Route path="/disabled-dates"><P component={DisabledDates} /></Route>
       <Route path="/reservation-types"><P component={ReservationTypes} /></Route>
       <Route path="/cash-categories"><P component={CashCategories} /></Route>
+      <Route path="/help-topics"><P component={HelpTopics} /></Route>
 
       {/* Profile */}
       <Route path="/profile"><P component={Profile} /></Route>

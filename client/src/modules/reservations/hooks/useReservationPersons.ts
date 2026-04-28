@@ -30,6 +30,11 @@ export function useReservationPersons(params: {
     return foods.find(f => f.externalId === value || f.name === value);
   };
 
+  // Default nápojový balíček pro nově vytvořenou osobu. Klient si to typicky
+  // pak hromadně upraví, ale defaultně chceme "Neomezeně" — výjimkou jsou kojenci.
+  const defaultDrinkOption = (type: PersonEntry["type"]): string =>
+    type === "infant" ? "none" : "allin";
+
   const addPerson = (resIndex: number, type: PersonEntry["type"], nationality: string = "") => {
     const defaultPrice =
       type === "adult" ? pricing?.adultPrice || 1250 :
@@ -39,7 +44,7 @@ export function useReservationPersons(params: {
     const menu = (type === "infant" || type === "driver" || type === "guide") ? "Bez jídla" : "";
 
     updateReservation(resIndex, {
-      persons: [...reservations[resIndex].persons, { type, menu, price: defaultPrice, nationality, drinkOption: "none", drinkName: "", drinkPrice: 0, drinkItemId: null }],
+      persons: [...reservations[resIndex].persons, { type, menu, price: defaultPrice, nationality, drinkOption: defaultDrinkOption(type), drinkName: "", drinkPrice: 0, drinkItemId: null }],
     });
   };
 
@@ -52,6 +57,57 @@ export function useReservationPersons(params: {
   const removePerson = (resIndex: number, personIndex: number) => {
     updateReservation(resIndex, {
       persons: reservations[resIndex].persons.filter((_, i) => i !== personIndex),
+    });
+  };
+
+  /**
+   * Smaže více osob naráz v jediném updateReservation. Volání `removePerson`
+   * v cyklu trpí stale closure — každé iterace vidí původní `reservations`
+   * a přepisuje výsledek předchozí. Tahle batch verze to obchází.
+   */
+  const removePersonsAt = (resIndex: number, personIndices: number[]) => {
+    if (personIndices.length === 0) return;
+    const indexSet = new Set(personIndices);
+    updateReservation(resIndex, {
+      persons: reservations[resIndex].persons.filter((_, i) => !indexSet.has(i)),
+    });
+  };
+
+  /**
+   * Nastaví cílový počet osob. Pokud `target` < current → smaže poslední,
+   * pokud > current → doplní novými osobami zadaného typu (default `adult`).
+   */
+  const setPersonsCount = (
+    resIndex: number,
+    target: number,
+    type: PersonEntry["type"] = "adult",
+  ) => {
+    const current = reservations[resIndex].persons;
+    if (target === current.length) return;
+    if (target < current.length) {
+      updateReservation(resIndex, {
+        persons: current.slice(0, target),
+      });
+      return;
+    }
+    const addCount = target - current.length;
+    const defaultPrice =
+      type === "adult" ? pricing?.adultPrice || 1250 :
+      type === "child" ? pricing?.childPrice || 800 :
+      0;
+    const menu = (type === "infant" || type === "driver" || type === "guide") ? "Bez jídla" : "";
+    const newPersons: PersonEntry[] = Array.from({ length: addCount }, () => ({
+      type,
+      menu,
+      price: defaultPrice,
+      nationality: "",
+      drinkOption: defaultDrinkOption(type),
+      drinkName: "",
+      drinkPrice: 0,
+      drinkItemId: null,
+    }));
+    updateReservation(resIndex, {
+      persons: [...current, ...newPersons],
     });
   };
 
@@ -122,7 +178,7 @@ export function useReservationPersons(params: {
       menu: menuValue,
       price: pricePerPerson,
       nationality: bulkNationality,
-      drinkOption: "none",
+      drinkOption: defaultDrinkOption(bulkType),
       drinkName: "",
       drinkPrice: 0,
       drinkItemId: null,
@@ -200,6 +256,8 @@ export function useReservationPersons(params: {
     addPerson,
     updatePerson,
     removePerson,
+    removePersonsAt,
+    setPersonsCount,
     handleTypeChange,
     handleMenuChange,
     addBulkPersons,

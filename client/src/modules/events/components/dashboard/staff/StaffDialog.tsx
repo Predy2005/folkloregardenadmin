@@ -1,4 +1,4 @@
-import { Phone, Mail, Plus, Loader2, Search, X, Check } from "lucide-react";
+import { Phone, Mail, Plus, Loader2, Search, X, Check, Trash2 } from "lucide-react";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/shared/components/ui/dialog";
+import { ConfirmationBadge } from "@modules/events/components/tabs/staff";
 import type { StaffMember, StaffRequirement, StaffAssignmentWithContact } from "@shared/types";
 
 export type DialogMode = "contacts" | "add";
@@ -30,7 +31,7 @@ interface StaffDialogProps {
   filteredAvailableStaff: StaffMember[];
   isLoadingStaff: boolean;
   onAddStaff: (staffMemberId: number, staffRoleId: number | null) => void;
-  onMarkPresent: (assignmentId: number) => void;
+  onUpdateAttendance: (assignmentId: number, status: string) => void;
   onRemoveStaff: (assignmentId: number) => void;
   isAdding: boolean;
   isUpdating: boolean;
@@ -56,7 +57,7 @@ export function StaffDialog({
   filteredAvailableStaff,
   isLoadingStaff,
   onAddStaff,
-  onMarkPresent,
+  onUpdateAttendance,
   onRemoveStaff,
   isAdding,
   isUpdating,
@@ -143,7 +144,7 @@ export function StaffDialog({
           {mode === "contacts" ? (
             <ContactsList
               contacts={filteredContacts}
-              onMarkPresent={onMarkPresent}
+              onUpdateAttendance={onUpdateAttendance}
               onRemove={onRemoveStaff}
               isUpdating={isUpdating}
               isRemoving={isRemoving}
@@ -165,7 +166,7 @@ export function StaffDialog({
 
 interface ContactsListProps {
   contacts: StaffAssignmentWithContact[];
-  onMarkPresent: (assignmentId: number) => void;
+  onUpdateAttendance: (assignmentId: number, status: string) => void;
   onRemove: (assignmentId: number) => void;
   isUpdating: boolean;
   isRemoving: boolean;
@@ -174,7 +175,7 @@ interface ContactsListProps {
 
 function ContactsList({
   contacts,
-  onMarkPresent,
+  onUpdateAttendance,
   onRemove,
   isUpdating,
   isRemoving,
@@ -190,70 +191,104 @@ function ContactsList({
 
   return (
     <>
-      {contacts.map((assignment) => (
-        <div
-          key={assignment.id}
-          className="w-full flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
-        >
-          <div className="flex-1 min-w-0">
-            <div className="font-medium">
-              {assignment.staffMember?.name || "Neznamy"}
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {assignment.role}
-            </div>
-            <div className="flex items-center gap-3 mt-1">
-              {assignment.staffMember?.phone && (
-                <a
-                  href={`tel:${assignment.staffMember.phone}`}
-                  className="flex items-center gap-1 text-xs text-primary hover:underline"
-                >
-                  <Phone className="h-3 w-3" />
-                  {assignment.staffMember.phone}
-                </a>
+      {contacts.map((assignment) => {
+        const isPresent = assignment.attendanceStatus === "PRESENT";
+        const isAbsent = assignment.attendanceStatus === "ABSENT";
+        return (
+          <div
+            key={assignment.id}
+            className={`w-full flex items-center justify-between p-3 border rounded-lg transition-colors ${
+              isPresent
+                ? "bg-green-50 dark:bg-green-950/20 border-green-200"
+                : isAbsent
+                ? "bg-red-50 dark:bg-red-950/20 border-red-200"
+                : "hover:bg-muted/50"
+            }`}
+          >
+            <div className="flex-1 min-w-0">
+              <div className="font-medium flex items-center gap-2 flex-wrap">
+                {assignment.staffMember?.name || "Neznamy"}
+                <ConfirmationBadge assignment={assignment} />
+              </div>
+              <div className="text-sm text-muted-foreground">
+                {assignment.role}
+              </div>
+              <div className="flex items-center gap-3 mt-1">
+                {assignment.staffMember?.phone && (
+                  <a
+                    href={`tel:${assignment.staffMember.phone}`}
+                    className="flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <Phone className="h-3 w-3" />
+                    {assignment.staffMember.phone}
+                  </a>
+                )}
+                {assignment.staffMember?.email && (
+                  <a
+                    href={`mailto:${assignment.staffMember.email}`}
+                    className="flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <Mail className="h-3 w-3" />
+                    {assignment.staffMember.email}
+                  </a>
+                )}
+              </div>
+              {assignment.assignmentStatus === "DECLINED" && assignment.declineReason && (
+                <div className="text-xs text-red-600 italic mt-1">
+                  Důvod: {assignment.declineReason}
+                </div>
               )}
-              {assignment.staffMember?.email && (
-                <a
-                  href={`mailto:${assignment.staffMember.email}`}
-                  className="flex items-center gap-1 text-xs text-primary hover:underline"
-                >
-                  <Mail className="h-3 w-3" />
-                  {assignment.staffMember.email}
-                </a>
+              {assignment.assignmentStatus === "CONFIRMED" && assignment.confirmedAt && (
+                <div className="text-xs text-green-700 mt-1">
+                  Potvrzeno {new Date(assignment.confirmedAt).toLocaleDateString("cs-CZ", {
+                    day: "numeric",
+                    month: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </div>
               )}
             </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <Badge
-              className={`${attendanceStatusStyles[assignment.attendanceStatus]?.className || "bg-gray-500"} text-white text-xs`}
-            >
-              {attendanceStatusStyles[assignment.attendanceStatus]?.label || assignment.attendanceStatus}
-            </Badge>
-            {assignment.attendanceStatus !== "PRESENT" && (
+            <div className="flex items-center gap-1 shrink-0">
+              <Badge
+                className={`${attendanceStatusStyles[assignment.attendanceStatus]?.className || "bg-gray-500"} text-white text-xs`}
+              >
+                {attendanceStatusStyles[assignment.attendanceStatus]?.label || assignment.attendanceStatus}
+              </Badge>
               <Button
-                variant="ghost"
+                variant={isPresent ? "default" : "outline"}
                 size="icon"
-                className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-100"
-                onClick={() => onMarkPresent(assignment.id)}
+                className={`h-8 w-8 ${isPresent ? "bg-green-600 hover:bg-green-700" : ""}`}
+                onClick={() => onUpdateAttendance(assignment.id, isPresent ? "UNKNOWN" : "PRESENT")}
                 disabled={isUpdating}
-                title="Oznacit jako pritomneho"
+                title={isPresent ? "Zrušit přítomnost" : "Přítomen"}
               >
                 <Check className="h-4 w-4" />
               </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-100"
-              onClick={() => onRemove(assignment.id)}
-              disabled={isRemoving}
-              title="Odebrat"
-            >
-              <X className="h-4 w-4" />
-            </Button>
+              <Button
+                variant={isAbsent ? "destructive" : "outline"}
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => onUpdateAttendance(assignment.id, isAbsent ? "UNKNOWN" : "ABSENT")}
+                disabled={isUpdating}
+                title={isAbsent ? "Zrušit nepřítomnost" : "Nepřítomen"}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                onClick={() => onRemove(assignment.id)}
+                disabled={isRemoving}
+                title="Odebrat"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </>
   );
 }

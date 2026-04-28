@@ -1,6 +1,9 @@
+import { useEffect, useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { Badge } from "@/shared/components/ui/badge";
+import { Checkbox } from "@/shared/components/ui/checkbox";
 import { NationalityInput } from "@/shared/components/NationalityInput";
 import {
   Select,
@@ -9,6 +12,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/shared/components/ui/alert-dialog";
 import { Trash2 } from "lucide-react";
 import { formatCurrency } from "@/shared/lib/formatting";
 import { PERSON_TYPE_LABELS, DRINK_OPTION_LABELS } from "@shared/types";
@@ -49,7 +70,79 @@ export function ReservationPersonsSection({
   handleMenuChange,
   updatePerson,
   removePerson,
+  removePersonsAt,
+  setPersonsCount,
 }: ReservationPersonsSectionProps) {
+  // Lokální výběr osob pro hromadné akce. Resetuje se při změně rezervační záložky
+  // (jiné osoby = jiné indexy) a kdykoliv počet osob klesne pod některý vybraný index.
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [countDialogOpen, setCountDialogOpen] = useState(false);
+  const [targetCountStr, setTargetCountStr] = useState("0");
+
+  useEffect(() => {
+    setSelectedIndices(new Set());
+  }, [activeTabIndex]);
+
+  useEffect(() => {
+    setSelectedIndices((prev) => {
+      const max = currentReservation.persons.length;
+      const next = new Set<number>();
+      prev.forEach((i) => {
+        if (i < max) next.add(i);
+      });
+      return next.size === prev.size ? prev : next;
+    });
+  }, [currentReservation.persons.length]);
+
+  const toggleSelect = (i: number) => {
+    setSelectedIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  };
+
+  const totalPersons = currentReservation.persons.length;
+  const allSelected = totalPersons > 0 && selectedIndices.size === totalPersons;
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIndices(new Set());
+    } else {
+      setSelectedIndices(new Set(currentReservation.persons.map((_, i) => i)));
+    }
+  };
+
+  const confirmRemoveSelected = () => {
+    if (selectedIndices.size === 0) {
+      setConfirmDeleteOpen(false);
+      return;
+    }
+    // Batch metoda — jediný updateReservation, žádný stale closure.
+    removePersonsAt(activeTabIndex, Array.from(selectedIndices));
+    setSelectedIndices(new Set());
+    setConfirmDeleteOpen(false);
+  };
+
+  const openCountDialog = () => {
+    setTargetCountStr(String(totalPersons));
+    setCountDialogOpen(true);
+  };
+
+  const confirmSetTargetCount = () => {
+    const target = Number.parseInt(targetCountStr, 10);
+    if (Number.isNaN(target) || target < 0) return;
+    setPersonsCount(activeTabIndex, target, "adult");
+    setSelectedIndices(new Set());
+    setCountDialogOpen(false);
+  };
+
+  const targetCountParsed = Number.parseInt(targetCountStr, 10);
+  const targetCountValid = !Number.isNaN(targetCountParsed) && targetCountParsed >= 0;
+  const targetCountDelta = targetCountValid ? targetCountParsed - totalPersons : 0;
+
   return (
     <>
       {/* Bulk actions section */}
@@ -320,6 +413,41 @@ export function ReservationPersonsSection({
         </div>
       </div>
 
+      {/* Selection toolbar — viditelný vždy když existuje aspoň 1 osoba */}
+      {totalPersons > 0 && (
+        <div className="flex flex-wrap items-center gap-2 py-2 border-y bg-muted/30 px-2 rounded">
+          <label className="flex items-center gap-2 cursor-pointer text-sm">
+            <Checkbox
+              checked={allSelected}
+              onCheckedChange={toggleSelectAll}
+            />
+            <span>Označit vše ({totalPersons})</span>
+          </label>
+          {selectedIndices.size > 0 && (
+            <Badge variant="secondary">{selectedIndices.size} vybráno</Badge>
+          )}
+          <div className="flex-1" />
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={openCountDialog}
+          >
+            Upravit počet
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="destructive"
+            onClick={() => setConfirmDeleteOpen(true)}
+            disabled={selectedIndices.size === 0}
+          >
+            <Trash2 className="w-4 h-4 mr-1" />
+            Smazat vybrané
+          </Button>
+        </div>
+      )}
+
       {/* Persons list */}
       <div className="space-y-2 max-h-96 overflow-y-auto">
         {currentReservation.persons.length === 0 ? (
@@ -330,10 +458,16 @@ export function ReservationPersonsSection({
           currentReservation.persons.map((person, pIndex) => (
             <div
               key={pIndex}
-              className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center border rounded-md p-2"
+              className={`grid grid-cols-1 md:grid-cols-12 gap-3 items-center border rounded-md p-2 ${
+                selectedIndices.has(pIndex) ? "bg-primary/5 border-primary/30" : ""
+              }`}
             >
-              <div className="md:col-span-1 text-sm text-muted-foreground">
-                #{pIndex + 1}
+              <div className="md:col-span-1 flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox
+                  checked={selectedIndices.has(pIndex)}
+                  onCheckedChange={() => toggleSelect(pIndex)}
+                />
+                <span>#{pIndex + 1}</span>
               </div>
               <div className="md:col-span-2">
                 <Select
@@ -421,7 +555,7 @@ export function ReservationPersonsSection({
                   }
                 />
               </div>
-              <div className="md:col-span-2">
+              <div className="">
                 <Select
                   value={person.drinkOption || "none"}
                   onValueChange={(v) =>
@@ -442,7 +576,7 @@ export function ReservationPersonsSection({
                 </Select>
               </div>
               {drinks && drinks.length > 0 && (person.drinkOption === "welcome" || person.drinkOption === "allin") && (
-                <div className="md:col-span-2">
+                <div className="">
                   <Select
                     value={person.drinkItemId?.toString() ?? "none"}
                     onValueChange={(v) => {
@@ -478,7 +612,7 @@ export function ReservationPersonsSection({
                   </Select>
                 </div>
               )}
-              <div className="md:col-span-1 flex justify-end">
+              <div className=" flex justify-end">
                 <Button
                   type="button"
                   variant="ghost"
@@ -494,6 +628,74 @@ export function ReservationPersonsSection({
           ))
         )}
       </div>
+
+      {/* Dialog: Upravit počet osob */}
+      <Dialog open={countDialogOpen} onOpenChange={setCountDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Upravit počet osob</DialogTitle>
+            <DialogDescription>
+              Zadej cílový počet osob v rezervaci. Při zmenšení se smažou poslední osoby, při zvětšení se doplní jako dospělí (cena podle ceníku).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label htmlFor="target-count" className="text-xs">Cílový počet</Label>
+              <Input
+                id="target-count"
+                type="number"
+                min={0}
+                max={500}
+                value={targetCountStr}
+                onChange={(e) => setTargetCountStr(e.target.value)}
+                autoFocus
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Aktuálně: {totalPersons}
+                {targetCountValid && targetCountDelta !== 0 && (
+                  <span className={targetCountDelta < 0 ? "text-red-600" : "text-green-600"}>
+                    {" "}({targetCountDelta > 0 ? "+" : ""}{targetCountDelta})
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setCountDialogOpen(false)}>
+              Zrušit
+            </Button>
+            <Button
+              type="button"
+              onClick={confirmSetTargetCount}
+              disabled={!targetCountValid || targetCountDelta === 0}
+            >
+              Aplikovat
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* AlertDialog: Smazat vybrané osoby */}
+      <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Smazat {selectedIndices.size} osob?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Akce je nevratná. Cena rezervace se přepočítá automaticky.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Zrušit</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmRemoveSelected}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Smazat
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

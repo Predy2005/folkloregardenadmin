@@ -47,7 +47,7 @@ export function ReservationInfoSection({ reservation }: ReservationInfoSectionPr
           </div>
           <div>
             <p className="text-muted-foreground">Email</p>
-            <p className="font-medium">{reservation.contactEmail}</p>
+            <p className="font-medium">{reservation.contactEmail || "—"}</p>
           </div>
           <div>
             <p className="text-muted-foreground">Telefon</p>
@@ -66,7 +66,13 @@ export function ReservationInfoSection({ reservation }: ReservationInfoSectionPr
           {reservation.contactNote && (
             <div className="col-span-2">
               <p className="text-muted-foreground">Poznámka</p>
-              <p className="font-medium">{reservation.contactNote}</p>
+              <p className="font-medium whitespace-pre-wrap">{reservation.contactNote}</p>
+            </div>
+          )}
+          {reservation.orderedBy && (
+            <div className="col-span-2">
+              <p className="text-muted-foreground">Kdo objednal</p>
+              <p className="font-medium whitespace-pre-wrap">{reservation.orderedBy}</p>
             </div>
           )}
         </div>

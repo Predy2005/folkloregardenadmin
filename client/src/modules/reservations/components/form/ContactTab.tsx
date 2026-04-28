@@ -89,7 +89,31 @@ export function ContactTab() {
             <FormItem className="col-span-2">
               <FormLabel>Poznámka (volitelná)</FormLabel>
               <FormControl>
-                <Textarea {...field} data-testid="input-contact-note" />
+                <Textarea {...field} rows={3} data-testid="input-contact-note" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="orderedBy"
+          render={({ field }) => (
+            <FormItem className="col-span-2">
+              <FormLabel>
+                Kdo objednal
+                <span className="text-xs text-muted-foreground ml-1">
+                  (volitelné — pokud objednával někdo jiný než kontakt, např. zaměstnanec CK)
+                </span>
+              </FormLabel>
+              <FormControl>
+                <Textarea
+                  {...field}
+                  rows={2}
+                  placeholder="Jméno + kontakt na osobu, která objednávku provedla"
+                  data-testid="input-ordered-by"
+                />
               </FormControl>
               <FormMessage />
             </FormItem>

@@ -90,7 +90,7 @@ export function ContactSection({
         />
       </div>
       <div>
-        <Label>Email *</Label>
+        <Label>Email</Label>
         <Input
           type="email"
           value={sharedContact.contactEmail}
@@ -101,6 +101,7 @@ export function ContactSection({
             }))
           }
           className="mt-1"
+          placeholder="(volitelné)"
         />
       </div>
       <div>

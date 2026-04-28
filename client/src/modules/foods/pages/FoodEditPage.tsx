@@ -31,6 +31,8 @@ export default function FoodEdit() {
       surcharge: 0,
       isChildrenMenu: false,
       externalId: "",
+      notes: "",
+      allergens: "",
     },
   });
 
@@ -52,6 +54,8 @@ export default function FoodEdit() {
         surcharge: food.surcharge || 0,
         isChildrenMenu: food.isChildrenMenu,
         externalId: food.externalId || "",
+        notes: food.notes || "",
+        allergens: food.allergens || "",
       });
     }
   }, [isEdit, food, form]);

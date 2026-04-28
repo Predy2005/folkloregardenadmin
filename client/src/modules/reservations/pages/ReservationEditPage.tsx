@@ -2,6 +2,7 @@ import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
+import { Textarea } from "@/shared/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -288,17 +289,37 @@ export default function ReservationEdit() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div>
+                    <div className="md:col-span-2">
                       <Label>Poznámka</Label>
-                      <Input
+                      <Textarea
                         value={form.currentReservation.contactNote}
                         onChange={(e) =>
                           form.updateReservation(form.activeTabIndex, {
                             contactNote: e.target.value,
                           })
                         }
-                        className="mt-1"
+                        className="mt-1 min-h-[80px]"
                         placeholder="Poznámka k rezervaci"
+                        rows={3}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label>
+                        Kdo objednal
+                        <span className="text-xs text-muted-foreground ml-1">
+                          (volitelné — pokud objednával někdo jiný než kontakt, např. zaměstnanec CK)
+                        </span>
+                      </Label>
+                      <Textarea
+                        value={form.currentReservation.orderedBy}
+                        onChange={(e) =>
+                          form.updateReservation(form.activeTabIndex, {
+                            orderedBy: e.target.value,
+                          })
+                        }
+                        className="mt-1 min-h-[60px]"
+                        placeholder="Jméno + kontakt na osobu, která objednávku provedla"
+                        rows={2}
                       />
                     </div>
                   </div>
@@ -536,6 +557,8 @@ export default function ReservationEdit() {
                     handleMenuChange={form.handleMenuChange}
                     updatePerson={form.updatePerson}
                     removePerson={form.removePerson}
+                    removePersonsAt={form.removePersonsAt}
+                    setPersonsCount={form.setPersonsCount}
                   />
                 </div>
               )}

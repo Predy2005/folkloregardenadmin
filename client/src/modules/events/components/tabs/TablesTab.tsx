@@ -16,8 +16,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/shared/components/ui/skeleton";
 import { Badge } from "@/shared/components/ui/badge";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
-import { Loader2, Pencil, Plus, Trash2, LayoutGrid, Map } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2, LayoutGrid, Map, Users } from "lucide-react";
 import FloorPlanEditorManager from "../floor-plan/FloorPlanEditorManager";
+import { DashboardFloorPlan } from "../dashboard/floor-plan/DashboardFloorPlan";
 
 const tableSchema = z.object({
   tableName: z.string().min(1, "Zadejte název stolu"),
@@ -36,7 +37,7 @@ export interface TablesTabProps {
 }
 
 export default function TablesTab({ eventId, tables, isLoading }: TablesTabProps) {
-  const [viewMode, setViewMode] = useState<"visual" | "list">("visual");
+  const [viewMode, setViewMode] = useState<"visual" | "seating" | "list">("visual");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<EventTable | null>(null);
 
@@ -144,7 +145,15 @@ export default function TablesTab({ eventId, tables, isLoading }: TablesTabProps
             onClick={() => setViewMode("visual")}
           >
             <Map className="h-4 w-4 mr-1" />
-            Vizuální editor
+            Editor plánku
+          </Button>
+          <Button
+            variant={viewMode === "seating" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setViewMode("seating")}
+          >
+            <Users className="h-4 w-4 mr-1" />
+            Rozsazení + Kasa
           </Button>
           <Button
             variant={viewMode === "list" ? "default" : "outline"}
@@ -163,9 +172,16 @@ export default function TablesTab({ eventId, tables, isLoading }: TablesTabProps
         )}
       </div>
 
-      {/* Visual floor plan editor */}
+      {/* Visual floor plan editor (layout design) */}
       {viewMode === "visual" && (
         <FloorPlanEditorManager eventId={eventId} />
+      )}
+
+      {/* Seating + POS — same component as Dashboard */}
+      {viewMode === "seating" && (
+        <div className="border rounded-lg overflow-hidden" style={{ minHeight: 600 }}>
+          <DashboardFloorPlan eventId={eventId} />
+        </div>
       )}
 
       {/* List view (original) */}

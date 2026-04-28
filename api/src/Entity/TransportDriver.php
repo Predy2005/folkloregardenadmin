@@ -56,6 +56,10 @@ class TransportDriver
     #[ORM\JoinColumn(name: 'user_id', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
     private ?User $user = null;
 
+    /** Relativní cesta k profilové fotce (vůči `uploads/driver_photos/`). */
+    #[ORM\Column(name: 'photo_path', type: Types::STRING, length: 500, nullable: true)]
+    private ?string $photoPath = null;
+
     public function __construct()
     {
         $now = new \DateTime();
@@ -110,4 +114,7 @@ class TransportDriver
 
     public function getUser(): ?User { return $this->user; }
     public function setUser(?User $user): self { $this->user = $user; return $this; }
+
+    public function getPhotoPath(): ?string { return $this->photoPath; }
+    public function setPhotoPath(?string $p): self { $this->photoPath = $p; return $this; }
 }

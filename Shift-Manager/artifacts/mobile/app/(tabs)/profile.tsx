@@ -2,8 +2,9 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React from "react";
-import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { API_BASE_URL } from "@/constants/api";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/stores/authStore";
 import { useNotifications } from "@/stores/notificationStore";
@@ -34,19 +35,52 @@ export default function ProfileTab() {
       ]}
     >
       <View style={[styles.userCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-          <Feather name="user" size={28} color="#fff" />
-        </View>
+        {(() => {
+          const photoRel =
+            user?.staffMemberPhotoUrl ?? user?.transportDriverPhotoUrl ?? null;
+          if (photoRel) {
+            return (
+              <Image
+                source={{ uri: `${API_BASE_URL}${photoRel}` }}
+                style={[styles.avatar, { backgroundColor: colors.muted }]}
+              />
+            );
+          }
+          return (
+            <View style={[styles.avatar, { backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" }]}>
+              <Feather name="user" size={28} color="#fff" />
+            </View>
+          );
+        })()}
         <View style={styles.userInfo}>
           <Text style={[styles.username, { color: colors.foreground }]}>
-            {user?.username || user?.email}
+            {user?.staffMemberName ?? user?.transportDriverName ?? user?.username ?? user?.email ?? "—"}
           </Text>
-          <Text style={[styles.email, { color: colors.mutedForeground }]}>{user?.email}</Text>
+          <Text style={[styles.email, { color: colors.mutedForeground }]}>
+            {user?.staffMemberEmail
+              ?? user?.transportDriverEmail
+              ?? user?.staffMemberPhone
+              ?? user?.transportDriverPhone
+              ?? user?.email
+              ?? user?.username}
+          </Text>
           <View style={[styles.roleBadge, { backgroundColor: colors.primary + "18" }]}>
             <Text style={[styles.roleText, { color: colors.primary }]}>
-              {getUiRoleLabel(role, user?.roles)}
+              {getUiRoleLabel(role, user?.staffMemberPosition)}
             </Text>
           </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>Profil</Text>
+        <View style={[styles.settingsGroup, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <SettingsRow
+            icon="edit-2"
+            label="Upravit profil"
+            onPress={() => router.push("/profile-edit" as never)}
+            colors={colors}
+          />
         </View>
       </View>
 

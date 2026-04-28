@@ -4,32 +4,52 @@ import {
   X,
   Loader2,
   Trash2,
-  Search,
+  Check,
+  XCircle,
+  History,
+  Plus,
 } from "lucide-react";
+import { useLocation } from "wouter";
 import { cn } from "@/shared/lib/utils";
 import {
   type ChatMessage,
-  type ChatLink,
-  detectSearchIntent,
-  fetchRagContext,
-  chatCompletion,
+  type ConversationSummary,
+  type PendingAction,
+  sendChat,
+  confirmAction,
+  rejectAction,
+  listConversations,
+  loadConversation,
+  saveConversation,
+  deleteConversation,
 } from "./chatbot/chatbotService";
+import {
+  invalidateEventQueries,
+  invalidateReservationQueries,
+  invalidateContactQueries,
+  invalidateStaffQueries,
+  invalidateCashboxQueries,
+} from "@/shared/lib/query-helpers";
 import { ChatMessageContent } from "./chatbot/ChatMessageContent";
 import { ChatInput } from "./chatbot/ChatInput";
 import { ChatSuggestions } from "./chatbot/ChatSuggestions";
 
+const WELCOME: ChatMessage = {
+  role: "assistant",
+  content:
+    'Ahoj! Jsem AI asistent pro Folklore Garden Admin.\n\nUmím:\n- Najít rezervace, akce, kontakty, personál\n- Poradit, kde v systému něco najdeš\n- Založit rychlou rezervaci, přidat kontakt nebo zaměstnance (vždy po tvém potvrzení)\n\nZkus: "Najdi rezervace Novák na červen", "Přidej kontakt Jan Svoboda 777 123 456", "Kde nastavím pokladnu?"',
+};
+
 export function HelpChatbot() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: "assistant",
-      content:
-        'Ahoj! Jsem pomocník pro navigaci v systému Folklore Garden Admin.\n\nMůžu ti pomoct s:\n- Navigací v systému (kde co najdeš)\n- Vysvětlením funkcí\n- Hledáním konkrétních dat (rezervací, akcí, kontaktů...)\n\nZkus třeba: "Najdi rezervace Novák" nebo "Kde nastavím pokladnu?"',
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
+  const [pendingBusy, setPendingBusy] = useState<string | null>(null);
+  const [location] = useLocation();
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyItems, setHistoryItems] = useState<ConversationSummary[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -40,74 +60,73 @@ export function HelpChatbot() {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  const processAndSend = useCallback(
-    async (text: string, currentMessages: ChatMessage[]) => {
-      setIsLoading(true);
-
+  // Restore last conversation on mount (runs once).
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    (async () => {
       try {
-        // Step 1: Detect if we need to search for data (RAG)
-        const { entities, searchTerms } = detectSearchIntent(text);
-        let ragContext = "";
-        let ragLinks: ChatLink[] = [];
-
-        if (entities.length > 0) {
-          setIsSearching(true);
-          const rag = await fetchRagContext(entities, searchTerms);
-          ragContext = rag.context;
-          ragLinks = rag.links;
-          setIsSearching(false);
+        const items = await listConversations();
+        if (items.length > 0) {
+          const latest = await loadConversation(items[0].id);
+          if (latest.messages.length > 0) {
+            setMessages(latest.messages);
+            setConversationId(latest.id);
+          }
         }
-
-        // Step 2: Build messages for AI with RAG context injected
-        const contextMessages = currentMessages.slice(-10).map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
-
-        // If we have RAG data, append it to the user message
-        const lastUserMsg = contextMessages[contextMessages.length - 1];
-        if (ragContext && lastUserMsg) {
-          lastUserMsg.content =
-            lastUserMsg.content +
-            "\n\n--- VÝSLEDKY HLEDÁNÍ V SYSTÉMU (použij je ve své odpovědi, uveď odkazy) ---" +
-            ragContext;
-        }
-
-        // Step 3: Get AI response
-        const response = await chatCompletion(contextMessages);
-
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: response, links: ragLinks },
-        ]);
       } catch {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content:
-              "Omlouvám se, nepodařilo se mi spojit s AI serverem. Zkuste to prosím znovu za chvíli.",
-          },
-        ]);
-      } finally {
-        setIsLoading(false);
-        setIsSearching(false);
+        // silent — start fresh
       }
-    },
-    []
-  );
+    })();
+  }, []);
+
+  const runChat = useCallback(async (history: ChatMessage[]) => {
+    setIsLoading(true);
+    try {
+      const resp = await sendChat(history, { currentRoute: location });
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: resp.reply,
+          links: resp.links,
+          pendingActions: resp.pendingActions,
+        },
+      ]);
+    } catch (err) {
+      const detail =
+        err instanceof Error ? err.message : "Neznámá chyba";
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `Omlouvám se, nepodařilo se spojit s AI serverem. (${detail})`,
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [location]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
     if (!text || isLoading) return;
-
-    const userMsg: ChatMessage = { role: "user", content: text };
-    const updatedMessages = [...messages, userMsg];
-    setMessages(updatedMessages);
+    const updated = [...messages, { role: "user", content: text } as ChatMessage];
+    setMessages(updated);
     setInput("");
+    await runChat(updated);
+  }, [input, isLoading, messages, runChat]);
 
-    await processAndSend(text, updatedMessages);
-  }, [input, isLoading, messages, processAndSend]);
+  const handleSuggestion = useCallback(
+    (text: string) => {
+      const updated = [...messages, { role: "user", content: text } as ChatMessage];
+      setMessages(updated);
+      setInput("");
+      runChat(updated);
+    },
+    [messages, runChat]
+  );
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -119,29 +138,128 @@ export function HelpChatbot() {
     [sendMessage]
   );
 
-  const clearChat = useCallback(() => {
-    setMessages([
-      {
-        role: "assistant",
-        content: "Chat vymazán. Jak ti mohu pomoci?",
-      },
-    ]);
+  const startNewChat = useCallback(() => {
+    setMessages([WELCOME]);
+    setConversationId(null);
   }, []);
 
-  const handleSuggestion = useCallback(
-    (text: string) => {
-      const userMsg: ChatMessage = { role: "user", content: text };
-      const updatedMessages = [...messages, userMsg];
-      setMessages(updatedMessages);
-      setInput("");
-      processAndSend(text, updatedMessages);
+  const refreshHistory = useCallback(async () => {
+    try {
+      setHistoryItems(await listConversations());
+    } catch {
+      // silent
+    }
+  }, []);
+
+  useEffect(() => {
+    if (historyOpen) void refreshHistory();
+  }, [historyOpen, refreshHistory]);
+
+  // Auto-save on each new assistant reply (debounced via effect depending on messages length).
+  useEffect(() => {
+    const userMsgs = messages.filter((m) => m.role === "user").length;
+    if (userMsgs === 0) return;
+    const last = messages[messages.length - 1];
+    if (last.role !== "assistant") return;
+    const handle = setTimeout(async () => {
+      try {
+        const saved = await saveConversation(messages, conversationId ?? undefined);
+        if (!conversationId) setConversationId(saved.id);
+      } catch {
+        // silent
+      }
+    }, 600);
+    return () => clearTimeout(handle);
+  }, [messages, conversationId]);
+
+  const openConversation = useCallback(async (id: number) => {
+    try {
+      const c = await loadConversation(id);
+      setMessages(c.messages.length ? c.messages : [WELCOME]);
+      setConversationId(c.id);
+      setHistoryOpen(false);
+    } catch {
+      // silent
+    }
+  }, []);
+
+  const removeConversation = useCallback(async (id: number) => {
+    if (!confirm("Smazat tuto konverzaci?")) return;
+    await deleteConversation(id);
+    if (conversationId === id) startNewChat();
+    await refreshHistory();
+  }, [conversationId, refreshHistory, startNewChat]);
+
+  const resolvePending = useCallback(
+    async (msgIndex: number, actionIndex: number, confirm: boolean) => {
+      setMessages((prev) => {
+        const copy = [...prev];
+        const msg = copy[msgIndex];
+        const actions = msg.pendingActions ? [...msg.pendingActions] : [];
+        const action = actions[actionIndex];
+        if (!action) return prev;
+        setPendingBusy(action.actionId);
+        return copy;
+      });
+
+      const msg = messages[msgIndex];
+      const action = msg?.pendingActions?.[actionIndex];
+      if (!action) return;
+
+      let updated: PendingAction;
+      try {
+        if (confirm) {
+          const res = await confirmAction(action.actionId);
+          updated = {
+            ...action,
+            resolved: res.status,
+            resolvedMessage:
+              res.status === "executed"
+                ? (res.result?.message as string) ?? "Provedeno."
+                : res.error ?? "Chyba",
+          };
+        } else {
+          await rejectAction(action.actionId);
+          updated = { ...action, resolved: "rejected", resolvedMessage: "Zrušeno." };
+        }
+      } catch (err) {
+        updated = {
+          ...action,
+          resolved: "failed",
+          resolvedMessage: err instanceof Error ? err.message : "Chyba",
+        };
+      }
+
+      setMessages((prev) => {
+        const copy = [...prev];
+        const m = { ...copy[msgIndex] };
+        const actions = m.pendingActions ? [...m.pendingActions] : [];
+        actions[actionIndex] = updated;
+        m.pendingActions = actions;
+        copy[msgIndex] = m;
+        return copy;
+      });
+      setPendingBusy(null);
+
+      // If executed successfully, invalidate affected queries so UI refreshes,
+      // then follow up with AI so it can react (e.g. "Hotovo, tady je odkaz").
+      if (confirm && updated.resolved === "executed") {
+        invalidateQueriesForTool(action.tool, action.params);
+
+        const followUp: ChatMessage = {
+          role: "user",
+          content: `[Systém] Akce potvrzena a provedena: ${updated.resolvedMessage}`,
+        };
+        const history = [...messages.slice(0, msgIndex + 1), followUp];
+        setMessages((prev) => [...prev, followUp]);
+        await runChat(history);
+      }
     },
-    [messages, processAndSend]
+    [messages, runChat]
   );
 
   return (
     <>
-      {/* Floating button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
@@ -152,7 +270,7 @@ export function HelpChatbot() {
             ? "bg-muted text-muted-foreground"
             : "bg-primary text-primary-foreground"
         )}
-        title="Nápověda - AI asistent"
+        title="AI asistent"
       >
         {isOpen ? (
           <X className="w-6 h-6" />
@@ -161,7 +279,6 @@ export function HelpChatbot() {
         )}
       </button>
 
-      {/* Chat panel */}
       {isOpen && (
         <div
           className={cn(
@@ -172,27 +289,71 @@ export function HelpChatbot() {
             "animate-in slide-in-from-bottom-4 fade-in duration-200"
           )}
         >
-          {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/50">
             <div className="flex items-center gap-2">
               <MessageCircleQuestion className="w-5 h-5 text-primary" />
               <div>
-                <h3 className="text-sm font-semibold">Pomocník</h3>
+                <h3 className="text-sm font-semibold">AI Asistent</h3>
                 <p className="text-xs text-muted-foreground">
-                  Navigace a vyhledávání v systému
+                  Hledání, navigace, rychlé akce
                 </p>
               </div>
             </div>
-            <button
-              onClick={clearChat}
-              className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-              title="Vymazat chat"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setHistoryOpen((v) => !v)}
+                className={cn(
+                  "p-1.5 rounded-md text-muted-foreground hover:text-foreground transition-colors",
+                  historyOpen ? "bg-muted" : "hover:bg-muted"
+                )}
+                title="Historie konverzací"
+              >
+                <History className="w-4 h-4" />
+              </button>
+              <button
+                onClick={startNewChat}
+                className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                title="Nová konverzace"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
-          {/* Messages */}
+          {historyOpen && (
+            <div className="border-b border-border max-h-48 overflow-y-auto bg-background">
+              {historyItems.length === 0 && (
+                <div className="p-3 text-xs text-muted-foreground">Žádné uložené konverzace.</div>
+              )}
+              {historyItems.map((h) => (
+                <div
+                  key={h.id}
+                  className={cn(
+                    "flex items-center gap-1 px-3 py-2 text-xs hover:bg-muted",
+                    conversationId === h.id && "bg-muted"
+                  )}
+                >
+                  <button
+                    onClick={() => openConversation(h.id)}
+                    className="flex-1 text-left truncate"
+                  >
+                    <div className="truncate">{h.title}</div>
+                    <div className="text-muted-foreground">
+                      {new Date(h.updatedAt).toLocaleString("cs-CZ")} · {h.messageCount} zpráv
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => removeConversation(h.id)}
+                    className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                    title="Smazat"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {messages.map((msg, i) => (
               <div
@@ -211,7 +372,18 @@ export function HelpChatbot() {
                   )}
                 >
                   {msg.role === "assistant" ? (
-                    <ChatMessageContent content={msg.content} />
+                    <>
+                      <ChatMessageContent content={msg.content} />
+                      {msg.pendingActions?.map((a, ai) => (
+                        <PendingActionCard
+                          key={a.actionId}
+                          action={a}
+                          busy={pendingBusy === a.actionId}
+                          onConfirm={() => resolvePending(i, ai, true)}
+                          onReject={() => resolvePending(i, ai, false)}
+                        />
+                      ))}
+                    </>
                   ) : (
                     msg.content
                   )}
@@ -219,25 +391,15 @@ export function HelpChatbot() {
               </div>
             ))}
 
-            {/* Loading states */}
-            {(isLoading || isSearching) && (
+            {isLoading && (
               <div className="flex justify-start">
                 <div className="bg-muted px-3 py-2 rounded-lg rounded-bl-sm flex items-center gap-2">
-                  {isSearching ? (
-                    <>
-                      <Search className="w-4 h-4 animate-pulse text-primary" />
-                      <span className="text-xs text-muted-foreground">
-                        Hledám v systému...
-                      </span>
-                    </>
-                  ) : (
-                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                  )}
+                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Přemýšlím...</span>
                 </div>
               </div>
             )}
 
-            {/* Suggestions - only show at start */}
             {messages.length === 1 && !isLoading && (
               <ChatSuggestions onSelect={handleSuggestion} />
             )}
@@ -245,7 +407,6 @@ export function HelpChatbot() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
           <ChatInput
             input={input}
             setInput={setInput}
@@ -257,5 +418,98 @@ export function HelpChatbot() {
         </div>
       )}
     </>
+  );
+}
+
+/** After a tool action is confirmed, invalidate the right TanStack Query caches
+ *  so the open page (event dashboard, reservation edit, etc.) refreshes automatically. */
+function invalidateQueriesForTool(
+  toolName: string,
+  params: Record<string, unknown>
+) {
+  const eventId = params.eventId ? Number(params.eventId) : undefined;
+  const reservationId = params.reservationId
+    ? Number(params.reservationId)
+    : undefined;
+
+  switch (toolName) {
+    case "auto_seat_guests":
+    case "analyse_event_setup":
+      if (eventId) invalidateEventQueries(eventId);
+      break;
+    case "create_quick_reservation":
+    case "cancel_reservation":
+    case "mark_reservation_paid":
+    case "send_reservation_email":
+      invalidateReservationQueries(reservationId);
+      if (reservationId) invalidateCashboxQueries();
+      break;
+    case "create_contact":
+      invalidateContactQueries();
+      break;
+    case "create_staff_member":
+      invalidateStaffQueries();
+      break;
+    default:
+      // Unknown tool — broad invalidation
+      if (eventId) invalidateEventQueries(eventId);
+      if (reservationId) invalidateReservationQueries(reservationId);
+      break;
+  }
+}
+
+function PendingActionCard({
+  action,
+  busy,
+  onConfirm,
+  onReject,
+}: {
+  action: PendingAction;
+  busy: boolean;
+  onConfirm: () => void;
+  onReject: () => void;
+}) {
+  if (action.resolved) {
+    return (
+      <div
+        className={cn(
+          "mt-2 p-2 rounded border text-xs",
+          action.resolved === "executed"
+            ? "border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-300"
+            : action.resolved === "rejected"
+              ? "border-muted-foreground/30 text-muted-foreground"
+              : "border-destructive/40 bg-destructive/10 text-destructive"
+        )}
+      >
+        {action.resolved === "executed" && "✓ "}
+        {action.resolved === "rejected" && "✕ Akce zrušena. "}
+        {action.resolved === "failed" && "✗ "}
+        {action.resolvedMessage}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 p-2 rounded border border-primary/30 bg-background text-xs">
+      <div className="font-medium mb-2">{action.preview}</div>
+      <div className="flex gap-2">
+        <button
+          onClick={onConfirm}
+          disabled={busy}
+          className="flex items-center gap-1 px-2 py-1 rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 text-xs"
+        >
+          {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+          Potvrdit
+        </button>
+        <button
+          onClick={onReject}
+          disabled={busy}
+          className="flex items-center gap-1 px-2 py-1 rounded border text-xs hover:bg-muted disabled:opacity-50"
+        >
+          <XCircle className="w-3 h-3" />
+          Zrušit
+        </button>
+      </div>
+    </div>
   );
 }

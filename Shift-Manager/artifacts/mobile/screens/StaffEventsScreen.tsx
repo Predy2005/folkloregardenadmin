@@ -1,23 +1,30 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Platform,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useColors } from "@/hooks/useColors";
-import { useEvents } from "@/hooks/queries/useEvents";
-import { EventCard, type EventListItem } from "@/components/EventCard";
+
 import { EmptyState } from "@/components/EmptyState";
+import { EventCard, type EventListItem } from "@/components/EventCard";
+import {
+  EventsCalendar,
+  dateKey,
+  type CalendarMode,
+} from "@/components/EventsCalendar";
 import { NotificationBell } from "@/components/NotificationBell";
+import { useEvents } from "@/hooks/queries/useEvents";
+import { useColors } from "@/hooks/useColors";
 
 const FILTER_OPTIONS = [
   { label: "Vše", value: "all" },
@@ -27,11 +34,16 @@ const FILTER_OPTIONS = [
   { label: "Zrušené", value: "CANCELLED" },
 ];
 
+type ViewMode = "list" | "calendar";
+
 export function StaffEventsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [filter, setFilter] = useState("all");
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [calendarMode, setCalendarMode] = useState<CalendarMode>("month");
+  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
 
   const {
     data: events = [],
@@ -46,27 +58,43 @@ export function StaffEventsScreen() {
     void refetch();
   }
 
-  const filtered =
-    filter === "all"
-      ? events
-      : events.filter((e) => e.status?.toUpperCase() === filter);
+  const filtered = useMemo(
+    () =>
+      filter === "all"
+        ? events
+        : events.filter((e) => e.status?.toUpperCase() === filter),
+    [events, filter],
+  );
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const upcomingFiltered = filtered.filter((e) => new Date(e.date) >= todayStart);
-  const pastFiltered = filtered.filter((e) => new Date(e.date) < todayStart);
+  // Hlavní tab ukazuje jen nadcházející akce — minulé jsou v samostatném
+  // tabu „Historie" (s informací o výplatě).
+  const upcomingFiltered = useMemo(() => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    return filtered.filter((e) => new Date(e.date) >= todayStart);
+  }, [filtered]);
 
   const sections: Array<
     { title?: string; item: EventListItem } | { title: string; item?: undefined }
-  > = [];
-  if (upcomingFiltered.length > 0) {
-    sections.push({ title: "Nadcházející" });
-    upcomingFiltered.forEach((e) => sections.push({ item: e }));
-  }
-  if (pastFiltered.length > 0) {
-    sections.push({ title: "Minulé" });
-    pastFiltered.forEach((e) => sections.push({ item: e }));
-  }
+  > = upcomingFiltered.map((e) => ({ item: e }));
+
+  // ─── Calendar data ───────────────────────────────────────────────────
+  // Markované dny vidíme z VŠECH eventů (i minulých), aby uživatel mohl
+  // pohodlně listovat zpátky a vidět co měl. Filtrace `filter` se použije
+  // pro list pohled, kalendář pracuje s nezfiltrovanými daty.
+  const markedDates = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const e of events) {
+      const key = e.date; // už ve tvaru YYYY-MM-DD
+      map.set(key, (map.get(key) ?? 0) + 1);
+    }
+    return map;
+  }, [events]);
+
+  const eventsForSelectedDay = useMemo(() => {
+    const key = dateKey(selectedDate);
+    return events.filter((e) => e.date === key);
+  }, [events, selectedDate]);
 
   return (
     <View style={styles.root}>
@@ -92,41 +120,77 @@ export function StaffEventsScreen() {
           <NotificationBell />
         </View>
 
-        <FlatList
-          horizontal
-          data={FILTER_OPTIONS}
-          keyExtractor={(item) => item.value}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterList}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[
-                styles.filterChip,
-                {
-                  backgroundColor:
-                    filter === item.value ? colors.primary : colors.secondary,
-                  borderColor:
-                    filter === item.value ? colors.primary : colors.border,
-                },
-              ]}
-              onPress={() => setFilter(item.value)}
-            >
-              <Text
+        <View style={styles.viewToggleRow}>
+          <ViewToggleButton
+            label="Seznam"
+            icon="list"
+            active={viewMode === "list"}
+            onPress={() => setViewMode("list")}
+            colors={colors}
+          />
+          <ViewToggleButton
+            label="Kalendář"
+            icon="calendar"
+            active={viewMode === "calendar"}
+            onPress={() => setViewMode("calendar")}
+            colors={colors}
+          />
+        </View>
+
+        {viewMode === "list" && (
+          <FlatList
+            horizontal
+            data={FILTER_OPTIONS}
+            keyExtractor={(item) => item.value}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterList}
+            renderItem={({ item }) => (
+              <TouchableOpacity
                 style={[
-                  styles.filterText,
+                  styles.filterChip,
                   {
-                    color:
-                      filter === item.value
-                        ? colors.primaryForeground
-                        : colors.foreground,
+                    backgroundColor:
+                      filter === item.value ? colors.primary : colors.secondary,
+                    borderColor:
+                      filter === item.value ? colors.primary : colors.border,
                   },
                 ]}
+                onPress={() => setFilter(item.value)}
               >
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          )}
-        />
+                <Text
+                  style={[
+                    styles.filterText,
+                    {
+                      color:
+                        filter === item.value
+                          ? colors.primaryForeground
+                          : colors.foreground,
+                    },
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            )}
+          />
+        )}
+
+        {viewMode === "calendar" && (
+          <View style={styles.calendarModeRow}>
+            <CalendarModeChip
+              label="Měsíc"
+              active={calendarMode === "month"}
+              onPress={() => setCalendarMode("month")}
+              colors={colors}
+            />
+            <CalendarModeChip
+              label="Týden"
+              active={calendarMode === "week"}
+              onPress={() => setCalendarMode("week")}
+              colors={colors}
+            />
+          </View>
+        )}
       </View>
 
       {isPending ? (
@@ -148,7 +212,7 @@ export function StaffEventsScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-      ) : (
+      ) : viewMode === "list" ? (
         <FlatList
           data={sections}
           keyExtractor={(item, index) =>
@@ -194,8 +258,146 @@ export function StaffEventsScreen() {
           }}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
         />
+      ) : (
+        <ScrollView
+          contentContainerStyle={[
+            styles.calendarScroll,
+            {
+              paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20),
+            },
+          ]}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+            />
+          }
+        >
+          <EventsCalendar
+            mode={calendarMode}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+            markedDates={markedDates}
+          />
+
+          <View style={styles.dayHeader}>
+            <Text
+              style={[styles.dayHeaderTitle, { color: colors.foreground }]}
+            >
+              {selectedDate.toLocaleDateString("cs-CZ", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+              })}
+            </Text>
+            <Text
+              style={[styles.dayHeaderCount, { color: colors.mutedForeground }]}
+            >
+              {eventsForSelectedDay.length === 0
+                ? "Žádné akce"
+                : `${eventsForSelectedDay.length} ${
+                    eventsForSelectedDay.length === 1
+                      ? "akce"
+                      : eventsForSelectedDay.length < 5
+                        ? "akce"
+                        : "akcí"
+                  }`}
+            </Text>
+          </View>
+
+          <View style={styles.dayEventsList}>
+            {eventsForSelectedDay.map((e) => (
+              <EventCard
+                key={e.eventId}
+                event={e}
+                onPress={() =>
+                  router.push(`/event-detail?id=${e.eventId}&type=event`)
+                }
+              />
+            ))}
+          </View>
+        </ScrollView>
       )}
     </View>
+  );
+}
+
+function ViewToggleButton({
+  label,
+  icon,
+  active,
+  onPress,
+  colors,
+}: {
+  label: string;
+  icon: keyof typeof Feather.glyphMap;
+  active: boolean;
+  onPress: () => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[
+        styles.viewToggleBtn,
+        {
+          backgroundColor: active ? colors.primary : colors.secondary,
+        },
+      ]}
+      activeOpacity={0.8}
+    >
+      <Feather
+        name={icon}
+        size={14}
+        color={active ? colors.primaryForeground : colors.foreground}
+      />
+      <Text
+        style={[
+          styles.viewToggleText,
+          {
+            color: active ? colors.primaryForeground : colors.foreground,
+          },
+        ]}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function CalendarModeChip({
+  label,
+  active,
+  onPress,
+  colors,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[
+        styles.calendarModeChip,
+        {
+          backgroundColor: active ? colors.primary + "18" : "transparent",
+          borderColor: active ? colors.primary : colors.border,
+        },
+      ]}
+      activeOpacity={0.7}
+    >
+      <Text
+        style={[
+          styles.calendarModeText,
+          { color: active ? colors.primary : colors.foreground },
+        ]}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
   );
 }
 
@@ -223,6 +425,39 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontFamily: "Inter_700Bold",
     letterSpacing: -0.5,
+  },
+  viewToggleRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  viewToggleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  viewToggleText: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  calendarModeRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  calendarModeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  calendarModeText: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
   },
   filterList: {
     paddingHorizontal: 12,
@@ -271,5 +506,26 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     paddingBottom: 8,
     paddingTop: 4,
+  },
+  calendarScroll: {
+    padding: 16,
+    gap: 14,
+  },
+  dayHeader: {
+    paddingTop: 8,
+    paddingHorizontal: 4,
+    gap: 2,
+  },
+  dayHeaderTitle: {
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
+    textTransform: "capitalize",
+  },
+  dayHeaderCount: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+  },
+  dayEventsList: {
+    gap: 10,
   },
 });

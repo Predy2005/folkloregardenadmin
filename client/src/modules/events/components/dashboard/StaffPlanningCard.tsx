@@ -132,8 +132,8 @@ export function StaffPlanningCard({ staffing, eventId }: StaffPlanningCardProps)
     addStaffMutation.mutate({ staffMemberId, staffRoleId });
   };
 
-  const handleMarkPresent = (assignmentId: number) => {
-    updateAttendanceMutation.mutate({ assignmentId, status: "PRESENT" });
+  const handleUpdateAttendance = (assignmentId: number, status: string) => {
+    updateAttendanceMutation.mutate({ assignmentId, status });
   };
 
   const handleRemoveStaff = (assignmentId: number) => {
@@ -202,7 +202,7 @@ export function StaffPlanningCard({ staffing, eventId }: StaffPlanningCardProps)
               isExpanded={expandedCategories.isOpen(req.category)}
               onToggle={() => toggleCategory(req.category)}
               onAddStaff={() => openStaffDialog("add", req.label, req.roleId)}
-              onMarkPresent={handleMarkPresent}
+              onUpdateAttendance={handleUpdateAttendance}
               onRemoveStaff={handleRemoveStaff}
               onUpdateRequired={handleUpdateRequired}
               onResetToAuto={handleResetToAuto}
@@ -243,7 +243,7 @@ export function StaffPlanningCard({ staffing, eventId }: StaffPlanningCardProps)
         filteredAvailableStaff={filteredAvailableStaff}
         isLoadingStaff={isLoadingStaff}
         onAddStaff={handleAddStaff}
-        onMarkPresent={handleMarkPresent}
+        onUpdateAttendance={handleUpdateAttendance}
         onRemoveStaff={handleRemoveStaff}
         isAdding={addStaffMutation.isPending}
         isUpdating={updateAttendanceMutation.isPending}

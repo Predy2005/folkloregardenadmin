@@ -207,7 +207,8 @@ export default function StaffEditPage() {
               <MobileAccountCard
                 basePath={`/api/staff/${id}`}
                 entityEmail={member?.email ?? null}
-                canCreate={!!member?.email}
+                entityPhone={member?.phone ?? null}
+                canCreate={!!(member?.email?.trim() || member?.phone?.trim())}
                 derivedRole={deriveMobileRoleFromPosition(member?.position)}
                 supportsSyncRole
               />

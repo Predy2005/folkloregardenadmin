@@ -335,3 +335,59 @@ Poznámky
 - Prosím uchovávejte tajné hodnoty pouze v .env.local alebo v prostředí serveru. Do repozitáře je neukládejte.
 - Pokud rozšíříte entity, spusťte migrace (viz výše) a doplňte případné validace.
 - Některé repository metody jsou záměrně minimalistické a lze je dále specializovat dle potřeb administrace.
+
+---
+
+## Změny v API (duben 2026)
+
+### Reservation
+- **`contactEmail` je nyní nullable** (migrace `Version20260428111718`). Kontakty importované z xlsx někdy email nemají; prázdný string se ukládá jako NULL. Pokud je email vyplněn, validuje se tvar.
+- **Nové pole `orderedBy`** (text, nullable, migrace `Version20260428085420`) — kdo objednávku provedl, pokud jiná osoba než kontakt (typicky zaměstnanec CK). API: `orderedBy` v create/update body i v GET response.
+- **Default `drinkOption`** při vytvoření osoby: `infant → "none"`, ostatní → `"allin"` (Neomezeně). Aplikuje se v `ReservationController.php:470` a `:1173`.
+
+### ReservationFoods (`/api/reservation-foods`)
+- Nová pole **`notes`** (interní poznámka, nezobrazuje se hostovi) a **`allergens`** (volný text alergenů) — migrace `Version20260428113803`. Podporují se v create/update.
+
+### Bulk endpoints — gate změna
+Gate na granular permission (předtím `ROLE_SUPER_ADMIN`):
+- `PUT /api/staff/bulk-update` → `staff.update`
+- `DELETE /api/staff/bulk-delete` → `staff.delete`
+- `PUT /api/reservations/bulk-update` → `reservations.update`
+- `DELETE /api/reservations/bulk-delete` → `reservations.delete`
+- `POST /api/reservations/bulk-check` → `reservations.delete`
+
+Důvod: admini (kteří mají granular permissions) potřebují bulk operace, super-admin necháváme pro destruktivní/system akce.
+
+### Staff import xlsx (nové)
+- **`POST /api/staff/import/preview`** (`staff.create`) — multipart upload xlsx (pole `file`), vrací draft seznam personálu z parsování (žádný DB write).
+- **`POST /api/staff/import/commit`** (`staff.create`) — JSON body s vybranými drafts; vytvoří `StaffMember` záznamy.
+- Excel formát: sekce `ČÍŠNÍK`/`KUCHAŘ`/`POMOCNÉ SÍLY`/`KAPELA`/`BARMAN`/`HOSTESKA`/`OCHRANKA`/`ŘIDIČ` → mapuje na `position` kódy `WAITER`/`CHEF`/`CLEANER`/`MUSICIAN`/`BARTENDER`/`HOSTESS`/`SECURITY`/`DRIVER`.
+- Telefon normalizuje na `+420` formát; deduplikace přes telefon, pak (jméno+příjmení) case-insensitive.
+
+### StaffMember create/update — empty-string-to-null
+`StaffMemberController::create` a `update` převádí prázdné stringy nullable polí (`email`, `phone`, `address`, `position`, `emergencyContact`, `emergencyPhone`, `notes`) na `NULL`. Bez tohoto by `UNIQUE(email)` constraint padal při více členech bez emailu.
+
+### Event guests
+- **`POST /api/events/{id}/guests/set-group-count`** (`events.update`) — hromadná úprava počtu hostů ve skupině (per-rezervace nebo "Manuálně přidaní"). Body: `{ reservationId: int|null, targetAdults: int, targetChildren: int }`. Při zmenšení preferuje smazat hosty, kteří **nejsou** `isPresent`/`isPaid`.
+
+### Event defaults
+- **eventTime default** `19:30:00` (předtím `18:00:00`) v `EventController::create` a `createFromReservation`.
+- **durationMinutes default** `150` (předtím `120`) — migrace `Version20260428121513` mění DB default. Existující akce zůstávají.
+
+### Partner — kategorie a kontaktní osoby
+- **PartnerCategory** (`/api/partner-categories`) — dynamický číselník (`name`, `slug` UNIQUE, `displayOrder`, `isActive`). Migrace `Version20260428114400` vytváří tabulku a seeduje 4 default kategorie: TRAVEL_AGENCY, GUIDE, HOTEL, OTHER. Také remapuje legacy `RECEPTION`/`DISTRIBUTOR` partnery na `OTHER`.
+  - `GET /api/partner-categories` (autenticated, query `?activeOnly=1`)
+  - `POST /api/partner-categories` (`partners.update`)
+  - `PUT /api/partner-categories/{id}` (`partners.update`)
+  - `DELETE /api/partner-categories/{id}` (`partners.update`) — partneři s daným slug zůstanou (žádný FK constraint).
+- **`Partner.partnerType`** je teď string slug navázaný na `PartnerCategory.slug`. Žádný FK constraint — kategorie lze libovolně mazat/přejmenovávat, partneři si svou hodnotu zachovají.
+- **PartnerContact** (`/api/partners/{id}/contacts` + `/api/partner-contacts/{id}`) — kontaktní osoby u partnera (1 partner → N kontaktů, FK `ON DELETE CASCADE`). Migrace `Version20260428120554`. Pole: `firstName`, `lastName`, `email`, `phone`, `notes`, `displayOrder`.
+  - `GET /api/partners/{id}/contacts` (`partners.read`)
+  - `POST /api/partners/{id}/contacts` (`partners.update`)
+  - `PUT /api/partner-contacts/{id}` (`partners.update`)
+  - `DELETE /api/partner-contacts/{id}` (`partners.update`)
+
+### AI / asistent
+Konfigurace AI gateway (chatbot `/api/assistant/chat` + frontend reservation parser) zjednodušena na **jediný OpenAI server**. Env vars `AI_SERVER_1_URL/KEY/MODEL`. Frontend parser (`client/src/modules/reservations/utils/ai.ts`) volá AI **přímo z prohlížeče** s klíčem v JS bundle — security debt, plánovaný refactor přesunout na backend.
+
+Schema parseru je liberální: `AiMultiReservationEntrySchema.date` je nullable (poptávky bez data), `reservations` může být prázdné pole.

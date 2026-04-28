@@ -36,4 +36,6 @@ export interface ReservationPersonsSectionProps {
   readonly handleMenuChange: (resIndex: number, personIndex: number, newMenuValue: string) => void;
   readonly updatePerson: (resIndex: number, personIndex: number, updates: Partial<PersonEntry>) => void;
   readonly removePerson: (resIndex: number, personIndex: number) => void;
+  readonly removePersonsAt: (resIndex: number, personIndices: number[]) => void;
+  readonly setPersonsCount: (resIndex: number, target: number, type?: PersonEntry["type"]) => void;
 }

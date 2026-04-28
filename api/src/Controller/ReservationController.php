@@ -152,6 +152,7 @@ class ReservationController extends AbstractController
                 'contactPhone' => $reservation->getContactPhone(),
                 'contactNationality' => $reservation->getContactNationality(),
                 'contactNote' => $reservation->getContactNote(),
+                'orderedBy' => $reservation->getOrderedBy(),
                 'invoiceSameAsContact' => $reservation->isInvoiceSameAsContact(),
                 'invoiceName' => $reservation->getInvoiceName(),
                 'invoiceCompany' => $reservation->getInvoiceCompany(),
@@ -273,6 +274,7 @@ class ReservationController extends AbstractController
                 'contactPhone' => $reservation->getContactPhone(),
                 'contactNationality' => $reservation->getContactNationality(),
                 'contactNote' => $reservation->getContactNote(),
+                'orderedBy' => $reservation->getOrderedBy(),
                 'invoiceSameAsContact' => $reservation->isInvoiceSameAsContact(),
                 'invoiceName' => $reservation->getInvoiceName(),
                 'invoiceCompany' => $reservation->getInvoiceCompany(),
@@ -339,6 +341,7 @@ class ReservationController extends AbstractController
         $inContactPhone = $flat('contactPhone', $nested('contact', 'phone'));
         $inNationality = (string)$flat('contactNationality', (string)$nested('contact', 'nationality', ''));
         $inContactNote = $flat('contactNote', $nested('contact', 'note'));
+        $inOrderedBy = $flat('orderedBy', $nested('contact', 'orderedBy'));
         $inClientComeFrom = (string)$flat('clientComeFrom', (string)$nested('contact', 'clientComeFrom', 'jiné'));
 
         $inInvoiceSameAs = (bool)$flat('invoiceSameAsContact', (bool)$nested('invoice', 'sameAsContact', true));
@@ -386,14 +389,20 @@ class ReservationController extends AbstractController
         }
 
         // Snapshot kontaktních údajů do rezervace (preferuj kontakt, pokud existuje)
+        // Email je nepovinný (kontakty importované z xlsx ho někdy nemají).
+        // Prázdný string ukládáme jako NULL; pokud je něco zadáno, validujeme tvar.
+        $emailRaw = $contact?->getEmail() ?? (is_string($inContactEmail) ? $inContactEmail : null);
+        $emailNormalized = is_string($emailRaw) && trim($emailRaw) !== '' ? trim($emailRaw) : null;
+
         $reservation->setContactName($contact?->getName() ?? $inContactName);
-        $reservation->setContactEmail($contact?->getEmail() ?? (is_string($inContactEmail) ? $inContactEmail : ''));
+        $reservation->setContactEmail($emailNormalized);
         $reservation->setContactPhone($contact?->getPhone() ?? (is_string($inContactPhone) ? $inContactPhone : ''));
         $reservation->setContactNationality($inNationality);
         $reservation->setContactNote(is_string($inContactNote ?? null) ? $inContactNote : null);
+        $reservation->setOrderedBy(is_string($inOrderedBy ?? null) && trim((string)$inOrderedBy) !== '' ? $inOrderedBy : null);
         $reservation->setClientComeFrom($inClientComeFrom);
 
-        if (!filter_var($reservation->getContactEmail(), FILTER_VALIDATE_EMAIL)) {
+        if ($emailNormalized !== null && !filter_var($emailNormalized, FILTER_VALIDATE_EMAIL)) {
             return $this->json(['error' => 'Neplatný e-mail'], JsonResponse::HTTP_BAD_REQUEST);
         }
 
@@ -458,7 +467,10 @@ class ReservationController extends AbstractController
 
                 $person->setMenu($menuCode);
                 $person->setNationality($personData['nationality'] ?? null);
-                $person->setDrinkOption($personData['drinkOption'] ?? 'none');
+                // Default drinkOption: "allin" pro všechny kromě kojenců (infant).
+                $personType = $personData['type'] ?? 'adult';
+                $defaultDrink = $personType === 'infant' ? 'none' : 'allin';
+                $person->setDrinkOption($personData['drinkOption'] ?? $defaultDrink);
                 $person->setDrinkName($personData['drinkName'] ?? null);
                 $person->setDrinkPrice(isset($personData['drinkPrice']) ? (string)$personData['drinkPrice'] : null);
 
@@ -775,7 +787,7 @@ class ReservationController extends AbstractController
     }
 
     #[Route('/api/reservations/bulk-update', name: 'api_reservations_bulk_update', methods: ['PUT', 'PATCH'])]
-    #[IsGranted('ROLE_SUPER_ADMIN')]
+    #[IsGranted('reservations.update')]
     public function bulkUpdate(Request $request, ReservationRepository $reservationRepository): JsonResponse
     {
         $data = json_decode($request->getContent(), true) ?? [];
@@ -823,7 +835,7 @@ class ReservationController extends AbstractController
     }
 
     #[Route('/api/reservations/bulk-check', name: 'api_reservations_bulk_check', methods: ['POST'])]
-    #[IsGranted('ROLE_SUPER_ADMIN')]
+    #[IsGranted('reservations.delete')]
     public function bulkCheck(Request $request, ReservationRepository $reservationRepository): JsonResponse
     {
         $data = json_decode($request->getContent(), true) ?? [];
@@ -857,7 +869,7 @@ class ReservationController extends AbstractController
     }
 
     #[Route('/api/reservations/bulk-delete', name: 'api_reservations_bulk_delete', methods: ['DELETE'])]
-    #[IsGranted('ROLE_SUPER_ADMIN')]
+    #[IsGranted('reservations.delete')]
     public function bulkDelete(Request $request, ReservationRepository $reservationRepository): JsonResponse
     {
         $data = json_decode($request->getContent(), true) ?? [];
@@ -977,6 +989,7 @@ class ReservationController extends AbstractController
             'contactNationality' => $reservation->getContactNationality(),
             'clientComeFrom' => $reservation->getClientComeFrom(),
             'contactNote' => $reservation->getContactNote(),
+            'orderedBy' => $reservation->getOrderedBy(),
             'invoiceSameAsContact' => $reservation->isInvoiceSameAsContact(),
             'invoiceName' => $reservation->getInvoiceName(),
             'invoiceCompany' => $reservation->getInvoiceCompany(),
@@ -1044,8 +1057,14 @@ class ReservationController extends AbstractController
         if (isset($data['contactName'])) {
             $reservation->setContactName($data['contactName']);
         }
-        if (isset($data['contactEmail'])) {
-            $reservation->setContactEmail($data['contactEmail']);
+        if (array_key_exists('contactEmail', $data)) {
+            // Prázdný string ukládáme jako NULL; nenulovou hodnotu ověříme jako email.
+            $val = $data['contactEmail'];
+            $normalized = is_string($val) && trim($val) !== '' ? trim($val) : null;
+            if ($normalized !== null && !filter_var($normalized, FILTER_VALIDATE_EMAIL)) {
+                return $this->json(['error' => 'Neplatný e-mail'], JsonResponse::HTTP_BAD_REQUEST);
+            }
+            $reservation->setContactEmail($normalized);
         }
         if (isset($data['contactPhone'])) {
             $reservation->setContactPhone($data['contactPhone']);
@@ -1058,6 +1077,10 @@ class ReservationController extends AbstractController
         }
         if (array_key_exists('contactNote', $data)) {
             $reservation->setContactNote($data['contactNote']);
+        }
+        if (array_key_exists('orderedBy', $data)) {
+            $val = $data['orderedBy'];
+            $reservation->setOrderedBy(is_string($val) && trim($val) !== '' ? $val : null);
         }
 
         // Fakturacni udaje
@@ -1150,7 +1173,10 @@ class ReservationController extends AbstractController
                 $person->setType($personData['type'] ?? 'adult');
                 $person->setMenu($personData['menu'] ?? '');
                 $person->setNationality($personData['nationality'] ?? null);
-                $person->setDrinkOption($personData['drinkOption'] ?? 'none');
+                // Default drinkOption: "allin" pro všechny kromě kojenců (infant).
+                $personType = $personData['type'] ?? 'adult';
+                $defaultDrink = $personType === 'infant' ? 'none' : 'allin';
+                $person->setDrinkOption($personData['drinkOption'] ?? $defaultDrink);
                 $person->setDrinkName($personData['drinkName'] ?? null);
                 $person->setDrinkPrice(isset($personData['drinkPrice']) ? (string)$personData['drinkPrice'] : null);
                 $personPrice = (float) ($personData['price'] ?? 0);

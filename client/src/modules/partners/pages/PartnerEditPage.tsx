@@ -19,6 +19,7 @@ import { BasicInfoCard } from "../components/edit/BasicInfoCard";
 import { PricingCard } from "../components/edit/PricingCard";
 import { BillingCard } from "../components/edit/BillingCard";
 import { PartnerReservationsTab } from "../components/edit/PartnerReservationsTab";
+import { PartnerContactsTab } from "../components/edit/PartnerContactsTab";
 
 export default function PartnerEditPage() {
   const [, paramsEdit] = useRoute("/partners/:id/edit");
@@ -333,10 +334,14 @@ export default function PartnerEditPage() {
         <Tabs defaultValue="profile">
           <TabsList>
             <TabsTrigger value="profile">Zakladni udaje</TabsTrigger>
+            <TabsTrigger value="contacts">Kontaktní osoby</TabsTrigger>
             <TabsTrigger value="reservations">Rezervace a historie</TabsTrigger>
           </TabsList>
           <TabsContent value="profile" className="mt-6">
             {formContent}
+          </TabsContent>
+          <TabsContent value="contacts" className="mt-6">
+            {id && <PartnerContactsTab partnerId={Number(id)} />}
           </TabsContent>
           <TabsContent value="reservations" className="mt-6">
             {id && <PartnerReservationsTab partnerId={Number(id)} />}

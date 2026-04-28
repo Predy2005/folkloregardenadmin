@@ -8,6 +8,7 @@ use App\Repository\EventStaffAssignmentRepository;
 use App\Repository\StaffAttendanceRepository;
 use App\Repository\EventRepository;
 use App\Service\MobileAccountProvisioningService;
+use App\Service\PinAlreadyTakenException;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -49,7 +50,7 @@ class StaffMemberController extends AbstractController
     }
 
     #[Route('/bulk-update', methods: ['PUT', 'PATCH'])]
-    #[IsGranted('ROLE_SUPER_ADMIN')]
+    #[IsGranted('staff.update')]
     public function bulkUpdate(Request $request, StaffMemberRepository $repo, EntityManagerInterface $em): JsonResponse
     {
         $data = json_decode($request->getContent(), true) ?? [];
@@ -84,7 +85,7 @@ class StaffMemberController extends AbstractController
     }
 
     #[Route('/bulk-delete', methods: ['DELETE'])]
-    #[IsGranted('ROLE_SUPER_ADMIN')]
+    #[IsGranted('staff.delete')]
     public function bulkDelete(Request $request, StaffMemberRepository $repo, EntityManagerInterface $em): JsonResponse
     {
         $data = json_decode($request->getContent(), true) ?? [];
@@ -145,18 +146,21 @@ class StaffMemberController extends AbstractController
 
         $m = new StaffMember();
 
+        // Prázdné stringy z formuláře musí jít do DB jako NULL (nullable sloupce + UNIQUE constraint na email).
+        $emptyToNull = static fn($v) => (is_string($v) && trim($v) === '') ? null : $v;
+
         if (array_key_exists('firstName', $data)) $m->setFirstName((string)$data['firstName']);
         if (array_key_exists('lastName', $data)) $m->setLastName((string)$data['lastName']);
-        if (array_key_exists('email', $data)) $m->setEmail($data['email']);
-        if (array_key_exists('phone', $data)) $m->setPhone($data['phone']);
-        if (array_key_exists('address', $data)) $m->setAddress($data['address']);
+        if (array_key_exists('email', $data)) $m->setEmail($emptyToNull($data['email']));
+        if (array_key_exists('phone', $data)) $m->setPhone($emptyToNull($data['phone']));
+        if (array_key_exists('address', $data)) $m->setAddress($emptyToNull($data['address']));
 
         if (array_key_exists('dateOfBirth', $data)) {
             $m->setDateOfBirth($data['dateOfBirth'] ? new \DateTime($data['dateOfBirth']) : null);
         }
 
         if (array_key_exists('position', $data)) {
-            $m->setPosition($data['position']);
+            $m->setPosition($emptyToNull($data['position']));
         } elseif (array_key_exists('role', $data)) {
             $roleVal = $data['role'];
             if (is_numeric($roleVal)) {
@@ -167,7 +171,7 @@ class StaffMemberController extends AbstractController
                     $m->setPosition((string)$roleVal);
                 }
             } else {
-                $m->setPosition((string)$roleVal);
+                $m->setPosition($emptyToNull($roleVal));
             }
         }
 
@@ -192,9 +196,9 @@ class StaffMemberController extends AbstractController
             $m->setIsActive(true);
         }
 
-        if (array_key_exists('emergencyContact', $data)) $m->setEmergencyContact($data['emergencyContact']);
-        if (array_key_exists('emergencyPhone', $data)) $m->setEmergencyPhone($data['emergencyPhone']);
-        if (array_key_exists('notes', $data)) $m->setNotes($data['notes']);
+        if (array_key_exists('emergencyContact', $data)) $m->setEmergencyContact($emptyToNull($data['emergencyContact']));
+        if (array_key_exists('emergencyPhone', $data)) $m->setEmergencyPhone($emptyToNull($data['emergencyPhone']));
+        if (array_key_exists('notes', $data)) $m->setNotes($emptyToNull($data['notes']));
 
         $em->persist($m);
         $em->flush();
@@ -212,20 +216,23 @@ class StaffMemberController extends AbstractController
         }
         $data = json_decode($request->getContent(), true) ?? [];
 
+        // Prázdné stringy z formuláře musí jít do DB jako NULL (nullable sloupce + UNIQUE constraint na email).
+        $emptyToNull = static fn($v) => (is_string($v) && trim($v) === '') ? null : $v;
+
         if (array_key_exists('firstName', $data)) $m->setFirstName((string)$data['firstName']);
         if (array_key_exists('lastName', $data)) $m->setLastName((string)$data['lastName']);
-        if (array_key_exists('email', $data)) $m->setEmail($data['email']);
-        if (array_key_exists('phone', $data)) $m->setPhone($data['phone']);
-        if (array_key_exists('address', $data)) $m->setAddress($data['address']);
+        if (array_key_exists('email', $data)) $m->setEmail($emptyToNull($data['email']));
+        if (array_key_exists('phone', $data)) $m->setPhone($emptyToNull($data['phone']));
+        if (array_key_exists('address', $data)) $m->setAddress($emptyToNull($data['address']));
 
         if (array_key_exists('dateOfBirth', $data)) {
             $m->setDateOfBirth($data['dateOfBirth'] ? new \DateTime($data['dateOfBirth']) : null);
         }
 
         if (array_key_exists('position', $data)) {
-            $m->setPosition($data['position']);
+            $m->setPosition($emptyToNull($data['position']));
         } elseif (array_key_exists('role', $data)) {
-            $m->setPosition((string)$data['role']);
+            $m->setPosition($emptyToNull($data['role']));
         }
 
         if (array_key_exists('hourlyRate', $data)) $m->setHourlyRate($this->normalizeNumberForRate($data['hourlyRate']));
@@ -239,9 +246,9 @@ class StaffMemberController extends AbstractController
             $m->setIsActive((bool)$data['active']);
         }
 
-        if (array_key_exists('emergencyContact', $data)) $m->setEmergencyContact($data['emergencyContact']);
-        if (array_key_exists('emergencyPhone', $data)) $m->setEmergencyPhone($data['emergencyPhone']);
-        if (array_key_exists('notes', $data)) $m->setNotes($data['notes']);
+        if (array_key_exists('emergencyContact', $data)) $m->setEmergencyContact($emptyToNull($data['emergencyContact']));
+        if (array_key_exists('emergencyPhone', $data)) $m->setEmergencyPhone($emptyToNull($data['emergencyPhone']));
+        if (array_key_exists('notes', $data)) $m->setNotes($emptyToNull($data['notes']));
 
         $em->flush();
         return $this->json(['status' => 'updated']);
@@ -385,6 +392,8 @@ class StaffMemberController extends AbstractController
 
         try {
             $result = $provisioner->provisionForStaffMember($staff, $generatePassword, $pin, $pinDeviceId);
+        } catch (PinAlreadyTakenException $e) {
+            return $this->json(['error' => $e->getMessage()], 409);
         } catch (\InvalidArgumentException | \DomainException $e) {
             return $this->json(['error' => $e->getMessage()], 400);
         } catch (\RuntimeException $e) {
@@ -451,6 +460,8 @@ class StaffMemberController extends AbstractController
         $deviceId = isset($data['deviceId']) ? (string)$data['deviceId'] : null;
         try {
             $provisioner->setPin($staff->getUser(), $pin, $deviceId);
+        } catch (PinAlreadyTakenException $e) {
+            return $this->json(['error' => $e->getMessage()], 409);
         } catch (\InvalidArgumentException $e) {
             return $this->json(['error' => $e->getMessage()], 400);
         }

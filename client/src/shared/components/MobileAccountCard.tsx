@@ -64,7 +64,10 @@ import {
 interface MobileAccount {
   hasAccount: boolean;
   userId?: number;
-  email?: string;
+  /** Identifier pro mobilní login (e-mail nebo telefon, podle toho co staff má). */
+  username?: string;
+  /** Skutečný e-mail (může být null, pokud staff má jen telefon). */
+  email?: string | null;
   pinEnabled?: boolean;
   mobileRoles?: MobileRole[];
   expectedRole?: MobileRole | null;
@@ -86,9 +89,14 @@ interface ResetResponse {
 
 interface MobileAccountCardProps {
   basePath: string;
-  /** Default e-mail z nadřazeného formuláře (jen pro info — login je e-mail entity). */
+  /** E-mail z nadřazeného formuláře — preferovaný identifier pro mobilní login. */
   entityEmail?: string | null;
-  /** Zda má entita vyplněný e-mail v DB (bez něj nelze vytvořit účet). */
+  /** Telefon — fallback identifier, pokud entita nemá e-mail. */
+  entityPhone?: string | null;
+  /**
+   * Zda lze vytvořit mobilní účet — vyžaduje aspoň jeden z e-mail / telefon.
+   * Caller computuje jako `!!(email || phone)`.
+   */
   canCreate: boolean;
   /**
    * Role, kterou by měla entita dostat podle své pozice. U staffu ji počítáme
@@ -103,10 +111,13 @@ interface MobileAccountCardProps {
 export function MobileAccountCard({
   basePath,
   entityEmail,
+  entityPhone,
   canCreate,
   derivedRole,
   supportsSyncRole = false,
 }: MobileAccountCardProps) {
+  // Identifier, který backend skutečně použije: e-mail má prioritu, jinak telefon.
+  const loginIdentifier = (entityEmail?.trim() || entityPhone?.trim() || "") || null;
   const queryKey = [basePath, "mobile-account"];
 
   const { data: account, isLoading } = useQuery<MobileAccount>({
@@ -267,7 +278,8 @@ export function MobileAccountCard({
               <Alert variant="destructive">
                 <AlertCircle className="w-4 h-4" />
                 <AlertDescription>
-                  Nejprve uložte e-mail na profilu — mobilní účet používá e-mail jako přihlašovací jméno.
+                  Pro mobilní účet je potřeba vyplnit aspoň jeden údaj — <strong>e-mail</strong> nebo <strong>telefon</strong>.
+                  Mobilní login pak funguje s tímto identifikátorem + heslem, nebo samostatným PINem (4–6 číslic, globálně unikátní).
                 </AlertDescription>
               </Alert>
             )}
@@ -285,8 +297,10 @@ export function MobileAccountCard({
             {canCreate && derivedRole !== null && (
               <>
                 <div className="rounded-md border bg-muted/40 p-3 space-y-1 text-sm">
-                  <div className="text-muted-foreground">E-mail pro přihlášení:</div>
-                  <div className="font-medium">{entityEmail}</div>
+                  <div className="text-muted-foreground">
+                    {entityEmail?.trim() ? "E-mail pro přihlášení:" : "Telefon pro přihlášení:"}
+                  </div>
+                  <div className="font-medium">{loginIdentifier}</div>
                   <div className="text-muted-foreground mt-2">Mobilní role (odvozená z pozice):</div>
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary">{MOBILE_ROLE_LABELS[derivedRole]}</Badge>
@@ -353,8 +367,10 @@ export function MobileAccountCard({
           <div className="space-y-4">
             <div className="text-sm space-y-1">
               <div>
-                <span className="text-muted-foreground">E-mail: </span>
-                <strong>{account.email}</strong>
+                <span className="text-muted-foreground">
+                  {account.email ? "E-mail / login: " : "Telefon (login): "}
+                </span>
+                <strong>{account.username ?? account.email}</strong>
               </div>
               <div>
                 <span className="text-muted-foreground">Role: </span>
@@ -504,7 +520,7 @@ export function MobileAccountCard({
           <AlertDialogHeader>
             <AlertDialogTitle>Opravdu zrušit mobilní účet?</AlertDialogTitle>
             <AlertDialogDescription>
-              Smaže User účet „{account?.email}" a odebere všechny mobilní role.
+              Smaže User účet „{account?.username ?? account?.email}" a odebere všechny mobilní role.
               Personál se nebude moci přihlásit do mobilní aplikace.
               Záznam personálu/řidiče zůstane zachován – jen přijde o přístup.
             </AlertDialogDescription>

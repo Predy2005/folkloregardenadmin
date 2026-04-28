@@ -46,6 +46,14 @@ class EventStaffAssignment
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $notes = null;
 
+    /**
+     * Důvod odhlášení (např. „Nemoc", „Dovolená", „Jiné: rodinné komplikace").
+     * Vyplňuje se v mobilce při DECLINED přes /api/mobile/me/events/{id}/respond.
+     * Při re-confirm (DECLINED → CONFIRMED) se nuluje.
+     */
+    #[ORM\Column(name: 'decline_reason', type: Types::TEXT, nullable: true)]
+    private ?string $declineReason = null;
+
     #[ORM\Column(type: Types::DATETIME_MUTABLE)]
     private \DateTimeInterface $assignedAt;
 
@@ -87,6 +95,9 @@ class EventStaffAssignment
 
     public function getNotes(): ?string { return $this->notes; }
     public function setNotes(?string $v): self { $this->notes = $v; return $this; }
+
+    public function getDeclineReason(): ?string { return $this->declineReason; }
+    public function setDeclineReason(?string $v): self { $this->declineReason = $v; return $this; }
 
     public function getAssignedAt(): \DateTimeInterface { return $this->assignedAt; }
     public function getConfirmedAt(): ?\DateTimeInterface { return $this->confirmedAt; }

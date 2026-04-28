@@ -71,6 +71,49 @@ class PushNotificationService
             [
                 'type' => 'staff_removal',
                 'eventId' => $event->getId(),
+                'deepLink' => '/events/' . $event->getId(),
+            ]
+        );
+    }
+
+    /**
+     * Manažer v CRM potvrdil, že personál byl na akci přítomen
+     * (přepl `attendanceStatus` → PRESENT). Personál to vidí v mobilce
+     * v Historii (badge „Přítomen").
+     */
+    public function notifyStaffAttendanceConfirmed(User $user, Event $event): int
+    {
+        return $this->notifyUser(
+            $user,
+            'Účast potvrzena',
+            sprintf('%s, %s — manažer potvrdil tvoji přítomnost', $event->getName(), $event->getEventDate()->format('d.m.')),
+            [
+                'type' => 'staff_attendance_confirmed',
+                'eventId' => $event->getId(),
+                'deepLink' => '/events/' . $event->getId(),
+            ]
+        );
+    }
+
+    /**
+     * Výplata za odpracovanou akci byla proplacena (cashbox movement).
+     * Personál vidí v Historii badge „Zaplaceno".
+     *
+     * @param numeric-string|float|null $amount
+     */
+    public function notifyStaffPaid(User $user, Event $event, mixed $amount = null): int
+    {
+        $amountText = $amount !== null && (float) $amount > 0
+            ? sprintf(' (%s Kč)', rtrim(rtrim(number_format((float) $amount, 2, '.', ''), '0'), '.'))
+            : '';
+        return $this->notifyUser(
+            $user,
+            'Výplata proplacena',
+            sprintf('%s, %s%s', $event->getName(), $event->getEventDate()->format('d.m.'), $amountText),
+            [
+                'type' => 'staff_paid',
+                'eventId' => $event->getId(),
+                'deepLink' => '/events/' . $event->getId(),
             ]
         );
     }

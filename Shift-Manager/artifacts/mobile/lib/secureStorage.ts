@@ -1,11 +1,15 @@
-import * as SecureStore from "expo-secure-store";
-
 /**
- * Tenký wrapper nad `expo-secure-store` — hardware-backed keychain (iOS) /
- * EncryptedSharedPreferences (Android). Všechno citlivé (access + refresh
- * token, PIN hash, deviceId binding) patří sem, ne do AsyncStorage.
+ * Web fallback pro `secureStorage`. Metro vybere `secureStorage.native.ts`
+ * na iOS/Android a tenhle soubor jako fallback (web).
  *
- * Konvence klíčů: prefix `fg.` aby nekolidovaly s jinými apkami na zařízení.
+ * **Bezpečnost.** `localStorage` NENÍ bezpečné pro long-lived secrets
+ * (XSS, plain plaintext storage). Tato implementace je určená výhradně
+ * pro **dev preview v prohlížeči** — produkce běží na mobilu, kde
+ * `secureStorage.native.ts` používá hardware-backed keychain (iOS) /
+ * EncryptedSharedPreferences (Android).
+ *
+ * Pokud bude někdy potřeba secure cookie / encrypted local storage pro web,
+ * tady je kandidát na náhradu (např. `idb-keyval` + Web Crypto API).
  */
 
 export const SECURE_KEYS = {
@@ -13,32 +17,38 @@ export const SECURE_KEYS = {
   refreshToken: "fg.refreshToken",
   pin: "fg.pin",
   deviceId: "fg.deviceId",
-  /**
-   * E-mail / username, kterým se user naposled úspěšně přihlásil. Využívá
-   * `/pin-unlock` screen — PIN flow pracuje se stejným identifierem, který
-   * už zná, aby ho user nemusel vypisovat znovu.
-   */
   identifier: "fg.identifier",
 } as const;
 
 export type SecureKey = keyof typeof SECURE_KEYS;
 
-export function secureGet(key: SecureKey): Promise<string | null> {
-  return SecureStore.getItemAsync(SECURE_KEYS[key]);
+function getStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
 }
 
-export function secureSet(key: SecureKey, value: string): Promise<void> {
-  return SecureStore.setItemAsync(SECURE_KEYS[key], value);
+export async function secureGet(key: SecureKey): Promise<string | null> {
+  const storage = getStorage();
+  if (!storage) return null;
+  return storage.getItem(SECURE_KEYS[key]);
 }
 
-export function secureDelete(key: SecureKey): Promise<void> {
-  return SecureStore.deleteItemAsync(SECURE_KEYS[key]);
+export async function secureSet(key: SecureKey, value: string): Promise<void> {
+  const storage = getStorage();
+  if (!storage) return;
+  storage.setItem(SECURE_KEYS[key], value);
 }
 
-/**
- * Vrátí stabilní identifier zařízení; při prvním volání se vygeneruje UUID
- * a uloží do SecureStore. Slouží k bindingu PIN a k FCM registraci.
- */
+export async function secureDelete(key: SecureKey): Promise<void> {
+  const storage = getStorage();
+  if (!storage) return;
+  storage.removeItem(SECURE_KEYS[key]);
+}
+
 export async function getOrCreateDeviceId(): Promise<string> {
   const existing = await secureGet("deviceId");
   if (existing) return existing;
@@ -46,18 +56,8 @@ export async function getOrCreateDeviceId(): Promise<string> {
   const id =
     typeof globalThis.crypto !== "undefined" && "randomUUID" in globalThis.crypto
       ? globalThis.crypto.randomUUID()
-      : fallbackRandomId();
+      : "web-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
 
   await secureSet("deviceId", id);
   return id;
-}
-
-function fallbackRandomId(): string {
-  // Jen když crypto.randomUUID není dostupný (ojedinělé RN verze).
-  return (
-    "dev-" +
-    Date.now().toString(36) +
-    "-" +
-    Math.random().toString(36).slice(2, 12)
-  );
 }

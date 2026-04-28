@@ -4,8 +4,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { api } from "@/shared/lib/api";
 import { queryClient } from "@/shared/lib/queryClient";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
+import * as XLSX from "xlsx";
 import type { StaffMember } from "@shared/types";
-import { translateStaffRole } from "@modules/staff/utils/staffRoles";
+import { translateStaffRole, STAFF_ROLE_LABELS } from "@modules/staff/utils/staffRoles";
 import { formatCurrency } from "@/shared/lib/formatting";
 import { useAuth } from "@modules/auth";
 import { Card, CardContent } from "@/shared/components/ui/card";
@@ -47,24 +48,61 @@ import {
   Loader2,
   Filter,
   X,
+  FileSpreadsheet,
+  Download,
+  Briefcase,
 } from "lucide-react";
+import { ImportStaffDialog } from "@modules/staff/dialogs/ImportStaffDialog";
+import { MultiSelectFilter } from "@/shared/components/MultiSelectFilter";
+
+const POSITION_OPTIONS = Object.entries(STAFF_ROLE_LABELS)
+  .filter(([key]) => key === key.toUpperCase())
+  .map(([value, label]) => ({ value, label }));
+
+const STATUS_OPTIONS = [
+  { value: "active", label: "Aktivní" },
+  { value: "inactive", label: "Neaktivní" },
+];
+
+const RATE_TYPE_OPTIONS = [
+  { value: "hourly", label: "Hodinová" },
+  { value: "fixed", label: "Fixní" },
+  { value: "none", label: "Bez sazby" },
+];
+
+const GROUP_TYPE_OPTIONS = [
+  { value: "individual", label: "Jednotlivec" },
+  { value: "group", label: "Skupina" },
+];
 
 export default function StaffMembers() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
-  const { isSuperAdmin } = useAuth();
+  const { hasPermission } = useAuth();
+  const canUpdate = hasPermission("staff.update");
+  const canDelete = hasPermission("staff.delete");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkActionOpen, setBulkActionOpen] = useState(false);
   const [bulkActionType, setBulkActionType] = useState<"status" | "position" | "delete" | null>(null);
   const [bulkValue, setBulkValue] = useState<string>("");
   const [showFilters, setShowFilters] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [positionFilter, setPositionFilter] = useState<string>("all");
-  const [rateTypeFilter, setRateTypeFilter] = useState<string>("all");
-  const [groupFilter, setGroupFilter] = useState<string>("all");
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
+  const [positionFilter, setPositionFilter] = useState<Set<string>>(new Set());
+  const [rateTypeFilter, setRateTypeFilter] = useState<Set<string>>(new Set());
+  const [groupFilter, setGroupFilter] = useState<Set<string>>(new Set());
 
-  const activeFilterCount = [statusFilter, positionFilter, rateTypeFilter, groupFilter].filter(f => f !== "all").length;
-  const clearFilters = () => { setStatusFilter("all"); setPositionFilter("all"); setRateTypeFilter("all"); setGroupFilter("all"); };
+  const activeFilterCount =
+    (statusFilter.size > 0 ? 1 : 0) +
+    (positionFilter.size > 0 ? 1 : 0) +
+    (rateTypeFilter.size > 0 ? 1 : 0) +
+    (groupFilter.size > 0 ? 1 : 0);
+  const clearFilters = () => {
+    setStatusFilter(new Set());
+    setPositionFilter(new Set());
+    setRateTypeFilter(new Set());
+    setGroupFilter(new Set());
+  };
 
   const toggleSelect = (id: number) => {
     setSelectedIds((prev) => {
@@ -129,6 +167,36 @@ export default function StaffMembers() {
     onError: (error: Error) => errorToast(error),
   });
 
+  const handleExportSelected = () => {
+    if (!staff) return;
+    const selected = staff.filter((m) => selectedIds.has(m.id));
+    if (selected.length === 0) {
+      errorToast("Nic není vybráno");
+      return;
+    }
+    const rows = selected.map((m) => ({
+      "Jméno": m.firstName,
+      "Příjmení": m.lastName,
+      "Email": m.email ?? "",
+      "Telefon": m.phone ?? "",
+      "Pozice": m.position ? translateStaffRole(m.position) : "",
+      "Hodinová sazba": m.hourlyRate ? Number(m.hourlyRate) : "",
+      "Fixní sazba": m.fixedRate ? Number(m.fixedRate) : "",
+      "Skupina": m.isGroup ? "ano" : "ne",
+      "Velikost skupiny": m.groupSize ?? "",
+      "Stav": m.isActive ? "aktivní" : "neaktivní",
+      "Adresa": m.address ?? "",
+      "Datum narození": m.dateOfBirth ?? "",
+      "Poznámky": m.notes ?? "",
+    }));
+    const sheet = XLSX.utils.json_to_sheet(rows);
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, "Personál");
+    const stamp = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(book, `personal_${stamp}.xlsx`);
+    successToast(`Exportováno ${selected.length} členů`);
+  };
+
   const filtered = useMemo(() => {
     if (!staff) return [];
     let result = staff;
@@ -143,23 +211,32 @@ export default function StaffMembers() {
       );
     }
 
-    if (statusFilter !== "all") {
-      result = result.filter(m => statusFilter === "active" ? m.isActive : !m.isActive);
+    // Multi-select filtry: prázdná množina = "vše", neprázdná = jen vybrané hodnoty (OR mezi položkami v rámci filtru, AND mezi filtry).
+    if (statusFilter.size > 0) {
+      result = result.filter(m =>
+        (statusFilter.has("active") && m.isActive) ||
+        (statusFilter.has("inactive") && !m.isActive)
+      );
     }
-    if (positionFilter !== "all") {
-      result = result.filter(m => m.position === positionFilter);
+    if (positionFilter.size > 0) {
+      result = result.filter(m => m.position && positionFilter.has(m.position));
     }
-    if (rateTypeFilter !== "all") {
+    if (rateTypeFilter.size > 0) {
       result = result.filter(m => {
         const hourly = m.hourlyRate ? parseFloat(String(m.hourlyRate)) : 0;
         const fixed = m.fixedRate ? parseFloat(String(m.fixedRate)) : 0;
-        if (rateTypeFilter === "hourly") return hourly > 0;
-        if (rateTypeFilter === "fixed") return fixed > 0;
-        return hourly === 0 && fixed === 0;
+        return (
+          (rateTypeFilter.has("hourly") && hourly > 0) ||
+          (rateTypeFilter.has("fixed") && fixed > 0) ||
+          (rateTypeFilter.has("none") && hourly === 0 && fixed === 0)
+        );
       });
     }
-    if (groupFilter !== "all") {
-      result = result.filter(m => groupFilter === "group" ? m.isGroup : !m.isGroup);
+    if (groupFilter.size > 0) {
+      result = result.filter(m =>
+        (groupFilter.has("group") && m.isGroup) ||
+        (groupFilter.has("individual") && !m.isGroup)
+      );
     }
 
     return result;
@@ -168,36 +245,68 @@ export default function StaffMembers() {
   return (
     <div className="p-6 space-y-6">
       <PageHeader title="Personál" description={`${staff?.length ?? 0} členů`}>
+        <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+          <FileSpreadsheet className="w-4 h-4 mr-2" />
+          Import z Excelu
+        </Button>
         <Button onClick={() => navigate("/staff/new")}>
           <Plus className="w-4 h-4 mr-2" />
           Přidat
         </Button>
       </PageHeader>
 
-      {isSuperAdmin && selectedIds.size > 0 && (
-        <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+      <ImportStaffDialog open={importDialogOpen} onOpenChange={setImportDialogOpen} />
+
+      {selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 p-3 bg-muted rounded-lg">
           <Badge variant="secondary">{selectedIds.size} vybráno</Badge>
+          {canUpdate && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setBulkActionType("status");
+                setBulkValue("");
+                setBulkActionOpen(true);
+              }}
+            >
+              Aktivovat/Deaktivovat
+            </Button>
+          )}
+          {canUpdate && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setBulkActionType("position");
+                setBulkValue("");
+                setBulkActionOpen(true);
+              }}
+            >
+              <Briefcase className="w-4 h-4 mr-1" />
+              Změnit pozici
+            </Button>
+          )}
           <Button
             size="sm"
-            onClick={() => {
-              setBulkActionType("status");
-              setBulkValue("");
-              setBulkActionOpen(true);
-            }}
+            variant="outline"
+            onClick={handleExportSelected}
           >
-            Aktivovat/Deaktivovat
+            <Download className="w-4 h-4 mr-1" />
+            Exportovat
           </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => {
-              setBulkActionType("delete");
-              setBulkActionOpen(true);
-            }}
-          >
-            <Trash2 className="w-4 h-4 mr-1" />
-            Smazat
-          </Button>
+          {canDelete && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                setBulkActionType("delete");
+                setBulkActionOpen(true);
+              }}
+            >
+              <Trash2 className="w-4 h-4 mr-1" />
+              Smazat
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={clearSelection}>
             Zrušit výběr
           </Button>
@@ -236,51 +345,33 @@ export default function StaffMembers() {
             )}
           </div>
 
-          {/* Filter bar */}
+          {/* Filter bar — multi-select pro každou kategorii. Prázdný = "vše". */}
           {showFilters && (
-            <div className="flex flex-wrap items-center gap-3 mb-4">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Stav" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Všechny stavy</SelectItem>
-                  <SelectItem value="active">Aktivní</SelectItem>
-                  <SelectItem value="inactive">Neaktivní</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={positionFilter} onValueChange={setPositionFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Pozice" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Všechny pozice</SelectItem>
-                  {uniquePositions.map(pos => (
-                    <SelectItem key={pos} value={pos}>{translateStaffRole(pos)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={rateTypeFilter} onValueChange={setRateTypeFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Typ sazby" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Všechny sazby</SelectItem>
-                  <SelectItem value="hourly">Hodinová</SelectItem>
-                  <SelectItem value="fixed">Fixní</SelectItem>
-                  <SelectItem value="none">Bez sazby</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={groupFilter} onValueChange={setGroupFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Typ" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Všechny typy</SelectItem>
-                  <SelectItem value="individual">Jednotlivec</SelectItem>
-                  <SelectItem value="group">Skupina</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <MultiSelectFilter
+                label="Stav"
+                options={STATUS_OPTIONS}
+                selected={statusFilter}
+                onChange={setStatusFilter}
+              />
+              <MultiSelectFilter
+                label="Pozice"
+                options={uniquePositions.map(pos => ({ value: pos, label: translateStaffRole(pos) }))}
+                selected={positionFilter}
+                onChange={setPositionFilter}
+              />
+              <MultiSelectFilter
+                label="Sazba"
+                options={RATE_TYPE_OPTIONS}
+                selected={rateTypeFilter}
+                onChange={setRateTypeFilter}
+              />
+              <MultiSelectFilter
+                label="Typ"
+                options={GROUP_TYPE_OPTIONS}
+                selected={groupFilter}
+                onChange={setGroupFilter}
+              />
             </div>
           )}
 
@@ -297,14 +388,12 @@ export default function StaffMembers() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    {isSuperAdmin && (
-                      <TableHead className="w-10">
-                        <Checkbox
-                          checked={filtered.length > 0 && selectedIds.size === filtered.length}
-                          onCheckedChange={toggleSelectAll}
-                        />
-                      </TableHead>
-                    )}
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                        onCheckedChange={toggleSelectAll}
+                      />
+                    </TableHead>
                     <TableHead>Jméno</TableHead>
                     <TableHead>Pozice</TableHead>
                     <TableHead>Kontakt</TableHead>
@@ -324,14 +413,12 @@ export default function StaffMembers() {
                         className="cursor-pointer hover:bg-muted/50"
                         onClick={() => navigate(`/staff/${member.id}/edit`)}
                       >
-                        {isSuperAdmin && (
-                          <TableCell onClick={(e) => e.stopPropagation()}>
-                            <Checkbox
-                              checked={selectedIds.has(member.id)}
-                              onCheckedChange={() => toggleSelect(member.id)}
-                            />
-                          </TableCell>
-                        )}
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={selectedIds.has(member.id)}
+                            onCheckedChange={() => toggleSelect(member.id)}
+                          />
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <div>
@@ -434,6 +521,48 @@ export default function StaffMembers() {
                 bulkUpdateMutation.mutate({
                   ids: Array.from(selectedIds),
                   updates: { isActive: bulkValue === "true" },
+                })
+              }
+              disabled={!bulkValue || bulkUpdateMutation.isPending}
+            >
+              {bulkUpdateMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Uložit
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Position Dialog */}
+      <Dialog open={bulkActionOpen && bulkActionType === "position"} onOpenChange={setBulkActionOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Hromadná změna pozice</DialogTitle>
+            <DialogDescription>
+              Změna pozice pro {selectedIds.size} vybraných členů personálu.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-4">
+            <Label>Pozice</Label>
+            <Select value={bulkValue} onValueChange={setBulkValue}>
+              <SelectTrigger>
+                <SelectValue placeholder="Vyberte pozici..." />
+              </SelectTrigger>
+              <SelectContent>
+                {POSITION_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkActionOpen(false)}>
+              Zrušit
+            </Button>
+            <Button
+              onClick={() =>
+                bulkUpdateMutation.mutate({
+                  ids: Array.from(selectedIds),
+                  updates: { position: bulkValue },
                 })
               }
               disabled={!bulkValue || bulkUpdateMutation.isPending}

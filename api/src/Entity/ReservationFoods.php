@@ -32,6 +32,21 @@ class ReservationFoods
     #[ORM\Column(type: 'integer', options: ['default' => 0])]
     private int $surcharge = 0;
 
+    /**
+     * Interní poznámka k jídlu (např. pro kuchyň/personál — "podávat teplé",
+     * "bez křížového kontaktu s ořechy" apod.). Nezobrazuje se hostovi.
+     */
+    #[ORM\Column(type: 'text', nullable: true)]
+    private ?string $notes = null;
+
+    /**
+     * Seznam alergenů jako text (nejčastěji čárkami oddělený seznam:
+     * "Lepek, Mléko, Vejce, Sója"). Pole je textové i kvůli volné formě
+     * upozornění typu "Obsahuje stopy ořechů".
+     */
+    #[ORM\Column(type: 'text', nullable: true)]
+    private ?string $allergens = null;
+
     public function getId(): ?int
     {
         return $this->id;
@@ -100,6 +115,28 @@ class ReservationFoods
     public function setSurcharge(int $surcharge): static
     {
         $this->surcharge = $surcharge;
+        return $this;
+    }
+
+    public function getNotes(): ?string
+    {
+        return $this->notes;
+    }
+
+    public function setNotes(?string $notes): static
+    {
+        $this->notes = $notes;
+        return $this;
+    }
+
+    public function getAllergens(): ?string
+    {
+        return $this->allergens;
+    }
+
+    public function setAllergens(?string $allergens): static
+    {
+        $this->allergens = $allergens;
         return $this;
     }
 

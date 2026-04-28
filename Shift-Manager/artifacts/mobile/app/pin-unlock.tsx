@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -12,56 +12,37 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { Logo } from "@/components/Logo";
 import { useColors } from "@/hooks/useColors";
-import { secureDelete, secureGet } from "@/lib/secureStorage";
 import { useAuthStore } from "@/stores/authStore";
 
-const PIN_LENGTH = 4;
+const PIN_MIN_LENGTH = 4;
+const PIN_MAX_LENGTH = 6;
 
 /**
- * Rychlý PIN unlock — pokud user už dřív úspěšně přihlášen heslem, jeho
- * `identifier` je v SecureStore (`fg.identifier`). Tahle obrazovka ho nechá
- * napsat 4 číslice a zavolá `authStore.loginWithPin`.
+ * PIN-only přihlášení — uživatel zadá svůj globálně unikátní 4-6místný PIN
+ * a backend ho dohledá podle deterministického HMAC hashe (bez identifieru).
+ * Žádný e-mail / telefon — vhodné pro personál, který má jen telefon.
  *
- * Fallback: link "Přihlásit heslem" → `/login`.
- * "Odhlásit tento účet" — smaže identifier + jde na /login (pro případ,
- * že device sdílí víc uživatelů).
+ * Fallback: link "Přihlásit heslem" → `/login` (pro admin / situace, kdy si
+ * uživatel PIN nepamatuje).
  */
 export default function PinUnlockScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const loginWithPin = useAuthStore((s) => s.loginWithPin);
+  const loginWithPinOnly = useAuthStore((s) => s.loginWithPinOnly);
 
-  const [identifier, setIdentifier] = useState<string | null>(null);
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    void (async () => {
-      const id = await secureGet("identifier");
-      if (!id) {
-        // Nemáme identifier → nelze se PIN přihlásit, jdi na password login.
-        router.replace("/login");
-        return;
-      }
-      setIdentifier(id);
-    })();
-  }, [router]);
-
-  useEffect(() => {
-    if (pin.length !== PIN_LENGTH || !identifier) return;
-    void submit();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pin]);
-
   async function submit() {
-    if (!identifier) return;
+    if (pin.length < PIN_MIN_LENGTH) return;
     setLoading(true);
     setError(null);
     try {
-      await loginWithPin(identifier, pin);
+      await loginWithPinOnly(pin);
       void Haptics.notificationAsync(
         Haptics.NotificationFeedbackType.Success,
       );
@@ -77,7 +58,7 @@ export default function PinUnlockScreen() {
 
   function onDigit(d: string) {
     if (loading) return;
-    if (pin.length >= PIN_LENGTH) return;
+    if (pin.length >= PIN_MAX_LENGTH) return;
     void Haptics.selectionAsync();
     setPin(pin + d);
     setError(null);
@@ -88,25 +69,6 @@ export default function PinUnlockScreen() {
     setPin(pin.slice(0, -1));
     setError(null);
   }
-
-  async function switchAccount() {
-    await secureDelete("identifier");
-    router.replace("/login");
-  }
-
-  if (identifier === null) {
-    return (
-      <View
-        style={[styles.center, { backgroundColor: colors.background }]}
-      >
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
-  }
-
-  const masked = identifier.includes("@")
-    ? identifier.replace(/^(.{2}).*(@.*)$/, "$1***$2")
-    : identifier;
 
   return (
     <View
@@ -120,19 +82,19 @@ export default function PinUnlockScreen() {
       ]}
     >
       <View style={styles.header}>
-        <View style={[styles.logoCircle, { backgroundColor: colors.primary }]}>
-          <Feather name="lock" size={28} color="#fff" />
+        <View style={styles.logoWrap}>
+          <Logo size={56} />
         </View>
         <Text style={[styles.title, { color: colors.foreground }]}>
           Zadej PIN
         </Text>
         <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-          Pro účet {masked}
+          {`${PIN_MIN_LENGTH}–${PIN_MAX_LENGTH} číslic`}
         </Text>
       </View>
 
       <View style={styles.dots}>
-        {Array.from({ length: PIN_LENGTH }).map((_, i) => {
+        {Array.from({ length: PIN_MAX_LENGTH }).map((_, i) => {
           const filled = i < pin.length;
           return (
             <View
@@ -159,15 +121,29 @@ export default function PinUnlockScreen() {
 
       <Keypad onDigit={onDigit} onBackspace={onBackspace} colors={colors} />
 
+      <TouchableOpacity
+        style={[
+          styles.confirmBtn,
+          {
+            backgroundColor: colors.primary,
+            opacity: pin.length >= PIN_MIN_LENGTH && !loading ? 1 : 0.4,
+          },
+        ]}
+        onPress={() => void submit()}
+        disabled={pin.length < PIN_MIN_LENGTH || loading}
+        activeOpacity={0.8}
+      >
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.confirmBtnText}>Potvrdit</Text>
+        )}
+      </TouchableOpacity>
+
       <View style={styles.footerActions}>
         <TouchableOpacity onPress={() => router.replace("/login")}>
           <Text style={[styles.footerLink, { color: colors.primary }]}>
             Přihlásit heslem
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => void switchAccount()}>
-          <Text style={[styles.footerLink, { color: colors.mutedForeground }]}>
-            Jiný účet
           </Text>
         </TouchableOpacity>
       </View>
@@ -257,10 +233,8 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 28,
   },
-  logoCircle: {
-    width: 64,
+  logoWrap: {
     height: 64,
-    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 4,
@@ -276,13 +250,13 @@ const styles = StyleSheet.create({
   },
   dots: {
     flexDirection: "row",
-    gap: 16,
+    gap: 12,
     marginBottom: 12,
   },
   dot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     borderWidth: 1.5,
   },
   errorText: {
@@ -297,7 +271,7 @@ const styles = StyleSheet.create({
   },
   keypad: {
     gap: 16,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   keypadRow: {
     flexDirection: "row",
@@ -313,6 +287,20 @@ const styles = StyleSheet.create({
   },
   keypadDigit: {
     fontSize: 26,
+    fontFamily: "Inter_600SemiBold",
+  },
+  confirmBtn: {
+    height: 52,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 48,
+    minWidth: 220,
+    marginBottom: 12,
+  },
+  confirmBtnText: {
+    color: "#fff",
+    fontSize: 16,
     fontFamily: "Inter_600SemiBold",
   },
   footerActions: {

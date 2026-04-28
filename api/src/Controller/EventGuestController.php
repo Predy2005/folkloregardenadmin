@@ -490,6 +490,112 @@ class EventGuestController extends AbstractController
     }
 
     /**
+     * Set target adult/child count for a group of guests (per-reservation or manual).
+     *
+     * Body: { reservationId: int|null, targetAdults: int, targetChildren: int }
+     *
+     * Pokud target < current → smaže přebytečné (přednost mají hosté přidaní později,
+     * kteří nejsou označení jako present/paid). Pokud target > current → vytvoří nové.
+     */
+    #[Route('/{id}/guests/set-group-count', name: 'event_guests_set_group_count', methods: ['POST'])]
+    #[IsGranted('events.update')]
+    public function setGroupCount(int $id, Request $request, EventRepository $eventRepository): JsonResponse
+    {
+        $event = $eventRepository->find($id);
+        if (!$event) {
+            return $this->json(['error' => 'Event not found'], 404);
+        }
+
+        $data = json_decode($request->getContent(), true) ?? [];
+        $reservationId = array_key_exists('reservationId', $data) && $data['reservationId'] !== null
+            ? (int)$data['reservationId']
+            : null;
+        $targetAdults = max(0, (int)($data['targetAdults'] ?? 0));
+        $targetChildren = max(0, (int)($data['targetChildren'] ?? 0));
+
+        if ($targetAdults > 500 || $targetChildren > 500) {
+            return $this->json(['error' => 'Cílový počet je mimo rozsah (max 500 na typ).'], 400);
+        }
+
+        // Posbírej hosty patřící do této skupiny
+        $groupAdults = [];
+        $groupChildren = [];
+        $maxIndex = 0;
+        foreach ($event->getGuests() as $g) {
+            if ($g->getPersonIndex() > $maxIndex) {
+                $maxIndex = $g->getPersonIndex();
+            }
+            $resId = $g->getReservation()?->getId();
+            $matches = $reservationId === null ? ($resId === null) : ($resId === $reservationId);
+            if (!$matches) continue;
+            if ($g->getType() === 'child') {
+                $groupChildren[] = $g;
+            } else {
+                $groupAdults[] = $g;
+            }
+        }
+
+        // Priorita pro mazání: nepříšlí + neplatící první, pak nejnovější (nejvyšší ID)
+        $sortForDeletion = static function (array $list): array {
+            usort($list, static function (EventGuest $a, EventGuest $b): int {
+                $scoreA = ($a->isPresent() ? 2 : 0) + ($a->isPaid() ? 1 : 0);
+                $scoreB = ($b->isPresent() ? 2 : 0) + ($b->isPaid() ? 1 : 0);
+                if ($scoreA !== $scoreB) return $scoreA <=> $scoreB;
+                return ($b->getId() ?? 0) <=> ($a->getId() ?? 0);
+            });
+            return $list;
+        };
+
+        $deleted = 0;
+        $created = 0;
+
+        $applyTarget = function (array $current, int $target, string $type) use ($event, &$maxIndex, &$deleted, &$created, $reservationId, $sortForDeletion): void {
+            $count = count($current);
+            if ($target < $count) {
+                $toRemove = array_slice($sortForDeletion($current), 0, $count - $target);
+                foreach ($toRemove as $g) {
+                    $this->em->remove($g);
+                    $deleted++;
+                }
+            } elseif ($target > $count) {
+                $toAdd = $target - $count;
+                // Když přidáváme do skupiny napojené na rezervaci, zachováme reservation
+                $reservation = null;
+                if ($reservationId !== null && !empty($current)) {
+                    $reservation = $current[0]->getReservation();
+                }
+                for ($i = 0; $i < $toAdd; $i++) {
+                    $guest = new EventGuest();
+                    $guest->setEvent($event);
+                    if ($reservation !== null) {
+                        $guest->setReservation($reservation);
+                    }
+                    $guest->setFirstName($type === 'child' ? 'Dítě' : 'Host');
+                    $guest->setType($type);
+                    $guest->setIsPaid(true);
+                    $guest->setIsPresent(false);
+                    $guest->setPersonIndex(++$maxIndex);
+                    $this->em->persist($guest);
+                    $created++;
+                }
+            }
+        };
+
+        $applyTarget($groupAdults, $targetAdults, 'adult');
+        $applyTarget($groupChildren, $targetChildren, 'child');
+
+        $this->em->flush();
+
+        return $this->json([
+            'status' => 'ok',
+            'deleted' => $deleted,
+            'created' => $created,
+            'currentAdults' => $targetAdults,
+            'currentChildren' => $targetChildren,
+        ]);
+    }
+
+    /**
      * Mark all guests as present (quick check-in)
      */
     #[Route('/{id}/guests/mark-all-present', name: 'event_guests_mark_all_present', methods: ['POST'])]

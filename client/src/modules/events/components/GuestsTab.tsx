@@ -12,13 +12,14 @@ import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Badge } from "@/shared/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/shared/components/ui/collapsible";
-import { Loader2, Plus, Users, RefreshCw, CheckSquare, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
+import { Loader2, Plus, Users, RefreshCw, CheckSquare, ChevronDown, ChevronRight, Trash2, Calculator } from "lucide-react";
 
 import {
   GuestFormDialog,
   BulkActionDialog,
   GuestTable,
   BulkAddCard,
+  SetGroupCountDialog,
 } from "./guests";
 import type { BulkActionType } from "./guests";
 import { GuestCommandCenter } from "./dashboard/guest-command";
@@ -46,6 +47,15 @@ export default function GuestsTab({ eventId, eventType, guests, isLoading }: Gue
   // Bulk action state
   const [bulkActionDialogOpen, setBulkActionDialogOpen] = useState(false);
   const [bulkActionType, setBulkActionType] = useState<BulkActionType>(null);
+
+  // Set-group-count dialog state
+  const [countDialog, setCountDialog] = useState<{
+    open: boolean;
+    reservationId: number | null;
+    currentAdults: number;
+    currentChildren: number;
+    label: string;
+  }>({ open: false, reservationId: null, currentAdults: 0, currentChildren: 0, label: "" });
 
   const isFolklorniShow = eventType === "folklorni_show";
 
@@ -319,6 +329,27 @@ export default function GuestsTab({ eventId, eventType, guests, isLoading }: Gue
                           {group.stats.present > 0 && (
                             <Badge className="bg-green-600 text-xs">{group.stats.present} přít.</Badge>
                           )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCountDialog({
+                                open: true,
+                                reservationId: group.reservationId,
+                                currentAdults: group.stats.adults,
+                                currentChildren: group.stats.children,
+                                label: group.reservationId !== null
+                                  ? `Rezervace #${group.reservationId}`
+                                  : "Manuálně přidaní hosté",
+                              });
+                            }}
+                            title="Hromadně upravit počet hostů"
+                          >
+                            <Calculator className="h-3.5 w-3.5 mr-1" />
+                            Upravit počet
+                          </Button>
                         </div>
                       </div>
                     </CardHeader>
@@ -358,6 +389,17 @@ export default function GuestsTab({ eventId, eventType, guests, isLoading }: Gue
         selectedIds={selectedIds}
         actionType={bulkActionType}
         onSuccess={() => setSelectedIds(new Set())}
+      />
+
+      {/* Set group count dialog */}
+      <SetGroupCountDialog
+        eventId={eventId}
+        open={countDialog.open}
+        onOpenChange={(open) => setCountDialog((prev) => ({ ...prev, open }))}
+        reservationId={countDialog.reservationId}
+        currentAdults={countDialog.currentAdults}
+        currentChildren={countDialog.currentChildren}
+        groupLabel={countDialog.label}
       />
     </div>
   );

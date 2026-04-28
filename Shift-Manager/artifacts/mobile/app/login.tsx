@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
+import { Logo } from "@/components/Logo";
 import { useAuth } from "@/stores/authStore";
 
 export default function LoginScreen() {
@@ -64,13 +65,14 @@ export default function LoginScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <View style={[styles.logoCircle, { backgroundColor: colors.primary }]}>
-            <Feather name="music" size={36} color="#fff" />
+          <View style={styles.logoWrap}>
+            <Logo size={72} />
           </View>
           <Text style={[styles.appName, { color: colors.foreground }]}>Folklore Garden</Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
             Přihlašte se do systému
           </Text>
+
         </View>
 
         <View style={styles.form}>
@@ -127,6 +129,15 @@ export default function LoginScreen() {
               <Text style={styles.loginBtnText}>Přihlásit se</Text>
             )}
           </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => router.replace("/pin-unlock")}
+            style={styles.pinLinkWrap}
+          >
+            <Text style={[styles.pinLink, { color: colors.primary }]}>
+              Přihlásit PINem
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <Text style={[styles.footer, { color: colors.mutedForeground }]}>
@@ -151,10 +162,8 @@ const styles = StyleSheet.create({
     marginBottom: 40,
     gap: 10,
   },
-  logoCircle: {
-    width: 88,
+  logoWrap: {
     height: 88,
-    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 8,
@@ -212,6 +221,14 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.7,
+  },
+  pinLinkWrap: {
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  pinLink: {
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
   },
   footer: {
     textAlign: "center",

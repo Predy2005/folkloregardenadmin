@@ -2,13 +2,15 @@ import { useState, useMemo, useCallback } from 'react';
 import dayjs from 'dayjs';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
+import * as XLSX from 'xlsx';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/components/ui/table';
 import { TooltipProvider } from '@/shared/components/ui/tooltip';
 import { Checkbox } from '@/shared/components/ui/checkbox';
 import { Button } from '@/shared/components/ui/button';
 import { Badge } from '@/shared/components/ui/badge';
-import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowUpDown, ArrowUp, ArrowDown, Download, Trash2 } from 'lucide-react';
 import { usePagination } from '@/shared/hooks/usePagination';
+import { successToast, errorToast } from '@/shared/lib/toast-helpers';
 import type { SortColumn, SortDirection } from '@modules/reservations/types';
 import { ReservationFilters, ReservationRow, PaginationControls } from './table';
 import type { FilterState } from './table';
@@ -28,8 +30,10 @@ export function ReservationTable({
   onDelete,
   onSendPayment,
 }: ReservationTableProps) {
-  // Super admin check
-  const { isSuperAdmin } = useAuth();
+  // Permission checks — granular místo ROLE_SUPER_ADMIN, aby admini viděli bulk akce.
+  const { hasPermission } = useAuth();
+  const canUpdate = hasPermission('reservations.update');
+  const canDelete = hasPermission('reservations.delete');
 
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -69,7 +73,7 @@ export function ReservationTable({
       const search = (searchTerm || '').toLowerCase();
       const matchesSearch =
         reservation.contactName.toLowerCase().includes(search) ||
-        reservation.contactEmail.toLowerCase().includes(search) ||
+        (reservation.contactEmail?.toLowerCase().includes(search) ?? false) ||
         reservation.contactPhone.includes(search) ||
         reservation.id.toString().includes(search);
 
@@ -205,6 +209,32 @@ export function ReservationTable({
     setBulkActionOpen(true);
   }, []);
 
+  const handleExportSelected = useCallback(() => {
+    const selected = (reservations || []).filter((r) => selectedIds.has(r.id));
+    if (selected.length === 0) {
+      errorToast('Nic není vybráno');
+      return;
+    }
+    const rows = selected.map((r) => ({
+      'ID': r.id,
+      'Datum': r.date ? dayjs(r.date).format('DD.MM.YYYY') : '',
+      'Jméno': r.contactName ?? '',
+      'Email': r.contactEmail ?? '',
+      'Telefon': r.contactPhone ?? '',
+      'Země': r.contactNationality ?? '',
+      'Status': r.status ?? '',
+      'Druh': (r as { reservationType?: { name?: string } }).reservationType?.name ?? '',
+      'Počet osob': (r as { totalPeople?: number; personCount?: number }).totalPeople
+        ?? (r as { personCount?: number }).personCount ?? '',
+    }));
+    const sheet = XLSX.utils.json_to_sheet(rows);
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, 'Rezervace');
+    const stamp = dayjs().format('YYYY-MM-DD');
+    XLSX.writeFile(book, `rezervace_${stamp}.xlsx`);
+    successToast(`Exportováno ${selected.length} rezervací`);
+  }, [reservations, selectedIds]);
+
   return (
     <TooltipProvider>
     <div className="space-y-4">
@@ -221,21 +251,32 @@ export function ReservationTable({
         onPageSizeChange={handlePageSizeChange}
       />
 
-      {/* Bulk action bar - only for super admins */}
-      {isSuperAdmin && selectedIds.size > 0 && (
-        <div className="flex items-center gap-2 p-3 bg-primary/5 border rounded-lg">
-          <Badge variant="secondary">{selectedIds.size} vybrano</Badge>
-          <Button size="sm" variant="outline" onClick={() => openBulkAction('status')}>
-            Zmenit status
+      {/* Bulk action bar — selection a export pro všechny, destruktivní akce dle permissions */}
+      {selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 p-3 bg-primary/5 border rounded-lg">
+          <Badge variant="secondary">{selectedIds.size} vybráno</Badge>
+          {canUpdate && (
+            <Button size="sm" variant="outline" onClick={() => openBulkAction('status')}>
+              Změnit status
+            </Button>
+          )}
+          {canUpdate && (
+            <Button size="sm" variant="outline" onClick={() => openBulkAction('reservationType')}>
+              Změnit typ
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={handleExportSelected}>
+            <Download className="w-4 h-4 mr-1" />
+            Exportovat
           </Button>
-          <Button size="sm" variant="outline" onClick={() => openBulkAction('reservationType')}>
-            Zmenit typ
-          </Button>
-          <Button size="sm" variant="destructive" onClick={() => openBulkAction('delete')}>
-            Smazat
-          </Button>
+          {canDelete && (
+            <Button size="sm" variant="destructive" onClick={() => openBulkAction('delete')}>
+              <Trash2 className="w-4 h-4 mr-1" />
+              Smazat
+            </Button>
+          )}
           <Button size="sm" variant="ghost" onClick={clearSelection}>
-            Zrusit vyber
+            Zrušit výběr
           </Button>
         </div>
       )}
@@ -245,14 +286,12 @@ export function ReservationTable({
         <Table>
           <TableHeader>
             <TableRow>
-              {isSuperAdmin && (
-                <TableHead className="w-[40px]">
-                  <Checkbox
-                    checked={allOnPageSelected ? true : someOnPageSelected ? 'indeterminate' : false}
-                    onCheckedChange={toggleSelectAll}
-                  />
-                </TableHead>
-              )}
+              <TableHead className="w-[40px]">
+                <Checkbox
+                  checked={allOnPageSelected ? true : someOnPageSelected ? 'indeterminate' : false}
+                  onCheckedChange={toggleSelectAll}
+                />
+              </TableHead>
               <TableHead
                 className="w-[70px] cursor-pointer hover:bg-muted/50 select-none"
                 onClick={() => handleSort('id')}
@@ -282,7 +321,7 @@ export function ReservationTable({
           <TableBody>
             {paginatedData.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={isSuperAdmin ? 9 : 8} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                   Žádné rezervace
                 </TableCell>
               </TableRow>
@@ -295,7 +334,7 @@ export function ReservationTable({
                   onEdit={onEdit}
                   onDelete={onDelete}
                   onSendPayment={onSendPayment}
-                  showCheckbox={isSuperAdmin}
+                  showCheckbox={true}
                   isSelected={selectedIds.has(reservation.id)}
                   onToggleSelect={toggleSelect}
                 />

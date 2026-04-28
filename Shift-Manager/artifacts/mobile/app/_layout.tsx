@@ -70,6 +70,10 @@ function RootLayoutNav() {
         options={{ headerShown: false, animation: "slide_from_right" }}
       />
       <Stack.Screen
+        name="profile-edit"
+        options={{ headerShown: false, animation: "slide_from_right" }}
+      />
+      <Stack.Screen
         name="transport-map"
         options={{ headerShown: false, animation: "slide_from_right" }}
       />

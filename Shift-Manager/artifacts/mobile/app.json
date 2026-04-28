@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#2d6a4f"
+      "backgroundColor": "#FFFFFF"
     },
     "ios": {
       "supportsTablet": false
@@ -27,13 +27,18 @@
       [
         "expo-notifications",
         {
-          "color": "#2d6a4f"
+          "color": "#DC1A15"
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "26edfded-a53b-463e-8ebc-781aeccdb264"
+      }
     }
   }
 }

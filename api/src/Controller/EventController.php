@@ -466,12 +466,12 @@ class EventController extends AbstractController
         $eventType = $data['eventType'] ?? $data['type'] ?? null;
         $name = $data['name'] ?? null;
         $eventDateStr = $data['eventDate'] ?? $data['date'] ?? null;
-        $eventTimeStr = $data['eventTime'] ?? $data['time'] ?? '18:00:00'; // defaultní čas pokud chybí
+        $eventTimeStr = $data['eventTime'] ?? $data['time'] ?? '19:30:00'; // defaultní čas pokud chybí
         $status = $data['status'] ?? 'PLANNED';
         $language = $data['language'] ?? 'CZ';
 
         if (!isset($name, $eventType, $eventDateStr)) {
-            return $this->json(['error' => 'Missing required fields: name, eventType, eventDate (Y-m-d). eventTime can be omitted (defaults to 18:00:00)'], 400);
+            return $this->json(['error' => 'Missing required fields: name, eventType, eventDate (Y-m-d). eventTime can be omitted (defaults to 19:30:00)'], 400);
         }
 
         try {
@@ -553,7 +553,7 @@ class EventController extends AbstractController
             ->setEventType('FOLKLORE_SHOW')
             ->setReservation($reservation)
             ->setEventDate($reservation->getDate())
-            ->setEventTime(new \DateTime('18:00:00'))
+            ->setEventTime(new \DateTime('19:30:00'))
             ->setOrganizerPerson($reservation->getContactName())
             ->setOrganizerEmail($reservation->getContactEmail())
             ->setOrganizerPhone($reservation->getContactPhone())

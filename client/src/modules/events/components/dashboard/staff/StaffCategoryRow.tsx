@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, Plus, Check, X, Pencil, RotateCcw } from "lucide-react";
+import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, Plus, Check, X, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { Phone } from "lucide-react";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { InfoTooltip } from "@/shared/components/ui/info-tooltip";
 import { Input } from "@/shared/components/ui/input";
+import { ConfirmationBadge } from "@modules/events/components/tabs/staff";
 import type { StaffRequirement, StaffAssignmentWithContact } from "@shared/types";
 
 interface StaffCategoryRowProps {
@@ -13,7 +14,7 @@ interface StaffCategoryRowProps {
   isExpanded: boolean;
   onToggle: () => void;
   onAddStaff: () => void;
-  onMarkPresent: (assignmentId: number) => void;
+  onUpdateAttendance: (assignmentId: number, status: string) => void;
   onRemoveStaff: (assignmentId: number) => void;
   onUpdateRequired?: (category: string, count: number) => void;
   onResetToAuto?: (category: string) => void;
@@ -29,7 +30,7 @@ export function StaffCategoryRow({
   isExpanded,
   onToggle,
   onAddStaff,
-  onMarkPresent,
+  onUpdateAttendance,
   onRemoveStaff,
   onUpdateRequired,
   onResetToAuto,
@@ -199,7 +200,7 @@ export function StaffCategoryRow({
             <StaffAssignmentItem
               key={assignment.id}
               assignment={assignment}
-              onMarkPresent={() => onMarkPresent(assignment.id)}
+              onUpdateAttendance={(status) => onUpdateAttendance(assignment.id, status)}
               onRemove={() => onRemoveStaff(assignment.id)}
               isUpdating={isUpdating}
               isRemoving={isRemoving}
@@ -221,7 +222,7 @@ export function StaffCategoryRow({
 
 interface StaffAssignmentItemProps {
   assignment: StaffAssignmentWithContact;
-  onMarkPresent: () => void;
+  onUpdateAttendance: (status: string) => void;
   onRemove: () => void;
   isUpdating: boolean;
   isRemoving: boolean;
@@ -230,56 +231,97 @@ interface StaffAssignmentItemProps {
 
 function StaffAssignmentItem({
   assignment,
-  onMarkPresent,
+  onUpdateAttendance,
   onRemove,
   isUpdating,
   isRemoving,
   attendanceStatusStyles,
 }: StaffAssignmentItemProps) {
+  const isPresent = assignment.attendanceStatus === "PRESENT";
+  const isAbsent = assignment.attendanceStatus === "ABSENT";
+
   return (
-    <div className="flex items-center justify-between p-2 bg-background rounded border text-sm">
-      <div className="flex items-center gap-2 min-w-0 flex-1">
-        <span className="font-medium truncate">
-          {assignment.staffMember?.name || "Neznámý"}
-        </span>
-        {assignment.staffMember?.phone && (
-          <a
-            href={`tel:${assignment.staffMember.phone}`}
-            className="text-xs text-muted-foreground hover:text-primary"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Phone className="h-3 w-3" />
-          </a>
+    <div
+      className={`flex items-center justify-between p-2 rounded border text-sm transition-colors ${
+        isPresent
+          ? "bg-green-50 dark:bg-green-950/20 border-green-200"
+          : isAbsent
+          ? "bg-red-50 dark:bg-red-950/20 border-red-200"
+          : "bg-background"
+      }`}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium truncate">
+            {assignment.staffMember?.name || "Neznámý"}
+          </span>
+          {assignment.staffMember?.phone && (
+            <a
+              href={`tel:${assignment.staffMember.phone}`}
+              className="text-xs text-muted-foreground hover:text-primary"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Phone className="h-3 w-3" />
+            </a>
+          )}
+          <ConfirmationBadge assignment={assignment} />
+        </div>
+        {assignment.assignmentStatus === "DECLINED" && assignment.declineReason && (
+          <div className="text-xs text-red-600 italic mt-0.5">
+            Důvod: {assignment.declineReason}
+          </div>
+        )}
+        {assignment.assignmentStatus === "CONFIRMED" && assignment.confirmedAt && (
+          <div className="text-xs text-green-700 mt-0.5">
+            Potvrzeno {new Date(assignment.confirmedAt).toLocaleDateString("cs-CZ", {
+              day: "numeric",
+              month: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </div>
         )}
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 shrink-0">
         {/* Attendance status badge */}
         <Badge
           className={`${attendanceStatusStyles[assignment.attendanceStatus]?.className || "bg-gray-500"} text-white text-xs`}
         >
           {attendanceStatusStyles[assignment.attendanceStatus]?.label || assignment.attendanceStatus}
         </Badge>
-        {/* Mark as present button */}
-        {assignment.attendanceStatus !== "PRESENT" && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-100"
-            onClick={(e) => {
-              e.stopPropagation();
-              onMarkPresent();
-            }}
-            disabled={isUpdating}
-            title="Oznacit jako pritomneho"
-          >
-            <Check className="h-4 w-4" />
-          </Button>
-        )}
-        {/* Remove button */}
+        {/* Mark as present (toggle) */}
+        <Button
+          variant={isPresent ? "default" : "outline"}
+          size="icon"
+          className={`h-8 w-8 ${isPresent ? "bg-green-600 hover:bg-green-700" : ""}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onUpdateAttendance(isPresent ? "UNKNOWN" : "PRESENT");
+          }}
+          disabled={isUpdating}
+          title={isPresent ? "Zrušit přítomnost" : "Přítomen"}
+        >
+          <Check className="h-4 w-4" />
+        </Button>
+        {/* Mark as absent (toggle) */}
+        <Button
+          variant={isAbsent ? "destructive" : "outline"}
+          size="icon"
+          className="h-8 w-8"
+          onClick={(e) => {
+            e.stopPropagation();
+            onUpdateAttendance(isAbsent ? "UNKNOWN" : "ABSENT");
+          }}
+          disabled={isUpdating}
+          title={isAbsent ? "Zrušit nepřítomnost" : "Nepřítomen"}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+        {/* Remove assignment */}
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-100"
+          className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
           onClick={(e) => {
             e.stopPropagation();
             onRemove();
@@ -287,7 +329,7 @@ function StaffAssignmentItem({
           disabled={isRemoving}
           title="Odebrat"
         >
-          <X className="h-4 w-4" />
+          <Trash2 className="h-4 w-4" />
         </Button>
       </div>
     </div>

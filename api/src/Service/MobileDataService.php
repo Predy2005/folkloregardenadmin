@@ -125,6 +125,128 @@ class MobileDataService
         return $data;
     }
 
+    // ─── ODPOVĚĎ NA AKCI (Potvrdit / Odhlásit) ──────────────────────────
+
+    public const RESPONSE_LOCK_HOURS_BEFORE = 4;
+
+    public const RESPONSE_CONFIRMED = 'CONFIRMED';
+    public const RESPONSE_DECLINED  = 'DECLINED';
+
+    /**
+     * Personál potvrdí účast nebo se odhlásí. Při odhlášení je `reason`
+     * povinný. Re-confirm (DECLINED → CONFIRMED) maže `declineReason`.
+     * Po `RESPONSE_LOCK_HOURS_BEFORE` před začátkem akce už nelze měnit.
+     *
+     * @throws \InvalidArgumentException neplatná hodnota / chybí důvod
+     * @throws \DomainException          uživatel není přiřazený / lock vypršel
+     */
+    public function respondToEvent(User $user, int $eventId, string $response, ?string $reason): array
+    {
+        if ($response !== self::RESPONSE_CONFIRMED && $response !== self::RESPONSE_DECLINED) {
+            throw new \InvalidArgumentException(
+                sprintf('Neplatná odpověď "%s". Povolené: CONFIRMED, DECLINED.', $response)
+            );
+        }
+        $reason = $reason !== null ? trim($reason) : null;
+        if ($response === self::RESPONSE_DECLINED && ($reason === null || $reason === '')) {
+            throw new \InvalidArgumentException('Při odhlášení je důvod povinný.');
+        }
+
+        $staff = $user->getStaffMember();
+        if ($staff === null) {
+            throw new \DomainException('Uživatel není napojený na žádného člena personálu.');
+        }
+
+        $event = $this->eventRepo->find($eventId);
+        if (!$event) {
+            throw new \DomainException('Event nenalezen.');
+        }
+
+        $assignment = $this->staffAssignRepo->findOneBy([
+            'event' => $event,
+            'staffMemberId' => $staff->getId(),
+        ]);
+        if ($assignment === null) {
+            throw new \DomainException('Na tento event nejsi přiřazený.');
+        }
+
+        $lockAt = $this->responseLockAt($event);
+        if ($lockAt !== null && new \DateTimeImmutable() >= $lockAt) {
+            throw new \DomainException(sprintf(
+                'Účast nelze měnit méně než %d h před začátkem akce. Kontaktuj manažera.',
+                self::RESPONSE_LOCK_HOURS_BEFORE
+            ));
+        }
+
+        $assignment->setAssignmentStatus($response);
+        if ($response === self::RESPONSE_CONFIRMED) {
+            $assignment->setConfirmedAt(new \DateTime());
+            $assignment->setDeclineReason(null);
+        } else {
+            $assignment->setDeclineReason($reason);
+            // confirmedAt zachováme (jako audit, kdy poprvé potvrdil), nebo
+            // ho vynulujeme — výběr: nulujeme, ať je consistent s asgmtStatus.
+            $assignment->setConfirmedAt(null);
+        }
+
+        $this->em->flush();
+
+        return $this->serializeEventDetail($event, $assignment) + [
+            // Detail screen v mobilce použije celý serialized event,
+            // ale pro klienty co volají respond nezávisle vracíme i shortcut.
+            'response' => $response,
+        ];
+    }
+
+    /**
+     * Lock timestamp (kdy už nejde měnit účast) — `eventDate eventTime − 4h`.
+     * Vrací `null` pokud event nemá nastaven čas (měl by mít, ale safety).
+     */
+    private function responseLockAt(Event $event): ?\DateTimeImmutable
+    {
+        $date = $event->getEventDate();
+        $time = $event->getEventTime();
+        if (!$date || !$time) {
+            return null;
+        }
+        $start = new \DateTimeImmutable(
+            $date->format('Y-m-d') . ' ' . $time->format('H:i:s')
+        );
+        return $start->modify('-' . self::RESPONSE_LOCK_HOURS_BEFORE . ' hours');
+    }
+
+    /**
+     * Historie akcí — minulé akce pro daného staff membera, s payment statusem.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function listEventHistoryForStaff(User $user): array
+    {
+        $staff = $user->getStaffMember();
+        if ($staff === null) {
+            return [];
+        }
+
+        $today = new \DateTimeImmutable('today');
+
+        $assignments = $this->staffAssignRepo->createQueryBuilder('a')
+            ->select('a', 'e')
+            ->join('a.event', 'e')
+            ->where('a.staffMemberId = :sid')
+            ->andWhere('e.eventDate < :today')
+            ->setParameter('sid', $staff->getId())
+            ->setParameter('today', $today)
+            ->orderBy('e.eventDate', 'DESC')
+            ->addOrderBy('e.eventTime', 'DESC')
+            ->getQuery()
+            ->getResult();
+
+        return array_map(
+            fn(EventStaffAssignment $a) => $this->serializeEventListItem($a->getEvent(), $a),
+            $assignments
+        );
+    }
+
     // ─── DOCHÁZKA ───────────────────────────────────────────────────────
 
     /**
@@ -284,11 +406,12 @@ class MobileDataService
     // ─── INTERNÍ — SERIALIZACE ─────────────────────────────────────────
 
     /**
-     * Položka seznamu eventu pro staff (bez finančních dat).
+     * Položka seznamu eventu pro staff (bez finančních dat — kromě výplaty,
+     * kterou staff vidí jen u svého assignmentu).
      */
     private function serializeEventListItem(Event $e, EventStaffAssignment $a): array
     {
-        return [
+        return $this->myAssignmentFields($a) + [
             'eventId' => $e->getId(),
             'name' => $e->getName(),
             'eventType' => $e->getEventType(),
@@ -299,9 +422,7 @@ class MobileDataService
             'language' => $e->getLanguage(),
             'guestsTotal' => $e->getGuestsTotal(),
             'status' => $e->getStatus(),
-            'myAssignmentId' => $a->getId(),
-            'myAttendanceStatus' => $a->getAttendanceStatus(), // PENDING | PRESENT
-            'myAttendedAt' => $a->getAttendedAt()?->format('c'),
+            'responseLockedAt' => $this->responseLockAt($e)?->format('c'),
         ];
     }
 
@@ -310,7 +431,7 @@ class MobileDataService
      */
     private function serializeEventDetail(Event $e, EventStaffAssignment $a): array
     {
-        return [
+        return $this->myAssignmentFields($a) + [
             'eventId' => $e->getId(),
             'name' => $e->getName(),
             'eventType' => $e->getEventType(),
@@ -326,9 +447,28 @@ class MobileDataService
             'status' => $e->getStatus(),
             'notesStaff' => $e->getNotesStaff(),
             'schedule' => array_map(fn(EventSchedule $s) => $this->serializeSchedule($s), $e->getSchedules()->toArray()),
+            'responseLockedAt' => $this->responseLockAt($e)?->format('c'),
+        ];
+    }
+
+    /**
+     * Sdílená pole napříč list i detail serializací — co user vidí o svém
+     * assignmentu (potvrzení účasti, přítomnost, výplata).
+     *
+     * @return array<string, mixed>
+     */
+    private function myAssignmentFields(EventStaffAssignment $a): array
+    {
+        return [
             'myAssignmentId' => $a->getId(),
-            'myAttendanceStatus' => $a->getAttendanceStatus(),
+            'myAssignmentStatus' => $a->getAssignmentStatus(), // ASSIGNED | CONFIRMED | DECLINED
+            'myConfirmedAt' => $a->getConfirmedAt()?->format('c'),
+            'myDeclineReason' => $a->getDeclineReason(),
+            'myAttendanceStatus' => $a->getAttendanceStatus(), // PENDING | PRESENT (řídí manažer v CRM)
             'myAttendedAt' => $a->getAttendedAt()?->format('c'),
+            'myPaymentStatus' => $a->getPaymentStatus(),       // PENDING | PAID | …
+            'myPaymentAmount' => $a->getPaymentAmount(),
+            'myHoursWorked' => $a->getHoursWorked(),
         ];
     }
 

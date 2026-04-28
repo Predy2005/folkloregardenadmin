@@ -21,6 +21,9 @@ import {
   Clock,
   Pencil,
   RotateCcw,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
 } from "lucide-react";
 import { matchRoleToCategory } from "./staffUtils";
 
@@ -260,6 +263,7 @@ export function StaffAssignmentRow({ assignment, eventId, onDelete, onPayment, c
               {assignment.staffMember.groupSize ? `${assignment.staffMember.groupSize} os.` : "skupina"}
             </Badge>
           )}
+          <ConfirmationBadge assignment={assignment} />
         </div>
         <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
           {assignment.staffMember?.position && (
@@ -275,6 +279,21 @@ export function StaffAssignmentRow({ assignment, eventId, onDelete, onPayment, c
             <span className={`flex items-center gap-0.5 ${isPaid ? 'text-green-600' : ''}`}>
               {formatCurrency(assignment.paymentAmount)}
               {isPaid && <Check className="h-3 w-3" />}
+            </span>
+          )}
+          {assignment.assignmentStatus === "DECLINED" && assignment.declineReason && (
+            <span className="text-red-600 italic">
+              Důvod: {assignment.declineReason}
+            </span>
+          )}
+          {assignment.assignmentStatus === "CONFIRMED" && assignment.confirmedAt && (
+            <span className="text-green-700">
+              Potvrzeno {new Date(assignment.confirmedAt).toLocaleDateString("cs-CZ", {
+                day: "numeric",
+                month: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </span>
           )}
         </div>
@@ -315,5 +334,62 @@ export function StaffAssignmentRow({ assignment, eventId, onDelete, onPayment, c
         </Button>
       </div>
     </div>
+  );
+}
+
+// =================== ConfirmationBadge ===================
+
+/**
+ * Badge ukazující, jestli personál v mobilní app reagoval na nominaci:
+ *   - ASSIGNED  → „Čeká na potvrzení" (oranžová)
+ *   - CONFIRMED → „Potvrzeno"        (zelená)
+ *   - DECLINED  → „Odhlásil se"      (červená)
+ *
+ * Hover/title obsahuje detailní info (kdy potvrdil / důvod odhlášení).
+ */
+export function ConfirmationBadge({ assignment }: { assignment: EventStaffAssignment | { assignmentStatus: string; confirmedAt?: string | null; declineReason?: string | null } }) {
+  const status = assignment.assignmentStatus;
+  if (status === "CONFIRMED") {
+    return (
+      <Badge
+        variant="outline"
+        className="text-[10px] px-1.5 py-0 h-4 font-normal border-green-300 bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-400 dark:border-green-800"
+        title={
+          assignment.confirmedAt
+            ? `Potvrzeno v mobilu ${new Date(assignment.confirmedAt).toLocaleString("cs-CZ")}`
+            : "Personál v mobilu potvrdil účast"
+        }
+      >
+        <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+        Potvrdil
+      </Badge>
+    );
+  }
+  if (status === "DECLINED") {
+    return (
+      <Badge
+        variant="outline"
+        className="text-[10px] px-1.5 py-0 h-4 font-normal border-red-300 bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800"
+        title={
+          assignment.declineReason
+            ? `Odhlásil se v mobilu — důvod: ${assignment.declineReason}`
+            : "Personál se v mobilu odhlásil"
+        }
+      >
+        <XCircle className="h-2.5 w-2.5 mr-0.5" />
+        Odhlásil se
+      </Badge>
+    );
+  }
+  // ASSIGNED nebo cokoliv jiného → čeká na potvrzení
+  return (
+    <Badge
+      variant="outline"
+      className="text-[10px] px-1.5 py-0 h-4 font-normal border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800"
+      title="Personál ještě v mobilu nereagoval na nominaci"
+    >
+      <AlertCircle className="h-2.5 w-2.5 mr-0.5" />
+      Čeká
+    </Badge>
   );
 }

@@ -37,11 +37,16 @@ const reservationSchema = z.object({
   date: z.string().min(1, "Datum je povinné"),
   currency: z.string().default("CZK"),
   contactName: z.string().min(1, "Jméno je povinné"),
-  contactEmail: z.string().email("Neplatný email"),
+  // Email je volitelný; pokud je vyplněný, musí mít validní tvar.
+  contactEmail: z
+    .string()
+    .optional()
+    .refine((val) => !val || /^\S+@\S+\.\S+$/.test(val), { message: "Neplatný email" }),
   contactPhone: z.string().min(1, "Telefon je povinný"),
   contactNationality: z.string().min(1, "Národnost je povinná"),
   clientComeFrom: z.string().optional(),
   contactNote: z.string().optional(),
+  orderedBy: z.string().optional(),
   invoiceSameAsContact: z.boolean().default(true),
   invoiceName: z.string().optional(),
   invoiceCompany: z.string().optional(),
@@ -112,6 +117,7 @@ export default function Reservations() {
       contactNationality: "Česká republika",
       clientComeFrom: "",
       contactNote: "",
+      orderedBy: "",
       invoiceSameAsContact: true,
       invoiceName: "",
       invoiceCompany: "",

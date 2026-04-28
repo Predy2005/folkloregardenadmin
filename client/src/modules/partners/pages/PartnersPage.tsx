@@ -29,18 +29,12 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/components/ui/tooltip";
-import { Plus, Pencil, Trash2, Search, Users2, ChevronDown, Power, PowerOff } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Users2, ChevronDown, Power, PowerOff, Settings } from "lucide-react";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { Badge } from "@/shared/components/ui/badge";
 import { useToast } from "@/shared/hooks/use-toast";
 import { errorToast } from "@/shared/lib/toast-helpers";
-
-const PARTNER_TYPE_LABELS: Record<string, string> = {
-  HOTEL: "Hotel",
-  RECEPTION: "Recepce",
-  DISTRIBUTOR: "Distributor",
-  OTHER: "Ostatni",
-};
+import { usePartnerCategories, DEFAULT_PARTNER_CATEGORY_LABELS } from "@modules/partners/hooks/usePartnerCategories";
 
 const PRICING_MODEL_LABELS: Record<string, string> = {
   DEFAULT: "Systemove ceny",
@@ -65,6 +59,14 @@ export default function Partners() {
     queryKey: ["/api/partner"],
     queryFn: () => api.get<Partner[]>("/api/partner"),
   });
+
+  // Mapování slug → name z dynamického číselníku, s fallbackem na hardcoded popisky
+  // pro legacy slugy (RECEPTION/DISTRIBUTOR) a kategorie přidané po vytvoření partnera.
+  const { data: categories } = usePartnerCategories(false);
+  const categoryLabel = (slug: string): string =>
+    categories?.find((c) => c.slug === slug)?.name
+    ?? DEFAULT_PARTNER_CATEGORY_LABELS[slug]
+    ?? slug;
 
   const { deleteMutation } = useCrudMutations<Record<string, unknown>>({
     endpoint: "/api/partner",
@@ -142,6 +144,13 @@ export default function Partners() {
         >
           <Plus className="w-4 h-4 mr-2" />
           Novy partner
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => navigate("/partner-categories")}
+        >
+          <Settings className="w-4 h-4 mr-2" />
+          Spravovat kategorie
         </Button>
       </PageHeader>
 
@@ -239,7 +248,7 @@ export default function Partners() {
                     <TableCell className="font-medium">{partner.name}</TableCell>
                     <TableCell>
                       <Badge variant="outline">
-                        {PARTNER_TYPE_LABELS[partner.partnerType] || partner.partnerType}
+                        {categoryLabel(partner.partnerType)}
                       </Badge>
                     </TableCell>
                     <TableCell>
