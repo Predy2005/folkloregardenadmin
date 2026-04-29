@@ -160,6 +160,98 @@ export interface PartnerContact {
   updatedAt: string;
 }
 
+// ── Ticket / TODO module ─────────────────────────────────────────
+
+export type TicketStatus = "OPEN" | "IN_PROGRESS" | "WAITING_FOR_INFO" | "RESOLVED" | "CLOSED" | "WONTFIX";
+export type TicketPriority = "LOW" | "NORMAL" | "HIGH" | "CRITICAL";
+export type TicketType = "BUG" | "FEATURE" | "QUESTION" | "IMPROVEMENT";
+export type TicketSource = "MANUAL" | "AUTO_ERROR_LOG";
+
+export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
+  OPEN: "Otevřený",
+  IN_PROGRESS: "Pracuje se",
+  WAITING_FOR_INFO: "Čeká na doplnění",
+  RESOLVED: "Vyřešený",
+  CLOSED: "Zavřený",
+  WONTFIX: "Nebude se řešit",
+};
+
+export const TICKET_PRIORITY_LABELS: Record<TicketPriority, string> = {
+  LOW: "Nízká",
+  NORMAL: "Normální",
+  HIGH: "Vysoká",
+  CRITICAL: "Kritická",
+};
+
+export const TICKET_TYPE_LABELS: Record<TicketType, string> = {
+  BUG: "Chyba",
+  FEATURE: "Nový požadavek",
+  QUESTION: "Dotaz",
+  IMPROVEMENT: "Zlepšení",
+};
+
+export interface TicketUserRef {
+  id: number | null;
+  username: string | null;
+  email: string | null;
+}
+
+export interface TicketComment {
+  id: number;
+  content: string;
+  isInternal: boolean;
+  author: TicketUserRef | null;
+  createdAt: string;
+}
+
+export interface TicketAttachment {
+  id: number;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  isImage: boolean;
+  commentId: number | null;
+  uploadedBy: TicketUserRef | null;
+  createdAt: string;
+  url: string;
+}
+
+export interface TicketListItem {
+  id: number;
+  title: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  type: TicketType;
+  source: TicketSource;
+  module: string | null;
+  createdBy: TicketUserRef | null;
+  assignedTo: TicketUserRef | null;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+  commentCount: number;
+  attachmentCount: number;
+  occurrenceCount: number;
+  lastOccurrenceAt: string | null;
+}
+
+export interface Ticket extends TicketListItem {
+  description: string | null;
+  errorClass: string | null;
+  stackTrace: string | null;
+  requestUrl: string | null;
+  httpStatus: number | null;
+  comments: TicketComment[];
+  attachments: TicketAttachment[];
+}
+
+export interface TicketCounts {
+  open: number;
+  in_progress: number;
+  waiting: number;
+  total: number;
+}
+
 export interface ReservationType {
   id: number;
   name: string;

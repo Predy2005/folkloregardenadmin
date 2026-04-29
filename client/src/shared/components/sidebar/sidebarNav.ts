@@ -27,6 +27,7 @@ import {
   LayoutTemplate,
   Truck,
   Wine,
+  Bug,
 } from "lucide-react";
 import { PERMISSIONS } from "@modules/auth";
 
@@ -267,6 +268,12 @@ export const menuItems: MenuItem[] = [
         permission: PERMISSIONS.USERS_READ,
       },
     ],
+  },
+  {
+    title: "Tickety / TODO",
+    url: "/tickets",
+    icon: Bug,
+    permission: PERMISSIONS.TICKETS_READ,
   },
   {
     title: "Blokované termíny",

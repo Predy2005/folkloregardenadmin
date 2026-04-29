@@ -242,6 +242,37 @@ Pokud potřebuješ v cyklu volat mutation, která pracuje s aktuálním stavem (
 
 **Empty-string-to-null fix**: `StaffMemberController::create`/`update` převádí prázdné stringy nullable polí (`email`, `phone`, `address`, `position`, `emergencyContact`, `emergencyPhone`, `notes`) na `NULL`. Bez tohoto by `UNIQUE(email)` constraint padal při více členech bez emailu.
 
+### Tickets / TODO (`/tickets`, `/tickets/{id}`)
+Modul nahrazuje Excel TODO list — admin/manager hlásí, developer řeší.
+
+**Entity** (migrace `Version20260429120611`):
+- `ticket` — title, description, status (`OPEN`/`IN_PROGRESS`/`WAITING_FOR_INFO`/`RESOLVED`/`CLOSED`/`WONTFIX`), priority (`LOW`/`NORMAL`/`HIGH`/`CRITICAL`), type (`BUG`/`FEATURE`/`QUESTION`/`IMPROVEMENT`), source (`MANUAL`/`AUTO_ERROR_LOG`), `module` tag, `createdBy`/`assignedTo` (User FK SET NULL), `error_hash` + `stack_trace` pro auto-tickety, `occurrence_count`.
+- `ticket_comment` — vlákno odpovědí, `is_internal` flag.
+- `ticket_attachment` — soubory v `var/uploads/tickets/`, servírované přes auth-protected endpoint (ne přímou URL).
+
+**API** (gate `tickets.*`):
+- `GET /api/tickets` (filtry: `status[]`, `priority[]`, `type[]`, `assignedToMe`, `search`) + `/api/tickets/counts`
+- `POST /api/tickets`, `GET/PUT/DELETE /api/tickets/{id}`
+- `POST /api/tickets/{id}/comments`, `DELETE /api/tickets/{id}/comments/{cid}`
+- `POST /api/tickets/{id}/attachments` (multipart, optional `commentId`)
+- `GET /api/tickets/{id}/attachments/{aid}` (auth-protected file delivery)
+
+**Auto-error capture** (`ErrorTicketListener`, `kernel.exception` priority -100):
+- Při HTTP 5xx vytvoří/zvedne `occurrence_count` na ticketu se stejným `error_hash` (md5 z class + message + 3 stack frames).
+- 4xx ignoruje. Endpoint `/api/tickets/*` se přeskakuje (nelogovat sám sebe).
+- **Aktivní jen v `prod` env** — v dev má profiler.
+
+**UI** (`client/src/modules/tickets/`):
+- `/tickets` — list s multi-select filtry (status/priorita/typ) + search; defaultně skrývá `RESOLVED`/`CLOSED`/`WONTFIX`.
+- `/tickets/{id}` — detail s vláknem komentářů, change-status / change-priority dropdown v sidebaru.
+- `CreateTicketDialog` + textarea v detailu mají `onPaste` listener (helper `extractImagesFromClipboard`) — **Ctrl+V s obrázkem v clipboardu** uploaduje screenshot.
+- `WAITING_FOR_INFO` → po odpovědi creatora se ticket auto-otevře (status `OPEN`).
+- Sidebar link "Tickety / TODO" gated na `tickets.read` (Bug ikona).
+
+**Permissions seed**: `ROLE_ADMIN` + `ROLE_SUPER_ADMIN` mají full set (read/create/update/delete/comment); `ROLE_MANAGER` (pokud existuje) má `read/create/comment`.
+
+**Excel TODO seed** (migrace `Version20260429120800`): 19 položek z původního Excel TODO listu se naseedovalo s odpovídajícími statusy (`HOTOVO` → `RESOLVED`, atd.).
+
 ### Partners (`/partners`, `/partners/{id}/edit`, `/partner-categories`)
 
 **Dynamický číselník kategorií** (`PartnerCategory`):

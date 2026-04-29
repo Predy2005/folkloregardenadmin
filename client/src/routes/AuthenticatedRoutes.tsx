@@ -59,6 +59,8 @@ const DisabledDates = lazy(() => import("@modules/admin/pages/DisabledDatesPage"
 const ReservationTypes = lazy(() => import("@modules/admin/pages/ReservationTypesPage"));
 const CashCategories = lazy(() => import("@modules/admin/pages/CashMovementCategoriesPage"));
 const HelpTopics = lazy(() => import("@modules/admin/pages/HelpTopicsPage"));
+const Tickets = lazy(() => import("@modules/tickets/pages/TicketsPage"));
+const TicketDetail = lazy(() => import("@modules/tickets/pages/TicketDetailPage"));
 const Profile = lazy(() => import("@modules/auth/pages/ProfilePage"));
 
 interface AuthenticatedRoutesProps {
@@ -150,6 +152,8 @@ export function AuthenticatedRoutes({ layout }: AuthenticatedRoutesProps) {
       <Route path="/reservation-types"><P component={ReservationTypes} /></Route>
       <Route path="/cash-categories"><P component={CashCategories} /></Route>
       <Route path="/help-topics"><P component={HelpTopics} /></Route>
+      <Route path="/tickets"><P component={Tickets} /></Route>
+      <Route path="/tickets/:id"><P component={TicketDetail} /></Route>
 
       {/* Profile */}
       <Route path="/profile"><P component={Profile} /></Route>

@@ -134,6 +134,13 @@ export const PERMISSIONS = {
   RESERVATION_TYPES_CREATE: 'reservation_types.create',
   RESERVATION_TYPES_UPDATE: 'reservation_types.update',
   RESERVATION_TYPES_DELETE: 'reservation_types.delete',
+
+  // Tickets / TODO list
+  TICKETS_READ: 'tickets.read',
+  TICKETS_CREATE: 'tickets.create',
+  TICKETS_UPDATE: 'tickets.update',
+  TICKETS_DELETE: 'tickets.delete',
+  TICKETS_COMMENT: 'tickets.comment',
 } as const;
 
 export type PermissionKey = typeof PERMISSIONS[keyof typeof PERMISSIONS];
