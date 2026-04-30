@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/shared/lib/api";
+import { api, apiClient } from "@/shared/lib/api";
 import { successToast, errorToast } from "@/shared/lib/toast-helpers";
+import { AuthImage } from "@/shared/components/AuthImage";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { Button } from "@/shared/components/ui/button";
@@ -379,17 +380,38 @@ ${ticket.stackTrace ?? ""}`}
 }
 
 function AttachmentPreview({ a, onDelete }: { a: TicketAttachment; onDelete: () => void }) {
+  // `<img src>` a `<a href>` neposílají Authorization header, takže přímý
+  // odkaz na auth-protected `/api/tickets/{id}/attachments/{aid}` skončí 401.
+  // Image: použijeme AuthImage (fetch s Bearer + blob URL).
+  // Non-image: open through fetch + blob, s download attribute.
+  const openInNewTab = async () => {
+    try {
+      const res = await apiClient.get<Blob>(a.url, { responseType: "blob" });
+      const blobUrl = URL.createObjectURL(res.data);
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
+      // URL si necháme — uvolní se až se zavře okno (na 60s setTimeout je
+      // bezpečný kompromis: stačí čas otevřít, pak GC).
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } catch (e) {
+      console.error("Otevření přílohy selhalo:", e);
+    }
+  };
+
   return (
     <div className="relative border rounded-md overflow-hidden bg-muted/20 group">
       {a.isImage ? (
-        <a href={a.url} target="_blank" rel="noreferrer">
-          <img src={a.url} alt={a.filename} className="w-full h-32 object-cover" />
-        </a>
+        <button type="button" onClick={openInNewTab} className="w-full block">
+          <AuthImage src={a.url} alt={a.filename} className="w-full h-32 object-cover" />
+        </button>
       ) : (
-        <a href={a.url} target="_blank" rel="noreferrer" className="block h-32 flex flex-col items-center justify-center p-2 text-xs text-muted-foreground hover:bg-muted/40">
+        <button
+          type="button"
+          onClick={openInNewTab}
+          className="block h-32 w-full flex flex-col items-center justify-center p-2 text-xs text-muted-foreground hover:bg-muted/40"
+        >
           <Paperclip className="w-6 h-6 mb-1" />
           <span className="truncate w-full text-center" title={a.filename}>{a.filename}</span>
-        </a>
+        </button>
       )}
       <Button
         type="button"
