@@ -226,7 +226,15 @@ Pokud potřebuješ v cyklu volat mutation, která pracuje s aktuálním stavem (
 - Hl. číšník + kapela agregované z `EventStaffAssignment` joinovaného s `staff_member.position`. **Hl. číšník** = pozice `HEAD_WAITER`. **Kapela** = pozice `MUSICIAN`, `BAND`, `DANCER`, `DANCE_GROUP`, `SOUND_TECH` (pak v tooltipu).
 - Highlight = tag `Highlight` v `eventTags` array.
 - `EventController::list` agreguje vše v 1 batch DQL query (žádný N+1) — vrací navíc pole `coordinator`, `managers`, `headWaiters`, `band`, `eventTags`.
-- **Filtrování**: `MultiSelectFilter` (Typ, Status, Manažerka — auto-naplněné z aktuálních eventů), toggle "Highlight" zobrazí jen flagované, search hledá napříč všemi text poli.
+- **Filtrování** (`EventFilters.tsx`, vše klientské v `filterAndSortEvents` z `utils/eventFilters.ts`):
+  - **Time tabs**: Nejbližší / Nadcházející / Prošlé / Všechny.
+  - **Date range** (Od / Do): když je vyplněno, **přebíjí time tab** (UI ho zašedne) a řadí vzestupně podle data.
+  - **Hlavní multi-select**: Typ, Status, Manažerka (auto-naplněné z aktuálních eventů, searchable).
+  - **Highlight ⭐**: toggle, zobrazí jen akce s tagem `Highlight` v `eventTags`.
+  - **Search**: hledá napříč názvem, organizátorem, manažerkou, tagy, hl. číšníky i kapelou.
+  - **Pokročilé filtry** (collapsible) — `Prostor` multi-select + tri-state toggles (klik = ano → ne → vypnuto): `Kapela`, `Manažerka`, `Hl. číšník`, `Neplatící`, `Má hosty` + `Min/Max počet hostů` (number inputs).
+  - Counter aktivních filtrů + tlačítko "Zrušit vše (N)".
+  - `EventFilterOptions` interface drží všechny stavy filtrů; všechny boolean filtry jsou tristate `boolean | null` kde `null` = filtr neaktivní.
 
 **Default čas a doba trvání akce**:
 - **Čas akce**: `19:30:00` (předtím `18:00:00`). Hodnota se uplatní v `EventController::create` (POST `/api/events`) a v `createFromReservation`. Nastaveno v `EventController.php:469` a `:556`.

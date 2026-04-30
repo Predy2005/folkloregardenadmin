@@ -50,8 +50,18 @@ export default function Events() {
     const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
     const [typeFilter, setTypeFilter] = useState<Set<string>>(new Set());
     const [coordinatorFilter, setCoordinatorFilter] = useState<Set<string>>(new Set());
+    const [spacesFilter, setSpacesFilter] = useState<Set<string>>(new Set());
     const [highlightOnly, setHighlightOnly] = useState(false);
     const [timeFilter, setTimeFilter] = useState<"all" | "upcoming" | "past" | "nearest">("nearest");
+    const [dateFrom, setDateFrom] = useState<string | null>(null);
+    const [dateTo, setDateTo] = useState<string | null>(null);
+    const [hasBand, setHasBand] = useState<boolean | null>(null);
+    const [hasCoordinator, setHasCoordinator] = useState<boolean | null>(null);
+    const [hasHeadWaiter, setHasHeadWaiter] = useState<boolean | null>(null);
+    const [hasFreeGuests, setHasFreeGuests] = useState<boolean | null>(null);
+    const [hasGuests, setHasGuests] = useState<boolean | null>(null);
+    const [minGuests, setMinGuests] = useState<number | null>(null);
+    const [maxGuests, setMaxGuests] = useState<number | null>(null);
     const [bulkActionOpen, setBulkActionOpen] = useState(false);
     const [bulkActionType, setBulkActionType] = useState<'status' | 'eventType' | 'delete' | null>(null);
     const [bulkValue, setBulkValue] = useState("");
@@ -85,8 +95,18 @@ export default function Events() {
           status: statusFilter,
           type: typeFilter,
           coordinator: coordinatorFilter,
+          spaces: spacesFilter,
           highlightOnly,
           time: timeFilter,
+          dateFrom,
+          dateTo,
+          hasBand,
+          hasCoordinator,
+          hasHeadWaiter,
+          hasFreeGuests,
+          hasGuests,
+          minGuests,
+          maxGuests,
         })
       : [];
 
@@ -165,7 +185,17 @@ export default function Events() {
                     typeFilter={typeFilter} setTypeFilter={setTypeFilter}
                     statusFilter={statusFilter} setStatusFilter={setStatusFilter}
                     coordinatorFilter={coordinatorFilter} setCoordinatorFilter={setCoordinatorFilter}
+                    spacesFilter={spacesFilter} setSpacesFilter={setSpacesFilter}
                     highlightOnly={highlightOnly} setHighlightOnly={setHighlightOnly}
+                    dateFrom={dateFrom} setDateFrom={setDateFrom}
+                    dateTo={dateTo} setDateTo={setDateTo}
+                    hasBand={hasBand} setHasBand={setHasBand}
+                    hasCoordinator={hasCoordinator} setHasCoordinator={setHasCoordinator}
+                    hasHeadWaiter={hasHeadWaiter} setHasHeadWaiter={setHasHeadWaiter}
+                    hasFreeGuests={hasFreeGuests} setHasFreeGuests={setHasFreeGuests}
+                    hasGuests={hasGuests} setHasGuests={setHasGuests}
+                    minGuests={minGuests} setMinGuests={setMinGuests}
+                    maxGuests={maxGuests} setMaxGuests={setMaxGuests}
                     events={events}
                     filteredCount={filteredEvents.length} totalCount={events?.length || 0}
                     isSuperAdmin={isSuperAdmin} selectedIds={selectedIds}
@@ -177,7 +207,18 @@ export default function Events() {
                 <CardContent>
                     <EventsTable
                         events={filteredEvents} isLoading={isLoading}
-                        hasFilters={!!(search || statusFilter.size > 0 || typeFilter.size > 0 || coordinatorFilter.size > 0 || highlightOnly)}
+                        hasFilters={!!(
+                          search ||
+                          statusFilter.size > 0 ||
+                          typeFilter.size > 0 ||
+                          coordinatorFilter.size > 0 ||
+                          spacesFilter.size > 0 ||
+                          highlightOnly ||
+                          dateFrom || dateTo ||
+                          hasBand !== null || hasCoordinator !== null || hasHeadWaiter !== null ||
+                          hasFreeGuests !== null || hasGuests !== null ||
+                          minGuests !== null || maxGuests !== null
+                        )}
                         isSuperAdmin={isSuperAdmin} selectedIds={selectedIds}
                         onToggleSelect={toggleSelect} onToggleSelectAll={toggleSelectAll}
                         onDashboard={(event) => setLocation(`/events/${event.id}/dashboard`)}
