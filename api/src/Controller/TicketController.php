@@ -19,6 +19,7 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
@@ -49,6 +50,7 @@ class TicketController extends AbstractController
         private readonly UserRepository $userRepo,
         private readonly EntityManagerInterface $em,
         private readonly Security $security,
+        #[Autowire('%kernel.project_dir%')]
         private readonly string $projectDir,
     ) {}
 
@@ -208,8 +210,33 @@ class TicketController extends AbstractController
 
         /** @var UploadedFile|null $file */
         $file = $request->files->get('file');
-        if (!$file instanceof UploadedFile || !$file->isValid()) {
-            return $this->json(['error' => 'Žádný soubor nepřišel (pole "file")'], Response::HTTP_BAD_REQUEST);
+
+        // Detailní diagnostika — typicky to bývá překročení PHP upload limitů
+        // (`upload_max_filesize`, `post_max_size`), ne chyba klienta.
+        if (!$file instanceof UploadedFile) {
+            $postMax = ini_get('post_max_size') ?: '?';
+            $uploadMax = ini_get('upload_max_filesize') ?: '?';
+            $contentLength = $request->server->get('CONTENT_LENGTH');
+            $hint = $contentLength === null
+                ? 'Pole "file" v requestu chybí (ověř Content-Type: multipart/form-data + boundary).'
+                : "Request body má " . (int)$contentLength . " B, ale PHP limity: post_max_size={$postMax}, upload_max_filesize={$uploadMax}. Zvyš je v php.ini / php-fpm.";
+            return $this->json([
+                'error' => 'Soubor se nedostal na server',
+                'hint' => $hint,
+            ], Response::HTTP_BAD_REQUEST);
+        }
+        if (!$file->isValid()) {
+            return $this->json([
+                'error' => 'Upload selhal',
+                'hint' => $file->getErrorMessage(),
+                'errorCode' => $file->getError(),
+            ], Response::HTTP_BAD_REQUEST);
+        }
+        if ($file->getSize() === 0) {
+            return $this->json([
+                'error' => 'Soubor má 0 B',
+                'hint' => 'Multipart upload se nerozparsoval správně. Ověř, že frontend NEnastavuje vlastní Content-Type header (axios doplní boundary sám).',
+            ], Response::HTTP_BAD_REQUEST);
         }
         if ($file->getSize() > 20 * 1024 * 1024) {
             return $this->json(['error' => 'Soubor je větší než 20 MB'], Response::HTTP_BAD_REQUEST);
@@ -217,13 +244,21 @@ class TicketController extends AbstractController
 
         $storageDir = $this->getStorageDir();
         if (!is_dir($storageDir) && !mkdir($storageDir, 0o775, true) && !is_dir($storageDir)) {
-            return $this->json(['error' => 'Storage dir nelze vytvořit'], Response::HTTP_INTERNAL_SERVER_ERROR);
+            return $this->json([
+                'error' => 'Storage dir nelze vytvořit',
+                'hint' => "Cesta {$storageDir} — webserver nemá write rights na parent. Vytvoř ručně: mkdir -p var/uploads/tickets && chmod 775 var/uploads/tickets",
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+        if (!is_writable($storageDir)) {
+            return $this->json([
+                'error' => 'Storage dir není zapsatelný',
+                'hint' => "Cesta {$storageDir} existuje, ale webserver tam nemůže psát. chmod 775 + správný owner (typicky www-data).",
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
 
         $original = $file->getClientOriginalName() ?: 'screenshot.png';
         $extension = $file->getClientOriginalExtension();
         if ($extension === '') {
-            // Z mime — typicky pro paste ("image/png" → "png")
             $mime = $file->getMimeType() ?? 'application/octet-stream';
             $extension = match ($mime) {
                 'image/png' => 'png',
@@ -235,7 +270,27 @@ class TicketController extends AbstractController
         }
         $stored = sprintf('ticket-%d-%s.%s', $id, bin2hex(random_bytes(8)), $extension);
 
-        $file->move($storageDir, $stored);
+        try {
+            $file->move($storageDir, $stored);
+        } catch (\Throwable $e) {
+            return $this->json([
+                'error' => 'File move selhal',
+                'hint' => $e->getMessage(),
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        // Ověř, že po move zůstal soubor neprázdný — pokud ne, smaž a vrať error.
+        // Bez tohoto by se v DB vytvořil "duch attachmentu" se sizeBytes=0 a v UI
+        // by skončil prázdným obrázkem (přesně jako popisuje aktuální bug report).
+        $movedPath = $storageDir . DIRECTORY_SEPARATOR . $stored;
+        $finalSize = is_file($movedPath) ? (int)filesize($movedPath) : 0;
+        if ($finalSize === 0) {
+            @unlink($movedPath);
+            return $this->json([
+                'error' => 'Soubor se uložil ale je prázdný',
+                'hint' => 'Možná disk space nebo permission issue. Cesta: ' . $storageDir,
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
 
         $a = new TicketAttachment();
         $a->setTicket($t);
@@ -248,7 +303,7 @@ class TicketController extends AbstractController
         $a->setUploadedBy($this->currentUser());
         $a->setFilename($original);
         $a->setMimeType($file->getClientMimeType() ?: 'application/octet-stream');
-        $a->setSizeBytes((int)filesize($storageDir . DIRECTORY_SEPARATOR . $stored));
+        $a->setSizeBytes($finalSize);
         $a->setStoragePath($stored);
 
         $this->em->persist($a);

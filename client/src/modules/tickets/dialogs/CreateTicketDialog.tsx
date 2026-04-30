@@ -69,7 +69,7 @@ export function CreateTicketDialog({ open, onOpenChange, onCreated }: Props) {
   };
 
   const submit = useMutation({
-    mutationFn: async (): Promise<Ticket> => {
+    mutationFn: async (): Promise<{ ticket: Ticket; uploadFailures: string[] }> => {
       if (title.trim() === "") {
         throw new Error("Zadej nadpis");
       }
@@ -80,18 +80,42 @@ export function CreateTicketDialog({ open, onOpenChange, onCreated }: Props) {
         priority,
         module: moduleTag.trim() || null,
       });
-      // Po vytvoření nahraj attachmenty (sekvenčně, ať se neztrácí pořadí)
+      // Po vytvoření nahraj attachmenty (sekvenčně, ať se neztrácí pořadí).
+      // Když některý upload selže, ticket samotný už existuje — necháme ho a
+      // sebereme failures, ať uživatele upozorníme. Dialog zůstane otevřený, ať
+      // se dají problematické přílohy zkusit znovu nebo úplně vyhodit.
+      const uploadFailures: string[] = [];
       for (const p of pending) {
         try {
           await uploadTicketAttachment(ticket.id, p.file);
         } catch (e) {
+          const apiErr = e as { response?: { data?: { error?: string; hint?: string } } };
+          const reason = apiErr?.response?.data?.hint
+            ?? apiErr?.response?.data?.error
+            ?? (e instanceof Error ? e.message : String(e));
+          uploadFailures.push(`${p.file.name}: ${reason}`);
           console.error("Upload attachment failed:", e);
         }
       }
-      return ticket;
+      return { ticket, uploadFailures };
     },
-    onSuccess: (ticket) => {
+    onSuccess: ({ ticket, uploadFailures }) => {
       qc.invalidateQueries({ queryKey: TICKETS_QUERY_KEY });
+      if (uploadFailures.length > 0) {
+        // Ticket existuje, ale některé přílohy selhaly. Nech dialog otevřený a
+        // ukaž failures — necháme jen ty failed v `pending`, úspěšné odstraníme.
+        const failedFilenames = new Set(uploadFailures.map((f) => f.split(":")[0].trim()));
+        setPending((prev) => {
+          // Uvolni preview URL u úspěšně nahraných (těch co tam zůstávat nebudou).
+          prev.filter((p) => !failedFilenames.has(p.file.name))
+              .forEach((p) => p.previewUrl && URL.revokeObjectURL(p.previewUrl));
+          return prev.filter((p) => failedFilenames.has(p.file.name));
+        });
+        errorToast(
+          `Ticket #${ticket.id} vytvořen, ale ${uploadFailures.length} ${uploadFailures.length === 1 ? "příloha selhala" : "příloh selhalo"}:\n${uploadFailures.join("\n")}`,
+        );
+        return;
+      }
       successToast(`Ticket #${ticket.id} vytvořen`);
       reset();
       onOpenChange(false);

@@ -16,16 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/shared/components/ui/alert-dialog";
 import { useTicket, TICKETS_QUERY_KEY } from "../hooks/useTickets";
 import { extractImagesFromClipboard, uploadTicketAttachment } from "../utils/uploadAttachment";
 import { StatusBadge, PriorityBadge, TypeBadge } from "../components/TicketBadges";
@@ -38,7 +28,7 @@ import {
   type TicketPriority,
   type TicketStatus,
 } from "@shared/types";
-import { ArrowLeft, Loader2, Send, Trash2, Paperclip, X, AlertTriangle, Hash } from "lucide-react";
+import { ArrowLeft, Loader2, Send, Trash2, Paperclip, X, AlertTriangle, Hash, CheckCircle2 } from "lucide-react";
 import dayjs from "dayjs";
 
 const STATUS_OPTIONS = Object.entries(TICKET_STATUS_LABELS) as [TicketStatus, string][];
@@ -53,7 +43,6 @@ export default function TicketDetailPage() {
   const { data: ticket, isLoading } = useTicket(id);
   const [reply, setReply] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
-  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => () => {
     pendingAttachments.forEach((f) => {
@@ -78,7 +67,7 @@ export default function TicketDetailPage() {
   });
 
   const commentMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<{ uploadFailures: string[] }> => {
       if (!ticket) throw new Error("Ticket nenačten");
       if (reply.trim() === "" && pendingAttachments.length === 0) {
         throw new Error("Napiš odpověď nebo přidej přílohu");
@@ -89,15 +78,34 @@ export default function TicketDetailPage() {
           content: reply.trim(),
         });
       }
+      // Sebereme failures (nezahodíme komentář kvůli upload chybě, jen
+      // upozorníme uživatele a necháme failed přílohy v pending).
+      const uploadFailures: string[] = [];
       for (const file of pendingAttachments) {
-        await uploadTicketAttachment(ticket.id, file, createdComment ? { commentId: createdComment.id } : undefined);
+        try {
+          await uploadTicketAttachment(ticket.id, file, createdComment ? { commentId: createdComment.id } : undefined);
+        } catch (e) {
+          const apiErr = e as { response?: { data?: { error?: string; hint?: string } } };
+          const reason = apiErr?.response?.data?.hint
+            ?? apiErr?.response?.data?.error
+            ?? (e instanceof Error ? e.message : String(e));
+          uploadFailures.push(`${file.name}: ${reason}`);
+        }
       }
+      return { uploadFailures };
     },
-    onSuccess: () => {
+    onSuccess: ({ uploadFailures }) => {
       setReply("");
-      setPendingAttachments([]);
+      const failedNames = new Set(uploadFailures.map((f) => f.split(":")[0].trim()));
+      setPendingAttachments((prev) => prev.filter((f) => failedNames.has(f.name)));
       invalidate();
-      successToast("Komentář přidán");
+      if (uploadFailures.length > 0) {
+        errorToast(
+          `Komentář uložen, ale ${uploadFailures.length} ${uploadFailures.length === 1 ? "příloha selhala" : "příloh selhalo"}:\n${uploadFailures.join("\n")}`,
+        );
+      } else {
+        successToast("Komentář přidán");
+      }
     },
     onError: (e: Error) => errorToast(e),
   });
@@ -120,11 +128,11 @@ export default function TicketDetailPage() {
     onError: (e: Error) => errorToast(e),
   });
 
-  const deleteTicketMutation = useMutation({
-    mutationFn: () => api.delete(`/api/tickets/${id}`),
+  const closeTicketMutation = useMutation({
+    mutationFn: () => api.put<Ticket>(`/api/tickets/${id}`, { status: "CLOSED" }),
     onSuccess: () => {
       invalidate();
-      successToast("Ticket smazán");
+      successToast("Ticket dokončen a uzavřen");
       navigate("/tickets");
     },
     onError: (e: Error) => errorToast(e),
@@ -152,6 +160,8 @@ export default function TicketDetailPage() {
     return <div className="p-6 text-center text-muted-foreground">Ticket nenalezen</div>;
   }
 
+  const isClosed = ticket.status === "RESOLVED" || ticket.status === "CLOSED" || ticket.status === "WONTFIX";
+
   return (
     <div className="p-6 space-y-6">
       <PageHeader
@@ -168,10 +178,18 @@ export default function TicketDetailPage() {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Zpět
         </Button>
-        <Button variant="destructive" onClick={() => setConfirmDelete(true)}>
-          <Trash2 className="w-4 h-4 mr-2" />
-          Smazat
-        </Button>
+        {!isClosed && (
+          <Button
+            onClick={() => closeTicketMutation.mutate()}
+            disabled={closeTicketMutation.isPending}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            {closeTicketMutation.isPending
+              ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              : <CheckCircle2 className="w-4 h-4 mr-2" />}
+            Dokončit a uzavřít
+          </Button>
+        )}
       </PageHeader>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -356,25 +374,6 @@ ${ticket.stackTrace ?? ""}`}
         </div>
       </div>
 
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Smazat ticket #{ticket.id}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Včetně všech komentářů a příloh. Akce je nevratná.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Zrušit</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteTicketMutation.mutate()}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Smazat
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
