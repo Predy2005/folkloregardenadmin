@@ -14,16 +14,29 @@ class EventGuestRepository extends ServiceEntityRepository
     }
 
     /**
+     * Typy hostů, kteří jsou vždy "zdarma" (driver, guide, infant) —
+     * bez ohledu na `isPaid` flag. Konzistentní s pricing logikou v
+     * `useReservationPersons.defaultPrice` (frontend) i `SpecialDateRules`
+     * (backend), kde tyto typy mají cenu 0.
+     */
+    private const FREE_TYPES = ['driver', 'guide', 'infant'];
+
+    /**
      * Returns counts for a single event: total, paid, free.
+     *
+     * - `paid` = host typu `adult`/`child` s `isPaid = true`
+     * - `free` = host typu `driver`/`guide`/`infant` NEBO `adult`/`child` s `isPaid = false`
+     *
      * @return array{total:int, paid:int, free:int}
      */
     public function getCountsForEvent(int $eventId): array
     {
         $qb = $this->createQueryBuilder('g')
             ->select('COUNT(g.id) AS total')
-            ->addSelect('SUM(CASE WHEN g.isPaid = true THEN 1 ELSE 0 END) AS paid')
+            ->addSelect('SUM(CASE WHEN g.isPaid = true AND g.type NOT IN (:freeTypes) THEN 1 ELSE 0 END) AS paid')
             ->where('g.event = :eventId')
-            ->setParameter('eventId', $eventId);
+            ->setParameter('eventId', $eventId)
+            ->setParameter('freeTypes', self::FREE_TYPES);
 
         $row = $qb->getQuery()->getSingleResult();
         $total = (int)($row['total'] ?? 0);
@@ -45,9 +58,10 @@ class EventGuestRepository extends ServiceEntityRepository
         $qb = $this->createQueryBuilder('g')
             ->select('IDENTITY(g.event) AS eventId')
             ->addSelect('COUNT(g.id) AS total')
-            ->addSelect('SUM(CASE WHEN g.isPaid = true THEN 1 ELSE 0 END) AS paid')
+            ->addSelect('SUM(CASE WHEN g.isPaid = true AND g.type NOT IN (:freeTypes) THEN 1 ELSE 0 END) AS paid')
             ->where('g.event IN (:ids)')
             ->setParameter('ids', $eventIds)
+            ->setParameter('freeTypes', self::FREE_TYPES)
             ->groupBy('eventId');
 
         $rows = $qb->getQuery()->getArrayResult();

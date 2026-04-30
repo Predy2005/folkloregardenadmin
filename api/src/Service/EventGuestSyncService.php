@@ -101,14 +101,18 @@ class EventGuestSyncService
                 } else {
                     $guest = new EventGuest();
                     $guest->setEvent($event)
-                        ->setReservation($reservation)
-                        ->setIsPaid(true);
+                        ->setReservation($reservation);
                     $this->em->persist($guest);
                 }
 
-                // Update mutable fields that mirror reservation data
-                $guest->setType($person->getType() ?? 'adult')
-                    ->setFirstName($reservation->getContactName() ?: $person->getType())
+                // Update mutable fields that mirror reservation data.
+                // `isPaid` se odvozuje z `type`: driver/guide/infant jsou vždy
+                // zdarma, adult/child platí (konzistentní s pricing logikou).
+                $personType = $person->getType() ?? 'adult';
+                $isPaidByType = !in_array($personType, ['driver', 'guide', 'infant'], true);
+                $guest->setType($personType)
+                    ->setIsPaid($isPaidByType)
+                    ->setFirstName($reservation->getContactName() ?: $personType)
                     ->setPersonIndex($globalPersonIndex)
                     ->setNationality($reservation->getContactNationality());
 
