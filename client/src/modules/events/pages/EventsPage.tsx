@@ -47,8 +47,10 @@ export default function Events() {
     const [search, setSearch] = useState("");
     const [isViewOpen, setIsViewOpen] = useState(false);
     const [viewingEvent, setViewingEvent] = useState<Event | null>(null);
-    const [statusFilter, setStatusFilter] = useState<string>("all");
-    const [typeFilter, setTypeFilter] = useState<string>("all");
+    const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
+    const [typeFilter, setTypeFilter] = useState<Set<string>>(new Set());
+    const [coordinatorFilter, setCoordinatorFilter] = useState<Set<string>>(new Set());
+    const [highlightOnly, setHighlightOnly] = useState(false);
     const [timeFilter, setTimeFilter] = useState<"all" | "upcoming" | "past" | "nearest">("nearest");
     const [bulkActionOpen, setBulkActionOpen] = useState(false);
     const [bulkActionType, setBulkActionType] = useState<'status' | 'eventType' | 'delete' | null>(null);
@@ -77,7 +79,16 @@ export default function Events() {
         },
     });
 
-    const filteredEvents = events ? filterAndSortEvents(events, search, statusFilter, typeFilter, timeFilter) : [];
+    const filteredEvents = events
+      ? filterAndSortEvents(events, {
+          search,
+          status: statusFilter,
+          type: typeFilter,
+          coordinator: coordinatorFilter,
+          highlightOnly,
+          time: timeFilter,
+        })
+      : [];
 
     const { selectedIds, toggleSelect, toggleSelectAll, clearSelection } = useBulkSelection({
         items: filteredEvents,
@@ -151,7 +162,11 @@ export default function Events() {
             <Card>
                 <EventFilters
                     search={search} setSearch={setSearch} timeFilter={timeFilter} setTimeFilter={setTimeFilter}
-                    typeFilter={typeFilter} setTypeFilter={setTypeFilter} statusFilter={statusFilter} setStatusFilter={setStatusFilter}
+                    typeFilter={typeFilter} setTypeFilter={setTypeFilter}
+                    statusFilter={statusFilter} setStatusFilter={setStatusFilter}
+                    coordinatorFilter={coordinatorFilter} setCoordinatorFilter={setCoordinatorFilter}
+                    highlightOnly={highlightOnly} setHighlightOnly={setHighlightOnly}
+                    events={events}
                     filteredCount={filteredEvents.length} totalCount={events?.length || 0}
                     isSuperAdmin={isSuperAdmin} selectedIds={selectedIds}
                     onBulkChangeStatus={() => { setBulkActionType('status'); setBulkValue(''); setBulkActionOpen(true); }}
@@ -162,7 +177,7 @@ export default function Events() {
                 <CardContent>
                     <EventsTable
                         events={filteredEvents} isLoading={isLoading}
-                        hasFilters={!!(search || statusFilter !== "all" || typeFilter !== "all")}
+                        hasFilters={!!(search || statusFilter.size > 0 || typeFilter.size > 0 || coordinatorFilter.size > 0 || highlightOnly)}
                         isSuperAdmin={isSuperAdmin} selectedIds={selectedIds}
                         onToggleSelect={toggleSelect} onToggleSelectAll={toggleSelectAll}
                         onDashboard={(event) => setLocation(`/events/${event.id}/dashboard`)}

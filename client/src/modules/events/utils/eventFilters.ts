@@ -1,20 +1,45 @@
 import type { Event } from "@shared/types";
 import dayjs from "dayjs";
 
+export interface EventFilterOptions {
+  search: string;
+  status: Set<string>;
+  type: Set<string>;
+  coordinator: Set<string>;
+  highlightOnly: boolean;
+  time: "all" | "upcoming" | "past" | "nearest";
+}
+
+const HIGHLIGHT_TAG = "highlight";
+
 export function filterAndSortEvents(
   events: Event[],
-  search: string,
-  statusFilter: string,
-  typeFilter: string,
-  timeFilter: "all" | "upcoming" | "past" | "nearest",
+  options: EventFilterOptions,
 ): Event[] {
+  const { search, status, type, coordinator, highlightOnly, time: timeFilter } = options;
   const now = dayjs();
+  const lowerSearch = search.toLowerCase();
 
   let filtered = events.filter((event) => {
-    const matchesSearch = event.name.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "all" || event.status === statusFilter;
-    const matchesType = typeFilter === "all" || event.eventType === typeFilter;
-    return matchesSearch && matchesStatus && matchesType;
+    if (lowerSearch) {
+      const haystack = [
+        event.name,
+        event.organizerPerson,
+        event.coordinator?.name,
+        ...(event.eventTags ?? []),
+        ...(event.headWaiters ?? []),
+        ...(event.band?.map((m) => m.name) ?? []),
+      ].filter(Boolean).join(" ").toLowerCase();
+      if (!haystack.includes(lowerSearch)) return false;
+    }
+    if (status.size > 0 && !status.has(event.status)) return false;
+    if (type.size > 0 && !type.has(event.eventType)) return false;
+    if (coordinator.size > 0 && (!event.coordinator?.name || !coordinator.has(event.coordinator.name))) return false;
+    if (highlightOnly) {
+      const tags = (event.eventTags ?? []).map((t) => t.toLowerCase());
+      if (!tags.includes(HIGHLIGHT_TAG)) return false;
+    }
+    return true;
   });
 
   if (timeFilter === "upcoming") {

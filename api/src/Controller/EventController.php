@@ -196,11 +196,57 @@ class EventController extends AbstractController
         $ids = array_map(fn(Event $e) => (int)$e->getId(), $events);
         $counts = $this->guestRepo->getCountsForEvents($ids);
 
-        $data = array_map(function (Event $e) use ($counts) {
+        // Hromadný load assignments + staff_member kvůli sloupcům "manažerka",
+        // "hl. číšník", "kapela" v list view (jeden DQL místo N+1).
+        $assignmentsByEvent = [];
+        $coordinatorIds = [];
+        $coordinatorNames = [];
+
+        if ($ids) {
+            $rows = $this->em->createQuery(
+                'SELECT IDENTITY(esa.event) AS eventId,
+                        esa.staffMemberId AS staffId,
+                        sm.firstName AS firstName,
+                        sm.lastName AS lastName,
+                        sm.position AS position
+                 FROM App\\Entity\\EventStaffAssignment esa
+                 JOIN App\\Entity\\StaffMember sm WITH sm.id = esa.staffMemberId
+                 WHERE IDENTITY(esa.event) IN (:ids)'
+            )->setParameter('ids', $ids)->getArrayResult();
+            foreach ($rows as $row) {
+                $eid = (int)$row['eventId'];
+                $assignmentsByEvent[$eid][] = [
+                    'staffId' => (int)$row['staffId'],
+                    'name' => trim(($row['firstName'] ?? '') . ' ' . ($row['lastName'] ?? '')),
+                    'position' => $row['position'] ?? '',
+                ];
+            }
+
+            // Coordinator names — jeden batch query pro všechny coordinatorIds.
+            foreach ($events as $e) {
+                if ($cid = $e->getCoordinatorId()) $coordinatorIds[] = $cid;
+            }
+            if ($coordinatorIds) {
+                $coordRows = $this->em->createQuery(
+                    'SELECT sm.id, sm.firstName, sm.lastName
+                     FROM App\\Entity\\StaffMember sm
+                     WHERE sm.id IN (:ids)'
+                )->setParameter('ids', array_unique($coordinatorIds))->getArrayResult();
+                foreach ($coordRows as $row) {
+                    $coordinatorNames[(int)$row['id']] = trim(($row['firstName'] ?? '') . ' ' . ($row['lastName'] ?? ''));
+                }
+            }
+        }
+
+        // Pozice klasifikované do skupin — kapela (BAND) vs hl. obsluha.
+        $bandPositions = ['MUSICIAN', 'BAND', 'DANCER', 'DANCE_GROUP', 'SOUND_TECH'];
+        $headWaiterPositions = ['HEAD_WAITER'];
+        $managerPositions = ['MANAGER', 'COORDINATOR'];
+
+        $data = array_map(function (Event $e) use ($counts, $assignmentsByEvent, $coordinatorNames, $bandPositions, $headWaiterPositions, $managerPositions) {
             $id = (int)$e->getId();
             $cnt = $counts[$id] ?? ['paid' => 0, 'free' => 0, 'total' => 0];
 
-            // Build spaces array from event_space table
             $spaces = [];
             foreach ($e->getSpaces() as $s) {
                 $spaces[] = [
@@ -212,10 +258,36 @@ class EventController extends AbstractController
                 ];
             }
 
+            // Coordinator (manažerka): preferuj interního, fallback na external_*.
+            $coordinator = null;
+            if ($e->getCoordinatorId() && isset($coordinatorNames[$e->getCoordinatorId()])) {
+                $coordinator = ['id' => $e->getCoordinatorId(), 'name' => $coordinatorNames[$e->getCoordinatorId()], 'isExternal' => false];
+            } elseif ($e->isExternalCoordinator() && $e->getExternalCoordinatorName()) {
+                $coordinator = ['id' => null, 'name' => $e->getExternalCoordinatorName(), 'isExternal' => true];
+            }
+
+            // Hl. číšník + manažeři (kromě coordinatora) + kapela
+            $assignments = $assignmentsByEvent[$id] ?? [];
+            $headWaiters = [];
+            $managers = [];
+            $band = [];
+            foreach ($assignments as $a) {
+                $pos = strtoupper((string)$a['position']);
+                if (in_array($pos, $headWaiterPositions, true)) {
+                    $headWaiters[] = $a['name'];
+                } elseif (in_array($pos, $managerPositions, true)) {
+                    $managers[] = $a['name'];
+                } elseif (in_array($pos, $bandPositions, true)) {
+                    $band[] = ['name' => $a['name'], 'position' => $pos];
+                }
+            }
+
             return [
                 'id' => $id,
                 'name' => $e->getName(),
                 'eventType' => $this->normalizeEventTypeForFrontend($e->getEventType()),
+                'eventSubcategory' => $e->getEventSubcategory(),
+                'eventTags' => $e->getEventTags() ?? [],
                 'eventDate' => $e->getEventDate()->format('Y-m-d'),
                 'eventTime' => $e->getEventTime()->format('H:i:s'),
                 'status' => $e->getStatus(),
@@ -227,6 +299,11 @@ class EventController extends AbstractController
                 'notesStaff' => $e->getNotesStaff(),
                 'specialRequirements' => $e->getSpecialRequirements(),
                 'spaces' => $spaces,
+                // Nové pro list view (Google Sheet styl: manažerka, hl. číšník, kapela)
+                'coordinator' => $coordinator,
+                'managers' => $managers,
+                'headWaiters' => $headWaiters,
+                'band' => $band,
             ];
         }, $events);
 

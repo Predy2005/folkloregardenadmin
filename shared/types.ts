@@ -947,6 +947,18 @@ export interface Event {
   externalCoordinatorPhone?: string;
   externalCoordinatorNote?: string;
 
+  // Doplňky pro list view (manažerka, hl. číšník, kapela) — backend agreguje
+  // z `event_staff_assignment` + `staff_member.position`. Není dostupné v
+  // event detail GET (tam si frontend assignments řeší přímo přes /staff-assignments).
+  /** Aktuálně přiřazený coordinator (priorita: interní → external_*). */
+  coordinator?: { id: number | null; name: string; isExternal: boolean } | null;
+  /** Jména přiřazených manažerů/koordinátorů (z event_staff_assignment, kromě hlavního coordinatora). */
+  managers?: string[];
+  /** Jména přiřazených hlavních číšníků (HEAD_WAITER position). */
+  headWaiters?: string[];
+  /** Členové kapely / tanečního souboru / sound techu (MUSICIAN, BAND, DANCER, DANCE_GROUP, SOUND_TECH). */
+  band?: { name: string; position: string }[];
+
   // Metadata
   createdBy?: number;
   createdAt: string;

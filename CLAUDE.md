@@ -97,6 +97,11 @@ npm run start    # Run production build
 
 **Permissions**: backend kontroly přes `#[IsGranted('<resource>.<action>')]` (např. `reservations.update`, `staff.delete`). Super admin role obchází všechny granular permissions. Frontend gate používá `useAuth().hasPermission('<resource>.<action>')`. **Nepoužíváme `ROLE_SUPER_ADMIN` jako gate** pro běžné akce — granular permissions umožňují adminům dělat běžné věci, super-admin si necháme pro destruktivní/system operace.
 
+**Role policy (seed `SeedPermissionsCommand`):**
+- `SUPER_ADMIN` (priority 100) — wildcard `*`, všechno včetně CRUD nad role/permission definicemi.
+- `ADMIN` (priority 90) — všechny moduly + `permissions.read` + `permissions.update`, takže může **přiřazovat role** běžným uživatelům. Nemůže ale (a) přiřadit `SUPER_ADMIN` roli (gated v `PermissionController:149`), (b) editovat SUPER_ADMIN uživatele (gated v `PermissionService::canManageUser`), (c) měnit definice rolí/permissions samotných (to je SUPER_ADMIN-only).
+- `MANAGER` (priority 70) a níž — `permissions.*` **nemají**, takže do user-role assignmentů nesmí.
+
 ### Key Patterns
 - **API Client**: Use `api.get/post/put/delete` from `shared/lib/api.ts`
 - **Data Fetching**: TanStack Query hooks (`useQuery`, `useMutation`)
@@ -215,6 +220,14 @@ Pokud potřebuješ v cyklu volat mutation, která pracuje s aktuálním stavem (
 
 ### Events (`/events`, `/events/{id}/edit`)
 
+**Events list view** (rozšířený, nahrazuje Google Sheet TODO):
+- Sloupce: Datum/čas · Akce (jméno + Highlight ⭐ + typ + tagy + prostor + organizátor) · Hosté (paid/free split) · Tým (manažerka + hl. číšník) · Kapela/show · Status · akční tlačítka.
+- Manažerka (coordinator) z `Event.coordinatorId` (interní) nebo `external_coordinator_name` (externí, suffix "(ext)").
+- Hl. číšník + kapela agregované z `EventStaffAssignment` joinovaného s `staff_member.position`. **Hl. číšník** = pozice `HEAD_WAITER`. **Kapela** = pozice `MUSICIAN`, `BAND`, `DANCER`, `DANCE_GROUP`, `SOUND_TECH` (pak v tooltipu).
+- Highlight = tag `Highlight` v `eventTags` array.
+- `EventController::list` agreguje vše v 1 batch DQL query (žádný N+1) — vrací navíc pole `coordinator`, `managers`, `headWaiters`, `band`, `eventTags`.
+- **Filtrování**: `MultiSelectFilter` (Typ, Status, Manažerka — auto-naplněné z aktuálních eventů), toggle "Highlight" zobrazí jen flagované, search hledá napříč všemi text poli.
+
 **Default čas a doba trvání akce**:
 - **Čas akce**: `19:30:00` (předtím `18:00:00`). Hodnota se uplatní v `EventController::create` (POST `/api/events`) a v `createFromReservation`. Nastaveno v `EventController.php:469` a `:556`.
 - **Doba trvání**: `150 minut` (předtím `120`). Migrace `Version20260428121513` mění DB default; existující akce zůstávají na svých hodnotách. Property na entitě `Event.durationMinutes = 150`.
@@ -264,7 +277,7 @@ Modul nahrazuje Excel TODO list — admin/manager hlásí, developer řeší.
 
 **UI** (`client/src/modules/tickets/`):
 - `/tickets` — list s multi-select filtry (status/priorita/typ) + search; defaultně skrývá `RESOLVED`/`CLOSED`/`WONTFIX`.
-- `/tickets/{id}` — detail s vláknem komentářů, change-status / change-priority dropdown v sidebaru.
+- `/tickets/{id}` — detail s vláknem komentářů, change-status / change-priority dropdown v sidebaru. Místo mazání má **"Dokončit a uzavřít"** akci (sets `status=CLOSED`); zavřené tickety nezmizí, jen se přestanou zobrazovat v default listu (zobrazí se po výběru ve Status filtru). DELETE endpoint na BE zůstává, ale není v UI dosažitelný.
 - `CreateTicketDialog` + textarea v detailu mají `onPaste` listener (helper `extractImagesFromClipboard`) — **Ctrl+V s obrázkem v clipboardu** uploaduje screenshot.
 - `WAITING_FOR_INFO` → po odpovědi creatora se ticket auto-otevře (status `OPEN`).
 - Sidebar link "Tickety / TODO" gated na `tickets.read` (Bug ikona).
