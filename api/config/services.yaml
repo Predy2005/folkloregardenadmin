@@ -36,6 +36,12 @@ services:
     arguments:
       $publicDir: '%kernel.project_dir%/public'
 
+  # Swagger UI Basic Auth + krátkodobé alias API klíče pro partnery.
+  # APP_SECRET používáme jako HMAC podpisový klíč pro aliasy.
+  App\Service\SwaggerAccessService:
+    arguments:
+      $appSecret: '%env(APP_SECRET)%'
+
   # AI assistant: tag all tools so ToolRegistry gets them injected
   _instanceof:
     App\Service\Assistant\Tool\ToolInterface:

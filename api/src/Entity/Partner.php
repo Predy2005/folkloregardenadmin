@@ -54,6 +54,10 @@ class Partner
     #[ORM\Column(type: Types::STRING, length: 20, nullable: true)]
     private ?string $dic = null;
 
+    // External Pohoda customer number (legacy ERP code)
+    #[ORM\Column(name: 'pohoda_code', type: Types::STRING, length: 20, nullable: true)]
+    private ?string $pohodaCode = null;
+
     #[ORM\Column(type: Types::BOOLEAN, options: ['default' => true])]
     private bool $isActive = true;
 
@@ -111,6 +115,33 @@ class Partner
     #[ORM\Column(name: 'detection_keywords', type: Types::JSON, nullable: true)]
     private ?array $detectionKeywords = null; // e.g. ["Hotel Prague", "Prague Tours"]
 
+    // API key auth — partner přístup přes X-API-Key header. Plaintext klíče
+    // se nikdy neukládá, jen jeho SHA-256 hash. Last4 slouží k identifikaci v UI.
+    #[ORM\Column(name: 'api_key_hash', type: Types::STRING, length: 64, nullable: true)]
+    private ?string $apiKeyHash = null;
+
+    #[ORM\Column(name: 'api_key_last4', type: Types::STRING, length: 4, nullable: true)]
+    private ?string $apiKeyLast4 = null;
+
+    #[ORM\Column(name: 'api_key_generated_at', type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTimeInterface $apiKeyGeneratedAt = null;
+
+    #[ORM\Column(name: 'api_key_last_used_at', type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTimeInterface $apiKeyLastUsedAt = null;
+
+    // Swagger UI HTTP Basic Auth — credentials pro /api/doc/partner přístup.
+    // Heslo se ukládá jen jako bcrypt hash (password_hash); plaintext se vrací
+    // adminovi jen při generování. Username musí být unikátní napříč partnery
+    // (partial unique index `WHERE NOT NULL`).
+    #[ORM\Column(name: 'swagger_username', type: Types::STRING, length: 64, nullable: true)]
+    private ?string $swaggerUsername = null;
+
+    #[ORM\Column(name: 'swagger_password_hash', type: Types::STRING, length: 255, nullable: true)]
+    private ?string $swaggerPasswordHash = null;
+
+    #[ORM\Column(name: 'swagger_credentials_generated_at', type: Types::DATETIME_MUTABLE, nullable: true)]
+    private ?\DateTimeInterface $swaggerCredentialsGeneratedAt = null;
+
     public function __construct()
     {
         $this->createdAt = new \DateTime();
@@ -157,6 +188,34 @@ class Partner
 
     public function getDic(): ?string { return $this->dic; }
     public function setDic(?string $v): self { $this->dic = $v; return $this; }
+
+    public function getPohodaCode(): ?string { return $this->pohodaCode; }
+    public function setPohodaCode(?string $v): self { $this->pohodaCode = $v; return $this; }
+
+    public function getApiKeyHash(): ?string { return $this->apiKeyHash; }
+    public function setApiKeyHash(?string $v): self { $this->apiKeyHash = $v; return $this; }
+
+    public function getApiKeyLast4(): ?string { return $this->apiKeyLast4; }
+    public function setApiKeyLast4(?string $v): self { $this->apiKeyLast4 = $v; return $this; }
+
+    public function getApiKeyGeneratedAt(): ?\DateTimeInterface { return $this->apiKeyGeneratedAt; }
+    public function setApiKeyGeneratedAt(?\DateTimeInterface $v): self { $this->apiKeyGeneratedAt = $v; return $this; }
+
+    public function getApiKeyLastUsedAt(): ?\DateTimeInterface { return $this->apiKeyLastUsedAt; }
+    public function setApiKeyLastUsedAt(?\DateTimeInterface $v): self { $this->apiKeyLastUsedAt = $v; return $this; }
+
+    public function hasApiKey(): bool { return $this->apiKeyHash !== null; }
+
+    public function getSwaggerUsername(): ?string { return $this->swaggerUsername; }
+    public function setSwaggerUsername(?string $v): self { $this->swaggerUsername = $v; return $this; }
+
+    public function getSwaggerPasswordHash(): ?string { return $this->swaggerPasswordHash; }
+    public function setSwaggerPasswordHash(?string $v): self { $this->swaggerPasswordHash = $v; return $this; }
+
+    public function getSwaggerCredentialsGeneratedAt(): ?\DateTimeInterface { return $this->swaggerCredentialsGeneratedAt; }
+    public function setSwaggerCredentialsGeneratedAt(?\DateTimeInterface $v): self { $this->swaggerCredentialsGeneratedAt = $v; return $this; }
+
+    public function hasSwaggerCredentials(): bool { return $this->swaggerUsername !== null && $this->swaggerPasswordHash !== null; }
 
     public function isActive(): bool { return $this->isActive; }
     public function setIsActive(bool $v): self { $this->isActive = $v; return $this; }

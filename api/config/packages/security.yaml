@@ -8,6 +8,11 @@ security:
       entity:
         class: App\Entity\User
         property: username # Identifikátor je username
+    # Provider pro HTTP Basic Auth do /api/doc/partner Swagger UI.
+    # Dohledá Partner podle `swagger_username`; ověření hesla dělá http_basic
+    # přes PartnerSwaggerUser::getPassword() (bcrypt hash v DB).
+    partner_swagger_provider:
+      id: App\Security\PartnerSwaggerUserProvider
 
   firewalls:
     auth:
@@ -32,6 +37,38 @@ security:
       pattern: ^/api/mobile/auth/(login|pin-login|refresh|logout)$
       stateless: true
       security: false
+    # Partner API — externí integrace přes X-API-Key. Custom authenticator
+    # hashuje klíč, dohledá Partner v DB, vytvoří PartnerSecurityUser s ROLE_PARTNER.
+    # Pattern jen `/api/partner-api/*` — Swagger UI partnera má vlastní firewall níž.
+    # MUSÍ být před `main`, jinak by JWT firewall request chytil a odmítl.
+    partner_api:
+      pattern: ^/api/partner-api
+      stateless: true
+      # Provider je povinný když je registrováno víc providerů, i když ho custom
+      # authenticator nepoužívá (PartnerApiKeyAuthenticator si Partner dohledává sám).
+      provider: app_user_provider
+      custom_authenticators:
+        - App\Security\PartnerApiKeyAuthenticator
+    # Swagger UI pro partnera (/api/doc/partner) — HTTP Basic Auth proti
+    # `partner.swagger_username` + `swagger_password_hash` (bcrypt).
+    # Po loginu Twig override pre-fillne X-API-Key v Authorize dialogu krátkodobým
+    # alias klíčem `fgsk_swagger_*` (SwaggerAccessService::issueAliasKey).
+    # MUSÍ být před `admin_swagger_ui` (delší prefix první) a před `main`.
+    partner_swagger_ui:
+      pattern: ^/api/doc/partner
+      stateless: true
+      provider: partner_swagger_provider
+      http_basic:
+        realm: 'Folklore Garden Partner Swagger'
+    # Swagger UI pro admina (/api/doc) — HTTP Basic Auth proti User entitě.
+    # Admin se přihlásí svým existujícím admin username/heslem (stejné jako
+    # do frontendu). Žádná separátní credentials.
+    admin_swagger_ui:
+      pattern: ^/api/doc
+      stateless: true
+      provider: app_user_provider
+      http_basic:
+        realm: 'Folklore Garden Admin Swagger'
     main:
       pattern: ^/
       stateless: true
@@ -51,10 +88,23 @@ security:
     - { path: ^/public-api, roles: IS_AUTHENTICATED_ANONYMOUSLY }
     - { path: ^/api/test/, roles: ROLE_ADMIN }
     - { path: ^/api/payment/test, roles: ROLE_ADMIN }
+    # Swagger UI a JSON.
+    # /api/doc/partner → http_basic proti partner_swagger_provider (Partner.swagger_username),
+    # access role ROLE_PARTNER_SWAGGER. Partner se přihlásí credentials, které mu admin
+    # vygeneroval v /partners/{id}/edit; po loginu Twig override pre-fillne X-API-Key
+    # krátkodobým alias klíčem (SwaggerAccessService).
+    # /api/doc → http_basic proti app_user_provider (User.username), role ROLE_ADMIN.
+    # Admin se přihlásí svými existujícími credentials.
+    # Specifický pattern MUSÍ být před obecnějším `^/api/doc`.
+    - { path: ^/api/doc/partner, roles: ROLE_PARTNER_SWAGGER }
+    - { path: ^/api/doc, roles: ROLE_ADMIN }
     - { path: ^/api/mobile/auth/login, roles: IS_AUTHENTICATED_ANONYMOUSLY }
     - { path: ^/api/mobile/auth/pin-login, roles: IS_AUTHENTICATED_ANONYMOUSLY }
     - { path: ^/api/mobile/auth/refresh, roles: IS_AUTHENTICATED_ANONYMOUSLY }
     - { path: ^/api/mobile/auth/logout, roles: IS_AUTHENTICATED_ANONYMOUSLY }
+    # Partner API — autentizováno přes X-API-Key custom authenticator, gateováno ROLE_PARTNER.
+    # MUSÍ být před broad `^/api/` pravidlem, jinak `IS_AUTHENTICATED_FULLY` chce JWT.
+    - { path: ^/api/partner-api, roles: ROLE_PARTNER }
     - { path: ^/api/, roles: IS_AUTHENTICATED_FULLY }
     - { path: ^/smart-drive/, roles: IS_AUTHENTICATED_FULLY }
     - { path: ^/payment/notify, roles: IS_AUTHENTICATED_ANONYMOUSLY }

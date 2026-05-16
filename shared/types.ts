@@ -599,6 +599,19 @@ export interface Partner {
   // Detection
   detectionEmails?: string[] | null;
   detectionKeywords?: string[] | null;
+  // API key (plaintext never stored on FE, only metadata; plaintext shown once during generation)
+  apiKey?: {
+    last4: string | null;
+    generatedAt: string | null;
+    lastUsedAt: string | null;
+    active: boolean;
+  };
+  // Swagger UI HTTP Basic Auth credentials (plaintext heslo shown once at generation)
+  swaggerAccess?: {
+    username: string | null;
+    generatedAt: string | null;
+    active: boolean;
+  };
   // Timestamps
   createdAt: string;
   updatedAt: string;
@@ -1211,10 +1224,29 @@ export type StaffingCategory =
   | "fotografkyPhotographers"
   | "sperkyJewelry";
 
+/**
+ * Stupňovité (range-based) pásmo. `maxGuests = null` = otevřený horní okraj
+ * ("180+ → X personálu"). Centrální výpočet: minGuests <= guests <= maxGuests.
+ */
+export interface StaffingFormulaTier {
+  minGuests: number;
+  maxGuests: number | null;
+  staffCount: number;
+}
+
 export interface StaffingFormula {
   id: number;
   category: StaffingCategory;
+  /**
+   * Lineární poměr 1:N hostů. Použije se POUZE když `tiers` je null/prázdné.
+   * Slouží jako fallback pro zpětnou kompatibilitu.
+   */
   ratio: number;
+  /**
+   * Stupňovité pásmové výpočty. Když je vyplněno, má přednost před `ratio`.
+   * Např. 80–90 hostů → 4 číšníci, 91–110 → 5 číšníků atd.
+   */
+  tiers?: StaffingFormulaTier[] | null;
   enabled: boolean;
   description?: string;
   createdAt: string;

@@ -9,6 +9,8 @@ use App\Entity\Reservation;
 use App\Repository\PartnerRepository;
 use App\Repository\CommissionLogRepository;
 use App\Repository\ReservationRepository;
+use App\Service\PartnerApiKeyService;
+use App\Service\SwaggerAccessService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -337,6 +339,17 @@ class PartnerController extends AbstractController
             'invoiceZipcode' => $p->getInvoiceZipcode(),
             'detectionEmails' => $p->getDetectionEmails(),
             'detectionKeywords' => $p->getDetectionKeywords(),
+            'apiKey' => [
+                'last4' => $p->getApiKeyLast4(),
+                'generatedAt' => $p->getApiKeyGeneratedAt()?->format(DATE_ATOM),
+                'lastUsedAt' => $p->getApiKeyLastUsedAt()?->format(DATE_ATOM),
+                'active' => $p->hasApiKey(),
+            ],
+            'swaggerAccess' => [
+                'username' => $p->getSwaggerUsername(),
+                'generatedAt' => $p->getSwaggerCredentialsGeneratedAt()?->format(DATE_ATOM),
+                'active' => $p->hasSwaggerCredentials(),
+            ],
             'createdAt' => $p->getCreatedAt()->format(DATE_ATOM),
             'updatedAt' => $p->getUpdatedAt()->format(DATE_ATOM),
         ]);
@@ -430,6 +443,71 @@ class PartnerController extends AbstractController
         $this->em->remove($p);
         $this->em->flush();
         return $this->json(['status' => 'deleted']);
+    }
+
+    /**
+     * Vygeneruje (nebo rotuje) API klíč pro partnera. Plaintext klíče se
+     * vrací jen jednou — admin si ho musí zkopírovat hned. V DB je jen SHA-256 hash.
+     */
+    #[Route('/{id}/api-key', methods: ['POST'])]
+    #[IsGranted('partners.update')]
+    public function generateApiKey(int $id, PartnerRepository $repo, PartnerApiKeyService $svc): JsonResponse
+    {
+        $p = $repo->find($id);
+        if (!$p) { return $this->json(['error' => 'Not found'], 404); }
+
+        $plaintext = $svc->generate($p);
+
+        return $this->json([
+            'apiKey' => $plaintext,
+            'last4' => $p->getApiKeyLast4(),
+            'generatedAt' => $p->getApiKeyGeneratedAt()?->format(\DateTimeInterface::ATOM),
+        ]);
+    }
+
+    #[Route('/{id}/api-key', methods: ['DELETE'])]
+    #[IsGranted('partners.update')]
+    public function revokeApiKey(int $id, PartnerRepository $repo, PartnerApiKeyService $svc): JsonResponse
+    {
+        $p = $repo->find($id);
+        if (!$p) { return $this->json(['error' => 'Not found'], 404); }
+
+        $svc->revoke($p);
+
+        return $this->json(['status' => 'revoked']);
+    }
+
+    /**
+     * Vygeneruje (nebo rotuje) Swagger UI HTTP Basic Auth credentials pro partnera.
+     * Plaintext heslo se vrací jen jednou — admin si ho zkopíruje a předá partnerovi
+     * bezpečným kanálem. V DB je jen bcrypt hash.
+     */
+    #[Route('/{id}/swagger-credentials', methods: ['POST'])]
+    #[IsGranted('partners.update')]
+    public function generateSwaggerCredentials(int $id, PartnerRepository $repo, SwaggerAccessService $svc): JsonResponse
+    {
+        $p = $repo->find($id);
+        if (!$p) { return $this->json(['error' => 'Not found'], 404); }
+
+        $creds = $svc->generateCredentials($p);
+
+        return $this->json([
+            'username' => $creds['username'],
+            'password' => $creds['password'],
+            'generatedAt' => $p->getSwaggerCredentialsGeneratedAt()?->format(\DateTimeInterface::ATOM),
+        ]);
+    }
+
+    #[Route('/{id}/swagger-credentials', methods: ['DELETE'])]
+    #[IsGranted('partners.update')]
+    public function revokeSwaggerCredentials(int $id, PartnerRepository $repo, SwaggerAccessService $svc): JsonResponse
+    {
+        $p = $repo->find($id);
+        if (!$p) { return $this->json(['error' => 'Not found'], 404); }
+
+        $svc->revokeCredentials($p);
+
+        return $this->json(['status' => 'revoked']);
     }
 
     #[Route('/{id}/reservations', methods: ['GET'])]

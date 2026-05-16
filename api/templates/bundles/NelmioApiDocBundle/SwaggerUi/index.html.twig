@@ -1,0 +1,35 @@
+{# Override Nelmio SwaggerUi šablony. Po HTTP Basic Auth loginu jako partner
+   pre-fillne X-API-Key v Swagger UI Authorize dialogu krátkodobým alias klíčem
+   (`fgsk_swagger_*`, HMAC-podepsaný APP_SECRETem, TTL 1h, viz SwaggerAccessService).
+
+   Reálný production API klíč partnera v UI nikdy nefiguruje — alias je oddělený,
+   krátkodobý, vázaný jen na konkrétní partner ID v payloadu.
+
+   Pro admina (`/api/doc`) extension `partner_alias_key()` vrací prázdný string —
+   admin volá `/api/*` přes JWT z localStorage svého frontendu, ne přes Swagger UI.
+#}
+{% extends '@!NelmioApiDoc/SwaggerUi/index.html.twig' %}
+
+{% block swagger_initialization %}
+    {% set partnerAliasKey = partner_alias_key() %}
+    {% if partnerAliasKey %}
+        <meta name="partner-alias-api-key" content="{{ partnerAliasKey }}">
+    {% endif %}
+    <script type="text/javascript">
+        window.onload = () => {
+            const ui = loadSwaggerUI({{ swagger_ui_config|json_encode(65)|raw }});
+            window.ui = ui;
+
+            const aliasKeyMeta = document.querySelector('meta[name="partner-alias-api-key"]');
+            if (aliasKeyMeta && ui && typeof ui.preauthorizeApiKey === 'function') {
+                // ApiKey je název security scheme v nelmio_api_doc.yaml.
+                // Swagger UI ho po loginu vyplní jako kdyby uživatel klikl Authorize.
+                try {
+                    ui.preauthorizeApiKey('ApiKey', aliasKeyMeta.getAttribute('content'));
+                } catch (e) {
+                    console.warn('Nepodařilo se pre-fillnout X-API-Key:', e);
+                }
+            }
+        };
+    </script>
+{% endblock %}
