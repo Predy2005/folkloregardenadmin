@@ -284,12 +284,12 @@ Po dokončení:
 
 ### [~] 1.5 — Legacy cleanup (drizzle, backup, use-mobile.tsx)
 
-**Stav (2026-05-14)** — partial done:
+**Stav (2026-05-18)** — drizzle cleanup je už v pre-existing stagingu, jen necommitnutý:
 - ✅ `client/src/pages/Events.tsx.backup` smazán
 - ✅ `client/src/hooks/use-mobile.tsx` → `client/src/shared/hooks/useMobile.tsx` (4 importy aktualizovány)
 - ✅ `client/src/hooks/` smazán
 - ✅ `client/src/components/` (prázdná složka) smazána
-- ⏳ ZBÝVÁ: drizzle cleanup — viz §1.5b níže (riziko, samostatný PR)
+- 📋 **STAGED, nezacommitnuto**: `shared/schema.ts` smazán + `package.json`: drizzle-orm/drizzle-zod/drizzle-kit/@neondatabase/serverless/connect-pg-simple/express-session/memorystore/passport/passport-local/ws + jejich `@types/*` odstraněny + `db:push` script pryč. Smícháno se §4.x lint scripts (lint/format/dead-code/cycles/prepare) ve stejném staged hunku — uživatel commitne sám jako logický balík.
 
 **Soubory původně v scope**:
 - ✅ `client/src/pages/Events.tsx.backup` — smazán
