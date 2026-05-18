@@ -123,9 +123,25 @@ Po dokončení udělej commit "feat(ai): move reservation parser to backend prox
 
 ---
 
-### [~] 1.2 — JWT → httpOnly cookie — DEFERRED (XL effort, cross-cutting)
+### [~] 1.2 — JWT → httpOnly cookie — PHASE A HOTOVO 2026-05-18, FE migrace odložená
 
-**Stav (2026-05-15)**: Plán platný, ale není v session scope. Potřebuje (1) dedikované sezení s dev serverem nahozeným, (2) e2e plán pro všechny role + mobile app kompatibilita (mobile má `MobileAuthController` s vlastním refresh token flow přes DB — kontrolovat, aby nepoškodit), (3) feature flag rollout / rollback strategii. **Otevřít jako samostatný PR**, ne component-level work.
+**Stav (2026-05-18)** — Phase A (BE additive) hotovo:
+- `lexik_jwt_authentication.yaml` — aktivován cookie token extractor `auth_token` vedle Authorization header extractoru. Pořadí matters; Lexik vyzkouší oba.
+- `App\EventListener\JWTAuthenticationCookieListener` — po úspěšném loginu (`lexik_jwt_authentication.on_authentication_success`) nastaví `Set-Cookie: auth_token=<jwt>; HttpOnly; SameSite=Lax; Max-Age=86400` (Secure jen na HTTPS request). Po logout eventu cookie expiruje (Max-Age=0).
+- **Smoke test (lokálně):** login → 200 + Set-Cookie + JSON token. Cookie-only request na `/auth/user` → 200. Bearer-only request → 200 (no regression). Logout → 302 + Set-Cookie deleted.
+- **Mobile app neovlivněno** — `MobileAuthController` má vlastní firewall `mobile_auth` (pattern `^/api/mobile/auth/...`) s `security: false` a vlastním refresh token flow. Lexik cookie extractor se na něj nedotkne.
+
+**Phase B (FE migration) — zbývá:**
+- `client/src/shared/lib/api.ts` — vypnout `Authorization: Bearer` interceptor, zapnout `axios.defaults.withCredentials = true`. Cookie pak browser pošle automaticky.
+- `client/src/modules/auth/contexts/AuthContext.tsx` — smazat `localStorage.setItem("auth_token", ...)` po loginu (token už browser ukládá jako cookie automaticky). User payload zachovat v memory / refetch z `/auth/user`.
+- Verification: `grep -rn "localStorage" client/src` nesmí obsahovat `auth_token`. DevTools → Application → Cookies → `auth_token` má `HttpOnly`.
+- Risk: ostatní moduly možná čtou `localStorage.getItem("auth_token")` přímo — `grep -rn "auth_token" client/src` před refactorem.
+
+**Phase C (BE hardening) — nice-to-have:**
+- Po Phase B vypnout Authorization header extractor v `lexik_jwt_authentication.yaml` → BE akceptuje jen cookie. Mobile API zůstává nezávislé.
+- BE: feature flag pro emergency rollback (env `JWT_COOKIE_ONLY=true/false`).
+
+**Předchozí stav (2026-05-15)**: Plán platný, ale není v session scope. Potřebuje (1) dedikované sezení s dev serverem nahozeným, (2) e2e plán pro všechny role + mobile app kompatibilita (mobile má `MobileAuthController` s vlastním refresh token flow přes DB — kontrolovat, aby nepoškodit), (3) feature flag rollout / rollback strategii. **Otevřít jako samostatný PR**, ne component-level work.
 
 **Soubory**:
 - `client/src/shared/lib/api.ts` (request/response interceptors)

@@ -7,3 +7,15 @@ lexik_jwt_authentication:
   public_key: '%kernel.project_dir%/config/jwt/public.pem'  # cesta k veřejnému klíči
   pass_phrase: 'KillPrd2005'                     # heslo k soukromému klíči
   token_ttl: 86400                                         # platnost tokenu v sekundách (24 hodin)
+  # Token extractors — pořadí matters, první kdo najde token vyhrává.
+  # Phase A §1.2: aktivován cookie extractor vedle Authorization headeru.
+  # Stávající FE flow (Bearer header z localStorage) pokračuje beze změny;
+  # cookie je dodatečný kanál pro budoucí přechod na httpOnly storage.
+  token_extractors:
+    authorization_header:
+      enabled: true
+      prefix: Bearer
+      name: Authorization
+    cookie:
+      enabled: true
+      name: auth_token

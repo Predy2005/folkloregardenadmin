@@ -129,10 +129,13 @@ npm run start    # Run production build
 - **Refactor stav (2026-05-15)**: po sweepu §2.X (`docs/refactor-todo.md`) všechny velké soubory rozděleny — Lint **0 warnings, 0 errors**, **0 cycles**. Zbývající `*Page.tsx` orchestrátory nad 250 ř. jsou akceptované (prop drilling, další split by zhoršil čitelnost). Mechanická práce (color tokens §3.1+§3.2, AI BE proxy §1.1, JWT cookie §1.2) je deferred.
 
 ### Authentication Flow
-1. `POST /auth/login` returns JWT token
-2. Token stored in `localStorage` as `auth_token`
-3. Axios interceptor adds `Authorization: Bearer {token}` to all requests
-4. 401 responses trigger redirect to `/login`
+1. `POST /auth/login` returns JWT token **v JSON body** + **`Set-Cookie: auth_token=<jwt>; HttpOnly; SameSite=Lax`** (Phase A §1.2 refactoru).
+2. Token stored in `localStorage` as `auth_token` (FE legacy flow). Cookie taky uložená browserem automaticky.
+3. Axios interceptor adds `Authorization: Bearer {token}` to all requests. BE umí přijmout JWT i z **cookie** (Lexik `token_extractors.cookie.enabled: true`) — paralelní kanál pro budoucí Phase B (FE přejde na cookie-only).
+4. Logout → BE smaže cookie (`Set-Cookie: auth_token=deleted; Max-Age=0`). FE musí navíc smazat `localStorage` (Phase A nezmění FE chování).
+5. 401 responses trigger redirect to `/login`.
+
+**Phase A vs Phase B vs Phase C** (viz `docs/refactor-todo.md` §1.2): Phase A = BE umí cookie (HOTOVO 2026-05-18). Phase B = FE přejde z localStorage na cookie, zapne `withCredentials: true`. Phase C = BE vypne Authorization header extractor (cookie-only). Phase B/C zůstávají TODO; mobile app má vlastní auth firewall (`MobileAuthController`, refresh tokens v DB), nedotčená.
 
 **Permissions**: backend kontroly přes `#[IsGranted('<resource>.<action>')]` (např. `reservations.update`, `staff.delete`). Super admin role obchází všechny granular permissions. Frontend gate používá `useAuth().hasPermission('<resource>.<action>')`. **Nepoužíváme `ROLE_SUPER_ADMIN` jako gate** pro běžné akce — granular permissions umožňují adminům dělat běžné věci, super-admin si necháme pro destruktivní/system operace.
 
