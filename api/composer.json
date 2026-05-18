@@ -15,8 +15,10 @@
     "dompdf/dompdf": "^3.1",
     "kreait/firebase-php": "^7.18.0",
     "lexik/jwt-authentication-bundle": "^3.1.1",
+    "nelmio/api-doc-bundle": "^5.10.2",
     "nelmio/cors-bundle": "^2.5",
     "phpoffice/phpspreadsheet": "^5.5",
+    "symfony/asset": "7.2.*",
     "symfony/console": "7.2.*",
     "symfony/dotenv": "7.2.*",
     "symfony/flex": "^2.5",
@@ -27,8 +29,10 @@
     "symfony/monolog-bundle": "^3.11",
     "symfony/runtime": "7.2.*",
     "symfony/serializer": "7.2.*",
+    "symfony/twig-bundle": "7.2.*",
     "symfony/validator": "7.2.*",
-    "symfony/yaml": "7.2.*"
+    "symfony/yaml": "7.2.*",
+    "twig/extra-bundle": "^3.24"
   },
   "config": {
     "allow-plugins": {
