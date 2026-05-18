@@ -191,7 +191,7 @@ export function useAIAssistant({
         // Default nápojový balíček: "Neomezeně" (allin) pro všechny kromě kojenců.
         // Klient si pak hromadně upraví, pokud někdo nechce balíček.
         for (let i = 0; i < r.adults; i++) {
-          persons.push({ type: "adult", menu: groupMenu, price: adultPrice, nationality: groupNationality, drinkOption: "allin", drinkName: "", drinkPrice: 0, drinkItemId: null });
+          persons.push({ type: "adult", menu: groupMenu, price: adultPrice, nationality: groupNationality, drinkOption: "allin", drinkName: "", drinkPrice: 0, drinkItemIds: [] });
         }
 
         const childMenu = foods?.find(f => f.isChildrenMenu)?.name || "Dětské menu";
@@ -199,19 +199,19 @@ export function useAIAssistant({
           ? Math.round(r.pricePerPerson * 0.64)
           : defaultChildPrice;
         for (let i = 0; i < r.children; i++) {
-          persons.push({ type: "child", menu: childMenu, price: childPrice, nationality: groupNationality, drinkOption: "allin", drinkName: "", drinkPrice: 0, drinkItemId: null });
+          persons.push({ type: "child", menu: childMenu, price: childPrice, nationality: groupNationality, drinkOption: "allin", drinkName: "", drinkPrice: 0, drinkItemIds: [] });
         }
 
         for (let i = 0; i < r.infants; i++) {
-          persons.push({ type: "infant", menu: "Bez jídla", price: 0, nationality: groupNationality, drinkOption: "none", drinkName: "", drinkPrice: 0, drinkItemId: null });
+          persons.push({ type: "infant", menu: "Bez jídla", price: 0, nationality: groupNationality, drinkOption: "none", drinkName: "", drinkPrice: 0, drinkItemIds: [] });
         }
 
         for (let i = 0; i < r.freeTourLeaders; i++) {
-          persons.push({ type: "guide", menu: "Bez jídla", price: 0, nationality: "", drinkOption: "allin", drinkName: "", drinkPrice: 0, drinkItemId: null });
+          persons.push({ type: "guide", menu: "Bez jídla", price: 0, nationality: "", drinkOption: "allin", drinkName: "", drinkPrice: 0, drinkItemIds: [] });
         }
 
         for (let i = 0; i < r.freeDrivers; i++) {
-          persons.push({ type: "driver", menu: "Bez jídla", price: 0, nationality: "", drinkOption: "allin", drinkName: "", drinkPrice: 0, drinkItemId: null });
+          persons.push({ type: "driver", menu: "Bez jídla", price: 0, nationality: "", drinkOption: "allin", drinkName: "", drinkPrice: 0, drinkItemIds: [] });
         }
 
         const noteParts: string[] = [];

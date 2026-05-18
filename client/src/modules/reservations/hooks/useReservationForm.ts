@@ -244,7 +244,7 @@ export function useReservationForm() {
           drinkOption: p.drinkOption || "none",
           drinkName: p.drinkName || "",
           drinkPrice: Number(p.drinkPrice || 0),
-          drinkItemId: p.drinkItemId ?? null,
+          drinkItemIds: Array.isArray(p.drinkItemIds) ? p.drinkItemIds : [],
         })) || [],
         status: reservation.status,
         contactNote: reservation.contactNote || "",
@@ -462,6 +462,7 @@ export function useReservationForm() {
     bulkPriceChange: persons.bulkPriceChange, setBulkPriceChange: persons.setBulkPriceChange,
     bulkMenuChange: persons.bulkMenuChange, setBulkMenuChange: persons.setBulkMenuChange,
     bulkDrinkChange: persons.bulkDrinkChange, setBulkDrinkChange: persons.setBulkDrinkChange,
+    bulkWelcomeDrinkIds: persons.bulkWelcomeDrinkIds, setBulkWelcomeDrinkIds: persons.setBulkWelcomeDrinkIds,
 
     // Submit state (from submit hook)
     isSubmitting: submit.isSubmitting,

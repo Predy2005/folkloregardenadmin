@@ -24,6 +24,9 @@ export function useReservationPersons(params: {
   // Bulk menu/drink change state
   const [bulkMenuChange, setBulkMenuChange] = useState<string>("");
   const [bulkDrinkChange, setBulkDrinkChange] = useState<string>("");
+  // Pokud bulkDrinkChange = "welcome", `bulkWelcomeDrinkIds` určuje konkrétní
+  // welcome drink combo (víno+medovina+sodovka) aplikované na všechny.
+  const [bulkWelcomeDrinkIds, setBulkWelcomeDrinkIds] = useState<number[]>([]);
 
   const findFoodByValue = (value: string): ReservationFood | undefined => {
     if (!foods) return undefined;
@@ -44,7 +47,7 @@ export function useReservationPersons(params: {
     const menu = (type === "infant" || type === "driver" || type === "guide") ? "Bez jídla" : "";
 
     updateReservation(resIndex, {
-      persons: [...reservations[resIndex].persons, { type, menu, price: defaultPrice, nationality, drinkOption: defaultDrinkOption(type), drinkName: "", drinkPrice: 0, drinkItemId: null }],
+      persons: [...reservations[resIndex].persons, { type, menu, price: defaultPrice, nationality, drinkOption: defaultDrinkOption(type), drinkName: "", drinkPrice: 0, drinkItemIds: [] }],
     });
   };
 
@@ -104,7 +107,7 @@ export function useReservationPersons(params: {
       drinkOption: defaultDrinkOption(type),
       drinkName: "",
       drinkPrice: 0,
-      drinkItemId: null,
+      drinkItemIds: [],
     }));
     updateReservation(resIndex, {
       persons: [...current, ...newPersons],
@@ -181,7 +184,7 @@ export function useReservationPersons(params: {
       drinkOption: defaultDrinkOption(bulkType),
       drinkName: "",
       drinkPrice: 0,
-      drinkItemId: null,
+      drinkItemIds: [],
     }));
 
     updateReservation(resIndex, {
@@ -229,14 +232,37 @@ export function useReservationPersons(params: {
     successToast(`Menu změněno u ${affectedCount} osob`);
   };
 
-  const applyBulkDrinkChange = (resIndex: number) => {
+  const applyBulkDrinkChange = (
+    resIndex: number,
+    welcomeDrinks?: { id: number; name: string; price: number }[],
+  ) => {
     if (!bulkDrinkChange) return;
+    // Pro welcome navíc nastavíme `drinkItemIds` + snapshot name/price součet.
+    const ids = welcomeDrinks?.map((d) => d.id) ?? [];
+    const aggregatedName = welcomeDrinks?.map((d) => d.name).join(", ") ?? "";
+    const aggregatedPrice = welcomeDrinks?.reduce((sum, d) => sum + (Number(d.price) || 0), 0) ?? 0;
+
     const updatedPersons = reservations[resIndex].persons.map(p => {
       if (p.type === "infant") return p;
+      if (bulkDrinkChange === "welcome" && welcomeDrinks && welcomeDrinks.length > 0) {
+        return {
+          ...p,
+          drinkOption: bulkDrinkChange,
+          drinkItemIds: [...ids],
+          drinkName: aggregatedName,
+          drinkPrice: aggregatedPrice,
+        };
+      }
+      // Pro none/allin (nebo welcome bez vybraných drinks) jen drinkOption,
+      // konkrétní drink picker zůstane na uživateli per-osoba.
+      if (bulkDrinkChange === "none") {
+        return { ...p, drinkOption: bulkDrinkChange, drinkItemIds: [], drinkName: "", drinkPrice: 0 };
+      }
       return { ...p, drinkOption: bulkDrinkChange };
     });
     updateReservation(resIndex, { persons: updatedPersons });
     setBulkDrinkChange("");
+    setBulkWelcomeDrinkIds([]);
     const affectedCount = reservations[resIndex].persons.filter(p => p.type !== "infant").length;
     successToast(`Nápoj změněn u ${affectedCount} osob`);
   };
@@ -251,6 +277,7 @@ export function useReservationPersons(params: {
     bulkPriceChange, setBulkPriceChange,
     bulkMenuChange, setBulkMenuChange,
     bulkDrinkChange, setBulkDrinkChange,
+    bulkWelcomeDrinkIds, setBulkWelcomeDrinkIds,
 
     // Actions
     addPerson,

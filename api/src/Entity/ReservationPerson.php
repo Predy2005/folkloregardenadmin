@@ -41,9 +41,24 @@ class ReservationPerson
     #[ORM\Column(name: 'drink_price', type: 'decimal', precision: 10, scale: 2, nullable: true)]
     private ?string $drinkPrice = null;
 
+    /**
+     * Legacy single-drink FK. Pro welcome combo (víno+medovina+sodovka) používá
+     * primárně `drink_item_ids` JSON níž. `drink_item_id` drží první ID z arraye
+     * (nebo null) kvůli zpětné kompatibilitě s existujícími reporty/dotazy.
+     */
     #[ORM\ManyToOne(targetEntity: DrinkItem::class)]
     #[ORM\JoinColumn(name: 'drink_item_id', nullable: true, onDelete: 'SET NULL')]
     private ?DrinkItem $drinkItem = null;
+
+    /**
+     * Pole ID nápojů (welcome může obsahovat víc položek — víno+medovina+sodovka
+     * jako jeden welcome drink). Když je null nebo prázdné, host nemá konkrétní
+     * nápoj zvolený; `drinkOption` (none/welcome/allin) je nezávislý režim.
+     *
+     * @var list<int>|null
+     */
+    #[ORM\Column(name: 'drink_item_ids', type: Types::JSON, nullable: true)]
+    private ?array $drinkItemIds = null;
 
     #[ORM\Column(type: Types::STRING, length: 3, options: ['default' => 'CZK'])]
     private string $currency = 'CZK';
@@ -133,4 +148,14 @@ class ReservationPerson
 
     public function getDrinkItem(): ?DrinkItem { return $this->drinkItem; }
     public function setDrinkItem(?DrinkItem $v): static { $this->drinkItem = $v; return $this; }
+
+    /**
+     * @return list<int>|null
+     */
+    public function getDrinkItemIds(): ?array { return $this->drinkItemIds; }
+
+    /**
+     * @param list<int>|null $v
+     */
+    public function setDrinkItemIds(?array $v): static { $this->drinkItemIds = $v; return $this; }
 }

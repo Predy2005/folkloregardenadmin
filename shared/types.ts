@@ -36,9 +36,17 @@ export interface ReservationPerson {
   price: number | string;
   nationality?: string;
   drinkOption?: DrinkOption;
+  /** Comma-joined names z `drinkItemIds` snapshotu. */
   drinkName?: string;
+  /** Součet cen nápojů (welcome combo: víno+medovina+sodovka). */
   drinkPrice?: number | string;
+  /** Legacy single drink FK — drží první ID z arraye pro zpětnou kompat. */
   drinkItemId?: number;
+  /**
+   * Pole ID nápojů (welcome combo). Pro existující rezervace bez tohoto pole
+   * fallback na `drinkItemId` (`useReservationLoadAndPrefill`).
+   */
+  drinkItemIds?: number[];
 }
 
 export interface ReservationTransfer {

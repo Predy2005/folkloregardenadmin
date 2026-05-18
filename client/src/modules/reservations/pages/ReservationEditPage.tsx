@@ -548,6 +548,8 @@ export default function ReservationEdit() {
                     setBulkMenuChange={form.setBulkMenuChange}
                     bulkDrinkChange={form.bulkDrinkChange}
                     setBulkDrinkChange={form.setBulkDrinkChange}
+                    bulkWelcomeDrinkIds={form.bulkWelcomeDrinkIds}
+                    setBulkWelcomeDrinkIds={form.setBulkWelcomeDrinkIds}
                     addPerson={form.addPerson}
                     addBulkPersons={form.addBulkPersons}
                     applyBulkPriceChange={form.applyBulkPriceChange}

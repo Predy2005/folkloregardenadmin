@@ -33,6 +33,7 @@ import {
 import { Trash2 } from "lucide-react";
 import { formatCurrency } from "@/shared/lib/formatting";
 import { PERSON_TYPE_LABELS, DRINK_OPTION_LABELS } from "@shared/types";
+import { MultiSelectFilter } from "@/shared/components/MultiSelectFilter";
 import type { PersonEntry } from "@modules/reservations/types";
 import type { ReservationPersonsSectionProps } from "@modules/reservations/types/components/edit/ReservationPersonsSection";
 
@@ -61,6 +62,8 @@ export function ReservationPersonsSection({
   setBulkMenuChange,
   bulkDrinkChange,
   setBulkDrinkChange,
+  bulkWelcomeDrinkIds,
+  setBulkWelcomeDrinkIds,
   addPerson,
   addBulkPersons,
   applyBulkPriceChange,
@@ -338,7 +341,10 @@ export function ReservationPersonsSection({
             </Label>
             <Select
               value={bulkDrinkChange}
-              onValueChange={setBulkDrinkChange}
+              onValueChange={(v) => {
+                setBulkDrinkChange(v);
+                if (v !== "welcome") setBulkWelcomeDrinkIds([]);
+              }}
             >
               <SelectTrigger className="w-36">
                 <SelectValue placeholder="Nápoj" />
@@ -349,11 +355,31 @@ export function ReservationPersonsSection({
                 ))}
               </SelectContent>
             </Select>
+            {bulkDrinkChange === "welcome" && drinks && drinks.length > 0 && (
+              // Pro welcome v hromadné změně lze vybrat víc nápojů (combo).
+              // Aplikuje se na všechny hosty (kromě infantů) najednou.
+              <MultiSelectFilter
+                label="Welcome combo"
+                options={drinks
+                  .filter((d) => d.isActive && d.isWelcomeDrink)
+                  .map((d) => ({ value: d.id.toString(), label: `${d.name} (${d.price} Kč)` }))}
+                selected={new Set(bulkWelcomeDrinkIds.map(String))}
+                onChange={(next) => setBulkWelcomeDrinkIds(Array.from(next).map(Number))}
+                maxBadgeCount={1}
+              />
+            )}
             <Button
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() => applyBulkDrinkChange(activeTabIndex)}
+              onClick={() => {
+                const welcomeDrinks = bulkDrinkChange === "welcome" && drinks
+                  ? drinks
+                      .filter((d) => bulkWelcomeDrinkIds.includes(d.id))
+                      .map((d) => ({ id: d.id, name: d.name, price: Number(d.price) || 0 }))
+                  : undefined;
+                applyBulkDrinkChange(activeTabIndex, welcomeDrinks);
+              }}
               disabled={!bulkDrinkChange || currentReservation.persons.length === 0}
             >
               Aplikovat
@@ -577,39 +603,62 @@ export function ReservationPersonsSection({
               </div>
               {drinks && drinks.length > 0 && (person.drinkOption === "welcome" || person.drinkOption === "allin") && (
                 <div className="">
-                  <Select
-                    value={person.drinkItemId?.toString() ?? "none"}
-                    onValueChange={(v) => {
-                      if (v === "none") {
+                  {person.drinkOption === "welcome" ? (
+                    // Welcome může obsahovat víc nápojů (víno+medovina+sodovka) →
+                    // multi-select chips. Filtrované na DrinkItem.isWelcomeDrink.
+                    <MultiSelectFilter
+                      label="Welcome drinks"
+                      options={drinks
+                        .filter((d) => d.isActive && d.isWelcomeDrink)
+                        .map((d) => ({ value: d.id.toString(), label: `${d.name} (${d.price} Kč)` }))}
+                      selected={new Set((person.drinkItemIds ?? []).map(String))}
+                      onChange={(next) => {
+                        const ids = Array.from(next).map(Number);
+                        const selectedDrinks = drinks.filter((d) => ids.includes(d.id));
                         updatePerson(activeTabIndex, pIndex, {
-                          drinkItemId: null,
-                          drinkName: "",
-                          drinkPrice: 0,
+                          drinkItemIds: ids,
+                          drinkName: selectedDrinks.map((d) => d.name).join(", "),
+                          drinkPrice: selectedDrinks.reduce((sum, d) => sum + (Number(d.price) || 0), 0),
                         });
-                      } else {
-                        const selectedDrink = drinks.find((d) => d.id === Number(v));
-                        if (selectedDrink) {
+                      }}
+                      maxBadgeCount={1}
+                    />
+                  ) : (
+                    // Allin = jeden nápoj (open bar preference). Single Select.
+                    <Select
+                      value={(person.drinkItemIds?.[0]?.toString()) ?? "none"}
+                      onValueChange={(v) => {
+                        if (v === "none") {
                           updatePerson(activeTabIndex, pIndex, {
-                            drinkItemId: selectedDrink.id,
-                            drinkName: selectedDrink.name,
-                            drinkPrice: Number(selectedDrink.price) || 0,
+                            drinkItemIds: [],
+                            drinkName: "",
+                            drinkPrice: 0,
                           });
+                        } else {
+                          const selectedDrink = drinks.find((d) => d.id === Number(v));
+                          if (selectedDrink) {
+                            updatePerson(activeTabIndex, pIndex, {
+                              drinkItemIds: [selectedDrink.id],
+                              drinkName: selectedDrink.name,
+                              drinkPrice: Number(selectedDrink.price) || 0,
+                            });
+                          }
                         }
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Vyberte napoj" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Bez napoje</SelectItem>
-                      {drinks.filter((d) => d.isActive).map((d) => (
-                        <SelectItem key={d.id} value={d.id.toString()}>
-                          {d.name} ({d.price} Kc)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Vyberte napoj" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Bez napoje</SelectItem>
+                        {drinks.filter((d) => d.isActive).map((d) => (
+                          <SelectItem key={d.id} value={d.id.toString()}>
+                            {d.name} ({d.price} Kc)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               )}
               <div className=" flex justify-end">

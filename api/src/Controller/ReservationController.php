@@ -2,6 +2,7 @@
 
 namespace App\Controller;
 
+use App\Entity\DrinkItem;
 use App\Entity\Reservation;
 use App\Entity\Contact;
 use App\Entity\ReservationPerson;
@@ -115,6 +116,7 @@ class ReservationController extends AbstractController
                 'drinkOption' => $person->getDrinkOption(),
                 'drinkName' => $person->getDrinkName(),
                 'drinkPrice' => $person->getDrinkPrice(),
+                'drinkItemIds' => $person->getDrinkItemIds() ?? ($person->getDrinkItem()?->getId() ? [$person->getDrinkItem()->getId()] : []),
                 ];
             }
 
@@ -221,6 +223,7 @@ class ReservationController extends AbstractController
                 'drinkOption' => $person->getDrinkOption(),
                 'drinkName' => $person->getDrinkName(),
                 'drinkPrice' => $person->getDrinkPrice(),
+                'drinkItemIds' => $person->getDrinkItemIds() ?? ($person->getDrinkItem()?->getId() ? [$person->getDrinkItem()->getId()] : []),
                 'food' => $food ? [
                     'id' => $food->getId(),
                     'name' => $food->getName(),
@@ -473,6 +476,7 @@ class ReservationController extends AbstractController
                 $person->setDrinkOption($personData['drinkOption'] ?? $defaultDrink);
                 $person->setDrinkName($personData['drinkName'] ?? null);
                 $person->setDrinkPrice(isset($personData['drinkPrice']) ? (string)$personData['drinkPrice'] : null);
+                $this->applyDrinkItemIds($person, $personData);
 
                 // Compute base price by type, ignore client provided price
                 $basePrice = SpecialDateRules::getBasePrice($type, $reservation->getDate());
@@ -950,6 +954,7 @@ class ReservationController extends AbstractController
                 'drinkOption' => $person->getDrinkOption(),
                 'drinkName' => $person->getDrinkName(),
                 'drinkPrice' => $person->getDrinkPrice(),
+                'drinkItemIds' => $person->getDrinkItemIds() ?? ($person->getDrinkItem()?->getId() ? [$person->getDrinkItem()->getId()] : []),
             ];
         }
 
@@ -1179,6 +1184,7 @@ class ReservationController extends AbstractController
                 $person->setDrinkOption($personData['drinkOption'] ?? $defaultDrink);
                 $person->setDrinkName($personData['drinkName'] ?? null);
                 $person->setDrinkPrice(isset($personData['drinkPrice']) ? (string)$personData['drinkPrice'] : null);
+                $this->applyDrinkItemIds($person, $personData);
                 $personPrice = (float) ($personData['price'] ?? 0);
                 $drinkPrice = (float) ($personData['drinkPrice'] ?? 0);
                 $person->setPrice((string) $personPrice);
@@ -1675,5 +1681,38 @@ class ReservationController extends AbstractController
             'totalPrice' => $reservation->getTotalPrice(),
             'remainingAmount' => $reservation->getRemainingAmount(),
         ]);
+    }
+
+    /**
+     * Apply `drinkItemIds` z FE payloadu na entitu. Welcome může mít víc nápojů
+     * (víno+medovina+sodovka jako jeden welcome). Pro backward compat udržujeme
+     * `drink_item_id` FK = první ID z arraye (nebo null).
+     *
+     * @param array<string, mixed> $personData
+     */
+    private function applyDrinkItemIds(ReservationPerson $person, array $personData): void
+    {
+        $raw = $personData['drinkItemIds'] ?? null;
+        if (!is_array($raw)) {
+            return;
+        }
+        $ids = [];
+        foreach ($raw as $id) {
+            if (is_int($id) || (is_string($id) && ctype_digit($id))) {
+                $ids[] = (int) $id;
+            }
+        }
+        $ids = array_values(array_unique($ids));
+
+        $person->setDrinkItemIds(count($ids) > 0 ? $ids : null);
+
+        // Sync legacy single FK with první ID (nebo null) pro reporty/queries,
+        // co dosud čtou jen `drink_item_id`.
+        if (count($ids) > 0) {
+            $firstDrink = $this->entityManager->getRepository(DrinkItem::class)->find($ids[0]);
+            $person->setDrinkItem($firstDrink);
+        } else {
+            $person->setDrinkItem(null);
+        }
     }
 }

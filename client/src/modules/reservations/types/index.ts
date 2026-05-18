@@ -5,9 +5,15 @@ export interface PersonEntry {
   price: number;
   nationality: string;
   drinkOption: string;
+  /** Comma-joined names of selected drinks (snapshot pro display + bulk export). */
   drinkName: string;
+  /** Součet cen vybraných nápojů (jeden welcome může obsahovat víc položek). */
   drinkPrice: number;
-  drinkItemId: number | null;
+  /**
+   * Pole ID vybraných nápojů — welcome combo (víno+medovina+sodovka) má více
+   * položek; allin obvykle jen jednu. `[]` = host nemá zvolen konkrétní drink.
+   */
+  drinkItemIds: number[];
 }
 
 export interface TransferEntry {
