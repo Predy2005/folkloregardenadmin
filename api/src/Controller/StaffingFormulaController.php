@@ -56,7 +56,8 @@ class StaffingFormulaController extends AbstractController
         $item->setCategory((string)$data['category'])
             ->setRatio($ratio)
             ->setEnabled(isset($data['enabled']) ? (bool)$data['enabled'] : true)
-            ->setDescription($data['description'] ?? null);
+            ->setDescription($data['description'] ?? null)
+            ->setTiers($this->normalizeTiersFromPayload($data['tiers'] ?? null));
 
         $this->em->persist($item);
         $this->em->flush();
@@ -101,6 +102,9 @@ class StaffingFormulaController extends AbstractController
         if (array_key_exists('description', $data)) {
             $item->setDescription($data['description']);
         }
+        if (array_key_exists('tiers', $data)) {
+            $item->setTiers($this->normalizeTiersFromPayload($data['tiers']));
+        }
 
         $this->em->flush();
         return $this->json(['status' => 'updated']);
@@ -131,10 +135,12 @@ class StaffingFormulaController extends AbstractController
         $result = [];
         $total = 0;
         foreach ($enabled as $f) {
-            $required = (int)ceil($guests / max(1, $f->getRatio()));
+            // `calculateRequired` použije tiers (pokud neprázdné), jinak ratio.
+            $required = $f->calculateRequired($guests);
             $result[] = [
                 'category' => $f->getCategory(),
                 'ratio' => $f->getRatio(),
+                'tiers' => $f->getTiers(),
                 'enabled' => $f->isEnabled(),
                 'required' => $required,
             ];
@@ -153,10 +159,44 @@ class StaffingFormulaController extends AbstractController
             'id' => $f->getId(),
             'category' => $f->getCategory(),
             'ratio' => $f->getRatio(),
+            'tiers' => $f->getTiers(),
             'enabled' => $f->isEnabled(),
             'description' => $f->getDescription(),
             'createdAt' => $f->getCreatedAt()->format(DATE_ATOM),
             'updatedAt' => $f->getUpdatedAt()->format(DATE_ATOM),
         ];
+    }
+
+    /**
+     * Sanitizuje vstupní tiers payload z requestu — drop invalid rows,
+     * coerce typy, sortuje vzestupně podle minGuests. Mirror FE `normalizeTiers`.
+     *
+     * @param mixed $raw
+     * @return list<array{minGuests: int, maxGuests: int|null, staffCount: int}>|null
+     */
+    private function normalizeTiersFromPayload(mixed $raw): ?array
+    {
+        if (!is_array($raw) || count($raw) === 0) {
+            return null;
+        }
+        $out = [];
+        foreach ($raw as $tier) {
+            if (!is_array($tier) || !isset($tier['minGuests'], $tier['staffCount'])) {
+                continue;
+            }
+            $min = (int)$tier['minGuests'];
+            $count = (int)$tier['staffCount'];
+            $rawMax = $tier['maxGuests'] ?? null;
+            $max = ($rawMax === null || $rawMax === '') ? null : (int)$rawMax;
+            if ($min < 0 || $count < 0) {
+                continue;
+            }
+            if ($max !== null && $max < $min) {
+                continue;
+            }
+            $out[] = ['minGuests' => $min, 'maxGuests' => $max, 'staffCount' => $count];
+        }
+        usort($out, fn(array $a, array $b): int => $a['minGuests'] <=> $b['minGuests']);
+        return count($out) > 0 ? $out : null;
     }
 }

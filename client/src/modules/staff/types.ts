@@ -37,6 +37,14 @@ export type AttendanceForm = z.infer<typeof attendanceSchema>;
 
 // ── Staffing Formula Form (StaffingFormulasPage) ──────────────────────
 
+// Pásmový tier: `{minGuests, maxGuests, staffCount}`. `maxGuests = null`
+// znamená otevřený horní okraj ("60+ hostů → X personálu").
+export const staffingFormulaTierSchema = z.object({
+  minGuests: z.coerce.number().int().min(0),
+  maxGuests: z.coerce.number().int().min(0).nullable(),
+  staffCount: z.coerce.number().int().min(0),
+});
+
 export const staffingFormulaSchema = z.object({
   category: z.enum([
     'cisniciWaiters',
@@ -48,7 +56,10 @@ export const staffingFormulaSchema = z.object({
     'fotografkyPhotographers',
     'sperkyJewelry',
   ] as const, { required_error: 'Vyberte kategorii' }),
+  // `ratio` se použije jen jako fallback, když `tiers` jsou prázdné.
+  // Pásmový výpočet (`tiers`) má přednost — viz `staffingFormula.calculateRequiredStaff`.
   ratio: z.coerce.number().min(1, 'Poměr musí být alespoň 1'),
+  tiers: z.array(staffingFormulaTierSchema).nullable().optional(),
   enabled: z.boolean().default(true),
   description: z.string().optional(),
 });

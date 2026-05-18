@@ -76,8 +76,9 @@ class StaffRequirementService
 
         foreach ($formulas as $formula) {
             $category = $this->normalizeCategory($formula->getCategory());
-            $ratio = $formula->getRatio();
-            $requiredCount = $ratio > 0 ? (int) ceil($totalGuests / $ratio) : 0;
+            // `calculateRequired` použije tiers (pásmový výpočet) když jsou
+            // vyplněné, jinak fallback na lineární `ratio`. Mirror FE.
+            $requiredCount = $formula->calculateRequired($totalGuests);
             $roleId = $this->getRoleIdForCategory($category);
 
             $processedCategories[] = $category;
