@@ -128,14 +128,17 @@ npm run start    # Run production build
 - **Frontend pravidla**: kompletní set v `docs/frontend-rules.md` (file size limits, naming, structure, performance). Před prací s `/client` si je vždycky projeď.
 - **Refactor stav (2026-05-15)**: po sweepu §2.X (`docs/refactor-todo.md`) všechny velké soubory rozděleny — Lint **0 warnings, 0 errors**, **0 cycles**. Zbývající `*Page.tsx` orchestrátory nad 250 ř. jsou akceptované (prop drilling, další split by zhoršil čitelnost). Mechanická práce (color tokens §3.1+§3.2, AI BE proxy §1.1, JWT cookie §1.2) je deferred.
 
-### Authentication Flow
-1. `POST /auth/login` returns JWT token **v JSON body** + **`Set-Cookie: auth_token=<jwt>; HttpOnly; SameSite=Lax`** (Phase A §1.2 refactoru).
-2. Token stored in `localStorage` as `auth_token` (FE legacy flow). Cookie taky uložená browserem automaticky.
-3. Axios interceptor adds `Authorization: Bearer {token}` to all requests. BE umí přijmout JWT i z **cookie** (Lexik `token_extractors.cookie.enabled: true`) — paralelní kanál pro budoucí Phase B (FE přejde na cookie-only).
-4. Logout → BE smaže cookie (`Set-Cookie: auth_token=deleted; Max-Age=0`). FE musí navíc smazat `localStorage` (Phase A nezmění FE chování).
-5. 401 responses trigger redirect to `/login`.
+### Authentication Flow (Phase B §1.2 HOTOVO 2026-05-18)
+1. `POST /auth/login` returns JWT token v JSON body + **`Set-Cookie: auth_token=<jwt>; HttpOnly; SameSite=Lax; Max-Age=86400`** (Secure jen na HTTPS).
+2. Browser uloží cookie automaticky. FE už JWT v `localStorage` neukládá — XSS k httpOnly cookie nepřistoupí. `localStorage('user')` zůstává jen pro UI hydration mezi reloady (jen jméno/role/permissions, žádný auth secret).
+3. Axios má `withCredentials: true` (`client/src/shared/lib/api.ts`) → browser automaticky pošle cookie na všechny requesty. **Žádný `Authorization: Bearer` header z FE.**
+4. BE Lexik konfigurace má aktivní **oba** token extractory: `authorization_header` (mobile app dál posílá Bearer z React Native fetch) + `cookie` (SPA). Pořadí matters — Authorization header se zkouší první.
+5. Logout → BE smaže cookie (`Set-Cookie: auth_token=deleted; Max-Age=0`) v `JWTAuthenticationCookieListener::onLogout`. FE smaže `user` z localStorage.
+6. 401 responses → smaže cached `user` payload, redirect na `/login`.
 
-**Phase A vs Phase B vs Phase C** (viz `docs/refactor-todo.md` §1.2): Phase A = BE umí cookie (HOTOVO 2026-05-18). Phase B = FE přejde z localStorage na cookie, zapne `withCredentials: true`. Phase C = BE vypne Authorization header extractor (cookie-only). Phase B/C zůstávají TODO; mobile app má vlastní auth firewall (`MobileAuthController`, refresh tokens v DB), nedotčená.
+**Phase C (vypnout Bearer extractor) skipnuta** kvůli mobile app dependency: endpointy mimo `^/api/mobile/auth/...` padají do `main` firewallu s JWT Bearer headerem z React Native klienta. Cookie-only by mobile rozbilo. Bezpečnostní zisk je marginal (Phase B už dropla `localStorage` exposure). Detail rozhodnutí v `docs/refactor-todo.md` §1.2.
+
+**Upgrade dopad**: po deploy se admin uživatelé jednou re-loginují — jejich existující `localStorage.auth_token` se přestane číst; cookie nastavena až při novém loginu.
 
 **Permissions**: backend kontroly přes `#[IsGranted('<resource>.<action>')]` (např. `reservations.update`, `staff.delete`). Super admin role obchází všechny granular permissions. Frontend gate používá `useAuth().hasPermission('<resource>.<action>')`. **Nepoužíváme `ROLE_SUPER_ADMIN` jako gate** pro běžné akce — granular permissions umožňují adminům dělat běžné věci, super-admin si necháme pro destruktivní/system operace.
 

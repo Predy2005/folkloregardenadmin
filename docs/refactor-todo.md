@@ -123,23 +123,23 @@ Po dokončení udělej commit "feat(ai): move reservation parser to backend prox
 
 ---
 
-### [~] 1.2 — JWT → httpOnly cookie — PHASE A HOTOVO 2026-05-18, FE migrace odložená
+### [x] 1.2 — JWT → httpOnly cookie ✅ PHASE A+B HOTOVO 2026-05-18, Phase C skipnuta
 
-**Stav (2026-05-18)** — Phase A (BE additive) hotovo:
+**Phase A — BE additive (commit `dc6f697`)**:
 - `lexik_jwt_authentication.yaml` — aktivován cookie token extractor `auth_token` vedle Authorization header extractoru. Pořadí matters; Lexik vyzkouší oba.
 - `App\EventListener\JWTAuthenticationCookieListener` — po úspěšném loginu (`lexik_jwt_authentication.on_authentication_success`) nastaví `Set-Cookie: auth_token=<jwt>; HttpOnly; SameSite=Lax; Max-Age=86400` (Secure jen na HTTPS request). Po logout eventu cookie expiruje (Max-Age=0).
-- **Smoke test (lokálně):** login → 200 + Set-Cookie + JSON token. Cookie-only request na `/auth/user` → 200. Bearer-only request → 200 (no regression). Logout → 302 + Set-Cookie deleted.
-- **Mobile app neovlivněno** — `MobileAuthController` má vlastní firewall `mobile_auth` (pattern `^/api/mobile/auth/...`) s `security: false` a vlastním refresh token flow. Lexik cookie extractor se na něj nedotkne.
+- Smoke test (lokálně): login → 200 + Set-Cookie + JSON token. Cookie-only request na `/auth/user` → 200. Bearer-only request → 200 (no regression). Logout → 302 + Set-Cookie deleted.
 
-**Phase B (FE migration) — zbývá:**
-- `client/src/shared/lib/api.ts` — vypnout `Authorization: Bearer` interceptor, zapnout `axios.defaults.withCredentials = true`. Cookie pak browser pošle automaticky.
-- `client/src/modules/auth/contexts/AuthContext.tsx` — smazat `localStorage.setItem("auth_token", ...)` po loginu (token už browser ukládá jako cookie automaticky). User payload zachovat v memory / refetch z `/auth/user`.
-- Verification: `grep -rn "localStorage" client/src` nesmí obsahovat `auth_token`. DevTools → Application → Cookies → `auth_token` má `HttpOnly`.
-- Risk: ostatní moduly možná čtou `localStorage.getItem("auth_token")` přímo — `grep -rn "auth_token" client/src` před refactorem.
+**Phase B — FE cookie-only**:
+- `client/src/shared/lib/api.ts` — Axios `withCredentials: true`, smazán request interceptor s `Authorization: Bearer` headerem. 401 interceptor dál maže legacy `auth_token` z localStorage jako defensive cleanup po Phase A→B migraci.
+- `client/src/modules/auth/contexts/AuthContext.tsx` — useEffect při mount volá `refreshUser()` bezpodmínečně (cookie pošle browser sám); odstraněno `localStorage.setItem("auth_token", ...)` z login/register. `localStorage('user')` ponechán pro UI hydration mezi reloady (žádný auth secret, jen email/role/permissions).
+- Verification: `grep -rn "auth_token" client/src` vrací jen defensive cleanup volání + komentáře, žádný `localStorage.getItem("auth_token")` ani `setItem`. CORS `allow_credentials: true` na `^/` (mobile path `^/api/mobile/` má `allow_credentials: false` → nedotčeno).
 
-**Phase C (BE hardening) — nice-to-have:**
-- Po Phase B vypnout Authorization header extractor v `lexik_jwt_authentication.yaml` → BE akceptuje jen cookie. Mobile API zůstává nezávislé.
-- BE: feature flag pro emergency rollback (env `JWT_COOKIE_ONLY=true/false`).
+**Phase C — skipnuto, mobile blocker:** Vypnutí Authorization header extractoru by rozbilo mobile app endpointy mimo `^/api/mobile/auth/...` (např. `/api/mobile/me`, `/api/mobile/events`), které padají do `main` firewallu s JWT Bearer tokenem z React Native HTTP klienta. Bezpečnostní zisk Phase C je marginal — Phase B už dropnul localStorage exposure; ponechání obou extractorů zapnutých dál neumožňuje cross-origin XSS odcizit token (HttpOnly cookie). Phase C by vyžadovala buď (a) path-based firewall config s rozdílnou auth strategy pro mobile vs admin, nebo (b) refactor mobile app na cookie auth (React Native cookie storage je netriviální). **Akceptujeme jako vědomou výjimku.**
+
+**Mobile app neovlivněn** — `MobileAuthController` má vlastní firewall `mobile_auth` (pattern `^/api/mobile/auth/...`) s `security: false` a vlastním refresh token flow. Ostatní mobile endpointy používají `main` JWT firewall s Bearer headerem, který Phase A i Phase B nechávají zapnutý.
+
+**Upgrade dopad pro existující admin uživatele**: po deploy se musí jednou re-loginovat. Důvod: jejich existující `localStorage.auth_token` se po Phase B přestane číst; pokud byl jejich poslední login PŘED Phase A deploy, nemají cookie. Po prvním re-loginu cookie nastavena → vše funguje normálně.
 
 **Předchozí stav (2026-05-15)**: Plán platný, ale není v session scope. Potřebuje (1) dedikované sezení s dev serverem nahozeným, (2) e2e plán pro všechny role + mobile app kompatibilita (mobile má `MobileAuthController` s vlastním refresh token flow přes DB — kontrolovat, aby nepoškodit), (3) feature flag rollout / rollback strategii. **Otevřít jako samostatný PR**, ne component-level work.
 

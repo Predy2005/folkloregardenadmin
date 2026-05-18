@@ -24,24 +24,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Načtení uživatele při mount
+  // Phase B §1.2: JWT žije v httpOnly cookie (nastavena BE při loginu).
+  // Při mount zkusíme GET /auth/user — cookie pošle browser automaticky díky
+  // `withCredentials: true` v `api.ts`. Pokud 401, uživatel není přihlášen.
+  // `localStorage('auth_token')` se už nečte ani neukládá; cleanup starých
+  // hodnot dělá 401 interceptor v `api.ts`.
   useEffect(() => {
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      refreshUser();
-    } else {
-      setIsLoading(false);
-    }
+    refreshUser();
   }, []);
 
   const refreshUser = async () => {
     try {
       const userData = await api.get<User>('/auth/user');
       setUser(userData);
+      // `user` payload zůstává v localStorage jen pro UI hydration mezi reloady
+      // (žádný auth secret, jen email/role/permissions pro instant rendering).
       localStorage.setItem('user', JSON.stringify(userData));
-    } catch (error) {
-      console.error('Failed to fetch user:', error);
-      localStorage.removeItem('auth_token');
+    } catch {
+      // 401 → není přihlášen. Interceptor v api.ts už redirectuje a maže
+      // localStorage; tady jen lokální state pro případ, že request selhal
+      // jinak (network down apod.).
       localStorage.removeItem('user');
       setUser(null);
     } finally {
@@ -51,8 +53,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (credentials: LoginRequest) => {
     try {
-      const response = await api.post<AuthResponse>('/auth/login', credentials);
-      localStorage.setItem('auth_token', response.token);
+      // BE nastaví httpOnly cookie `auth_token` v Set-Cookie. FE nemá co dělat
+      // s tokenem v JSON response (`response.token` je tu pro Phase A backward
+      // compat / mobile app, kdy stejný handler obsluhuje SPA login).
+      await api.post<AuthResponse>('/auth/login', credentials);
       await refreshUser();
       successToast('Vítejte zpět!');
     } catch (error: unknown) {
@@ -64,8 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (data: RegisterRequest) => {
     try {
-      const response = await api.post<AuthResponse>('/auth/register', data);
-      localStorage.setItem('auth_token', response.token);
+      await api.post<AuthResponse>('/auth/register', data);
       await refreshUser();
       successToast('Váš účet byl vytvořen');
     } catch (error: unknown) {
@@ -77,12 +80,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
+      // BE smaže cookie v `JWTAuthenticationCookieListener::onLogout`.
       await api.post('/auth/logout');
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
-      localStorage.removeItem('auth_token');
       localStorage.removeItem('user');
+      localStorage.removeItem('auth_token'); // defensive — legacy storage cleanup
       setUser(null);
       successToast('Byli jste úspěšně odhlášeni');
     }
