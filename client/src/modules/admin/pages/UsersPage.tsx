@@ -33,7 +33,7 @@ type UserForm = z.infer<typeof userSchema>;
 
 export default function Users() {
   const dialog = useFormDialog<User>();
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, user: currentUser } = useAuth();
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
@@ -122,7 +122,11 @@ export default function Users() {
         updateData.password = data.password;
       }
       await api.put(`/api/users/${id}`, updateData);
-      if (data.roleIds) {
+      // BE `PermissionService::canManageUser` zakazuje měnit role sám sobě
+      // (admin si tak nemůže udělit víc oprávnění → 403). Pokud edituji sebe,
+      // role update přeskočím — `PUT /api/users/{id}` výše už vyřídil email/heslo.
+      const isSelfEdit = currentUser?.id === id;
+      if (data.roleIds && !isSelfEdit) {
         await api.put(`/api/permissions/users/${id}/roles`, {
           roleIds: data.roleIds,
         });
