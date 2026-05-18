@@ -45,14 +45,17 @@ export function ExpenseTrackerCard({
 
   const stornoMutation = useStornoMovement(eventId);
 
-  const { hasRole, isSuperAdmin } = useAuth();
+  const { hasRole } = useAuth();
   const initCashbox = useInitializeEventCashbox(eventId);
   const lockCashbox = useLockEventCashbox(eventId);
   const reopenCashbox = useReopenEventCashbox(eventId);
   const confirmTransfer = useConfirmTransfer(eventId);
   const rejectTransfer = useRejectTransfer(eventId);
 
-  const canConfirmTransfer = hasRole("ROLE_MANAGER") || hasRole("ROLE_ADMIN") || hasRole("ROLE_SUPER_ADMIN") || isSuperAdmin;
+  // BE endpoint `POST /api/cashbox/transfers/{id}/confirm` nemá `#[IsGranted]`,
+  // proto FE drží role-based gate (manager+). `isSuperAdmin` z této kombinace
+  // odstraněn — `hasRole("ROLE_SUPER_ADMIN")` ho už pokrývá.
+  const canConfirmTransfer = hasRole("ROLE_MANAGER") || hasRole("ROLE_ADMIN") || hasRole("ROLE_SUPER_ADMIN");
 
   const cashbox = financials.cashbox;
   const isLocked = !!cashbox?.lockedBy;
@@ -113,10 +116,10 @@ export function ExpenseTrackerCard({
   };
 
   const renderPendingTransfers = () => {
-    if (!hasPendingTransfers) return null;
+    if (!pendingTransfers || pendingTransfers.length === 0) return null;
     return (
       <div className="space-y-2">
-        {pendingTransfers!.map((t) => (
+        {pendingTransfers.map((t) => (
           <PendingTransferAlert
             key={t.id}
             transfer={t}
@@ -202,7 +205,7 @@ export function ExpenseTrackerCard({
       <div className="flex gap-2 p-3 border-t bg-background">
         <Button
           variant="outline"
-          className="flex-1 min-h-[48px] touch-manipulation text-red-500 hover:text-red-600 hover:bg-red-50 border-red-200 text-base font-semibold"
+          className="flex-1 min-h-[48px] touch-manipulation text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30 text-base font-semibold"
           disabled={isLocked || !isActive}
           onClick={() => openPosDialog("expense")}
         >
@@ -211,7 +214,7 @@ export function ExpenseTrackerCard({
         </Button>
         <Button
           variant="outline"
-          className="flex-1 min-h-[48px] touch-manipulation text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200 text-base font-semibold"
+          className="flex-1 min-h-[48px] touch-manipulation text-success hover:text-success hover:bg-success/10 border-success/30 text-base font-semibold"
           disabled={isLocked || !isActive}
           onClick={() => openPosDialog("income")}
         >
