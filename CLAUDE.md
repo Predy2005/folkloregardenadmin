@@ -94,7 +94,7 @@ Pre-commit hook spouští `scripts/security-check.sh` **před** Sonarem (rychlej
    - Symfony: `#[IsGranted]` coverage na destruktivních endpointech
    - React: `dangerouslySetInnerHTML` s user inputem, `eval`/`new Function`
    - Server: CSP a security headers (Express přes `helmet` v `server/index.ts`, Symfony přes `SecurityHeadersListener`)
-   - Vědomé výjimky: hardcoded OpenAI key v `client/src/modules/reservations/utils/ai.ts` (security debt, dokumentováno v sekci AI/asistent), `auth_token` v `localStorage` (jen INFO).
+   - Vědomé výjimky: hardcoded OpenAI key v **git historii** `client/src/modules/reservations/utils/ai.ts` (od §1.1 refactoru klíč v aktuálním kódu už není — FE volá BE proxy; revokace na OpenAI dashboardu je úkol uživatele), `auth_token` v `localStorage` (jen INFO).
 
 Findings se zapíšou do `.security-findings.json`. **CRITICAL/HIGH → commit ZABLOKOVÁN**, MEDIUM/LOW → warning. Manuální oprava: `/agents security-review` v Claude Code.
 
@@ -436,12 +436,14 @@ namapování partnera na záznam z Pohoda exportu, migrace `Version2026051411271
 Dva oddělené AI integrační body:
 
 1. **Backend chatbot** (`/api/assistant/chat`) — Symfony `AssistantOrchestrator` + `AiGatewayService`, klíče v `api/.env`. Podporuje function calling / tool use přes `ToolRegistry`. Při selhání AI vrací 502.
-2. **Frontend parser rezervací** (`client/src/modules/reservations/utils/ai.ts`) — volá AI **přímo z prohlížeče**. ⚠ API klíč je aktuálně hardcoded v JS bundle (security debt). Plánovaný refactor: přesunout na backend přes interní endpoint.
+2. **Frontend parser rezervací** (`client/src/modules/reservations/utils/ai.ts`) — od §1.1 refactoru volá AI **přes BE proxy** `POST /api/reservations/ai-proxy` (gated `reservations.create`, viz `ReservationAiController`). FE pošle messages array, BE volá `AiGatewayService` se stejným klíčem z env jako chatbot. **Klíč už není v JS bundle**, ale zůstává v git historii (rotaci řeší user sám, viz `feedback_no_api_key_changes.md`).
+   - FE zachovává všechnu parsing/cleanup/JSON-repair logiku: `parseMultiReservationWithAI`, `cleanEmailThread`, `extractJsonFromContent`, `repairTruncatedJson`, `parseReservationsDeterministic` (regex-based pro strukturované tour-agency emaily), `extractEmailMetadata` (extrakce kontaktu + sdílených údajů). BE je jen tenký proxy pro chat-completion.
+   - BE proxy validuje: `messages` array povinné, `role ∈ {system,user,assistant}`, celkový content limit 50 000 znaků (413 jinak). Při selhání AI vrací 502.
    - **Schema je liberální**: `AiMultiReservationEntrySchema.date` je nullable (poptávky bez data), `reservations` může být prázdné pole (pouze pozdrav/podpis bez objednávky). UI fallback v `useAIAssistant.ts` vytvoří jednu prázdnou rezervaci s notou "doplň ručně".
    - System prompt instruuje AI, aby chybějící datum nahradila `null` (ne prázdný string, ne vynechání), a prázdný `reservations: []` jen pokud email vůbec nemá rezervační info.
    - Při Zod chybě parser ukáže konkrétní pole + zprávu (ne jen "neočekávaný formát").
 
-Oba systémy volají jediný AI server (OpenAI) přes `POST /v1/chat/completions`.
+Oba systémy volají jediný AI server (OpenAI) přes `AiGatewayService::chat` — `POST /v1/chat/completions` z BE s klíčem `AI_SERVER_1_KEY`.
 
 ## Adding New Features
 

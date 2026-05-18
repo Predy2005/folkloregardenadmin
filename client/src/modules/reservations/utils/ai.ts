@@ -1,26 +1,16 @@
-import axios, { AxiosInstance } from 'axios';
 import { z } from 'zod';
 import type { ReservationFood } from '@shared/types';
+import { api } from '@/shared/lib/api';
 
-// AI server configuration with priority-based failover
-interface AiServer {
-  endpoint: string;
-  apiKey: string;
-  model: string;
-  priority: number;
-}
-
-const AI_SERVERS: AiServer[] = [
-  {
-    endpoint: "https://api.openai.com",
-    apiKey:
-      "<REDACTED-OPENAI-KEY>",
-    model: "gpt-4.1-mini",
-    priority: 1,
-  },
-];
-
-export const isAiConfigured = () => AI_SERVERS.length > 0;
+// AI dotazy jdou přes BE proxy `POST /api/reservations/ai-proxy`. BE drží
+// klíč v env (`AI_SERVER_1_KEY`) a volá AI gateway přes `AiGatewayService`.
+// FE už klíč nemá — viz §1.1 v `docs/refactor-todo.md`.
+//
+// `isAiConfigured` vrací vždy true: bez ping requestu nevíme, jestli BE má
+// AI nakonfigurované. Pokud ne, samotný proxy request vrátí 502 a UI ukáže
+// chybu. Funkce zůstává exportovaná pro zpětnou kompatibilitu s UI gate
+// (`AIAssistantTab.tsx`).
+export const isAiConfigured = () => true;
 
 // Zod schema for AI parsed reservation payload
 export const AiMenuItemSchema = z.object({
@@ -101,94 +91,40 @@ export function buildReservationSystemPrompt(foods: ReservationFood[]): string {
   ].join('\n');
 }
 
-// AI API clients - one per server, cached
-const aiClients = new Map<string, AxiosInstance>();
-
-function getClientForServer(server: AiServer): AxiosInstance {
-  let client = aiClients.get(server.endpoint);
-  if (!client) {
-    client = axios.create({
-      baseURL: server.endpoint,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${server.apiKey}`,
-      },
-      timeout: 240_000,
-    });
-    aiClients.set(server.endpoint, client);
-  }
-  return client;
-}
-
-
-// Send a single request to an AI server (no retry for 500 — model crash won't recover)
-async function aiRequest(
-  server: AiServer,
-  body: Record<string, unknown>,
-): Promise<{ content: string; finishReason: string }> {
-  const client = getClientForServer(server);
-  const res = await client.post('/v1/chat/completions', body);
-  const content = res.data?.choices?.[0]?.message?.content ?? '';
-  const finishReason = res.data?.choices?.[0]?.finish_reason ?? '';
-  if (!content) throw new Error('Prázdná odpověď z AI serveru');
-  return { content, finishReason };
-}
-
-// Send a chat completion request, trying servers in priority order.
-// Pokud primární server selže (timeout, 5xx, network error), automaticky padá na další v pořadí.
+// Volá BE proxy s system + user message. BE drží klíč v env, volá AI gateway
+// a vrátí AI text. Server-side fallback (pokud bude víc AI serverů) řeší
+// `AiGatewayService::chat`. Truncation detekce přes `finishReason` zatím
+// neaktivní — BE proxy ho vždy vrací prázdný (viz ReservationAiController).
 async function aiChatCompletion(systemPrompt: string, userMessage: string): Promise<string> {
-  if (AI_SERVERS.length === 0) throw new Error('Žádné AI servery nejsou nakonfigurované');
-
-  // 4096 je bezpečný limit pro oba modely (OpenAI gpt-4.1-mini i gemma-4-31b).
-  const maxTokens = 4096;
-
-  const body = {
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage },
-    ],
-    temperature: 0,
-    max_tokens: maxTokens,
-  };
-
-  const servers = AI_SERVERS;
-  let lastError: unknown;
-  let truncatedContent: string | null = null;
-
-  for (const server of servers) {
-    try {
-      const { content, finishReason } = await aiRequest(
-        server,
-        { model: server.model, ...body },
-      );
-      console.warn('[AI] Server ' + server.endpoint + ' (' + server.model + ') finish_reason=' + finishReason + ', length=' + content.length);
-
-      // If response was truncated (finish_reason=length), try next server with bigger model
-      if (finishReason === 'length' && server.priority < AI_SERVERS.length) {
-        console.warn('[AI] Response truncated (' + content.length + ' chars), trying next server...');
-        truncatedContent ??= content;
-        lastError = new Error('Odpověď oříznutá (' + content.length + ' znaků)');
-        continue;
-      }
-
-      return content;
-    } catch (err: unknown) {
-      const axiosErr = err as { response?: { status?: number; data?: { error?: { message?: string } } }; message?: string };
-      const status = axiosErr?.response?.status;
-      const detail = axiosErr?.response?.data?.error?.message || axiosErr?.message || String(err);
-      console.warn('[AI] Server ' + server.endpoint + ' failed (HTTP ' + (status || 'N/A') + '):', detail);
-      // Wrap with more context for user-facing error
-      lastError = new Error(
-        'AI server ' + server.endpoint + ' (HTTP ' + (status || 'timeout') + '): ' + detail,
-      );
+  try {
+    const res = await api.post<{ content: string; finishReason: string }>(
+      '/api/reservations/ai-proxy',
+      {
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        temperature: 0,
+        maxTokens: 4096,
+      },
+    );
+    if (!res?.content) throw new Error('Prázdná odpověď z AI serveru');
+    return res.content;
+  } catch (err: unknown) {
+    const axiosErr = err as { response?: { status?: number; data?: { error?: string } }; message?: string };
+    const status = axiosErr?.response?.status;
+    const detail = axiosErr?.response?.data?.error || axiosErr?.message || String(err);
+    if (status === 502) {
+      throw new Error('AI služba je dočasně nedostupná, zkus to později');
     }
+    if (status === 413) {
+      throw new Error('Vstupní text je příliš dlouhý (limit 50 000 znaků). Zkrať email.');
+    }
+    if (status === 403) {
+      throw new Error('Nemáš oprávnění (reservations.create) pro AI parser.');
+    }
+    throw new Error('AI proxy (HTTP ' + (status || 'timeout') + '): ' + detail);
   }
-  // If we have a truncated response from an earlier server, use it as fallback
-  if (truncatedContent) {
-    console.warn('[AI] All servers exhausted, using truncated response as fallback');
-    return truncatedContent;
-  }
-  throw lastError;
 }
 
 // Utility: try extract JSON object from possibly wrapped content (handles truncated output)
@@ -229,15 +165,8 @@ export function extractFirstJsonObject(text: string): unknown {
   throw new Error(`Nepodařilo se extrahovat JSON. Výstup: "${text.substring(0, 300)}"`);
 }
 
-// Attempt to repair truncated JSON by closing open structures
-function repairTruncatedJson(json: string): string | null {
-  // Remove trailing incomplete key-value pair (e.g. `"children"`)
-  let s = json.replace(/,\s*"[^"]*"?\s*$/, '');
-  // Remove trailing incomplete value
-  s = s.replace(/:\s*"[^"]*$/, ': ""');
-  s = s.replace(/:\s*\d+[^,}\]]*$/, ': 0');
-
-  // Count open brackets
+// Count unclosed `{` and `[` outside string literals (used to repair truncated JSON).
+function countOpenBrackets(s: string): { braces: number; brackets: number } {
   let braces = 0;
   let brackets = 0;
   let inString = false;
@@ -248,12 +177,23 @@ function repairTruncatedJson(json: string): string | null {
     if (ch === '"') { inString = !inString; continue; }
     if (inString) continue;
     if (ch === '{') braces++;
-    if (ch === '}') braces--;
-    if (ch === '[') brackets++;
-    if (ch === ']') brackets--;
+    else if (ch === '}') braces--;
+    else if (ch === '[') brackets++;
+    else if (ch === ']') brackets--;
   }
+  return { braces, brackets };
+}
 
-  // Close open structures
+// Attempt to repair truncated JSON by closing open structures
+function repairTruncatedJson(json: string): string | null {
+  // Remove trailing incomplete key-value pair (e.g. `"children"`)
+  let s = json.replace(/,\s*"[^"]*"?\s*$/, '');
+  // Remove trailing incomplete value
+  s = s.replace(/:\s*"[^"]*$/, ': ""');
+  s = s.replace(/:\s*\d+[^,}\]]*$/, ': 0');
+
+  const { braces, brackets } = countOpenBrackets(s);
+
   if (braces <= 0 && brackets <= 0) return null;
   let closing = '';
   for (let i = 0; i < braces; i++) closing += '}';
@@ -634,74 +574,7 @@ function parseTabularReservations(text: string): AiMultiReservationEntry[] {
   return reservations;
 }
 
-// Classify a line as group-code, date, month-header, or other
-function classifyLine(trimmed: string): 'group' | 'date' | 'month' | 'other' {
-  if (/^(PGS|MET|SUN|BC|TUI|FTI|DER|ITS)\s+\d{4}/i.test(trimmed)) return 'group';
-  if (/^\d{1,2}-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i.test(trimmed)) return 'date';
-  if (/^(January|February|March|April|May|June|July|August|September|October|November|December)$/i.test(trimmed)) return 'month';
-  return 'other';
-}
-
-// Split email text into context header and reservation lines for chunking
-function _splitEmailForChunking(text: string): { header: string; reservationLines: string[] } {
-  const lines = text.split('\n');
-  const headerLines: string[] = [];
-  const reservationLines: string[] = [];
-  let inReservations = false;
-  let currentEntry = '';
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    const type = classifyLine(trimmed);
-
-    if (type === 'group') {
-      if (currentEntry) reservationLines.push(currentEntry);
-      currentEntry = trimmed;
-      inReservations = true;
-      continue;
-    }
-
-    if (type === 'date' && inReservations) {
-      reservationLines.push(currentEntry + '\n' + trimmed);
-      currentEntry = '';
-      continue;
-    }
-
-    if (type === 'month') {
-      if (currentEntry) { reservationLines.push(currentEntry); currentEntry = ''; }
-      inReservations = true;
-      continue;
-    }
-
-    if (inReservations) {
-      if (currentEntry) {
-        currentEntry += '\n' + trimmed;
-      } else if (trimmed) {
-        reservationLines.push(trimmed);
-      }
-    } else {
-      headerLines.push(line);
-    }
-  }
-  if (currentEntry) reservationLines.push(currentEntry);
-
-  return {
-    header: headerLines.join('\n').trim(),
-    reservationLines,
-  };
-}
-
 const CHUNK_SIZE = 10; // Max reservations per AI call
-const MAX_CONCURRENT = 1; // Sequential to avoid overloading server
-
-// Short system prompt for chunk processing (full prompt is too large for some servers)
-function _buildChunkSystemPrompt(headerContext: string): string {
-  const currentYear = new Date().getFullYear();
-  return 'Extrahuj rezervace do JSON. Rok ' + currentYear + '. Vrať POUZE JSON bez textu kolem.\n'
-    + 'Kontext: ' + headerContext.substring(0, 300) + '\n'
-    + 'JSON format: {"contact":{},"reservations":[{"date":"YYYY-MM-DD","adults":0,"children":0,"infants":0,"freeTourLeaders":0,"freeDrivers":0,"groupCode":"kod","menu":"","pricePerPerson":null,"notes":""}]}\n'
-    + 'Každý řádek s kódem (PGS/MET/SUN/BC...) a datem = jedna rezervace. "7-Jun" = ' + currentYear + '-06-07.';
-}
 
 // Shared metadata extracted from email header (applied to all reservations)
 interface EmailMetadata {
@@ -784,29 +657,6 @@ async function extractEmailMetadata(emailText: string): Promise<EmailMetadata> {
   return defaults;
 }
 
-// Process chunks with limited concurrency
-async function processChunksWithConcurrency<T>(
-  tasks: (() => Promise<T>)[],
-  maxConcurrent: number,
-): Promise<T[]> {
-  const results: T[] = new Array(tasks.length);
-  let nextIndex = 0;
-
-  async function runNext(): Promise<void> {
-    while (nextIndex < tasks.length) {
-      const idx = nextIndex++;
-      results[idx] = await tasks[idx]();
-    }
-  }
-
-  const workers = Array.from(
-    { length: Math.min(maxConcurrent, tasks.length) },
-    () => runNext(),
-  );
-  await Promise.all(workers);
-  return results;
-}
-
 // Clean up email thread: remove repeated signatures, image descriptions, empty lines
 function cleanEmailThread(text: string): string {
   return text
@@ -883,53 +733,55 @@ function parseReservationsDeterministic(text: string): AiMultiReservationEntry[]
   return reservations;
 }
 
-// Parse multiple reservations from email text
-export async function parseMultiReservationWithAI(params: {
-  text: string;
-}): Promise<AiParsedMultiReservation> {
-  const { text } = params;
-  const systemPrompt = buildMultiReservationSystemPrompt();
+// Pick the deterministic parser that yields more rows.
+function pickBestDeterministicParse(text: string): AiMultiReservationEntry[] {
+  const formatA = parseReservationsDeterministic(text); // "GROUP_CODE\n7-Jun" style
+  const formatB = parseTabularReservations(text); // "TOURCODE  DD/MM/YYYY" tabular style
+  const reservations = formatA.length >= formatB.length ? formatA : formatB;
+  console.warn('[AI] Parser results: formatA=' + formatA.length + ', formatB=' + formatB.length + ', using=' + reservations.length);
+  return reservations;
+}
 
-  // Estimate reservation count (date patterns like "7-Jun", "12-Aug")
-  const estimatedCount = estimateReservationCount(text);
-
-  console.warn('🔵 [AI v3] estimated=' + estimatedCount + ', len=' + text.length);
-
-  // Strategy 1: Many date patterns (>10) = structured list
-  // → Use fast deterministic parser + AI for metadata only
-  if (estimatedCount > CHUNK_SIZE) {
-    console.warn('[AI] Structured list detected (' + estimatedCount + ' dates), using deterministic parser');
-    // Try both parsers and use whichever finds more results
-    const formatA = parseReservationsDeterministic(text); // "GROUP_CODE\n7-Jun" style
-    const formatB = parseTabularReservations(text); // "TOURCODE  DD/MM/YYYY" tabular style
-    const reservations = formatA.length >= formatB.length ? formatA : formatB;
-    console.warn('[AI] Parser results: formatA=' + formatA.length + ', formatB=' + formatB.length + ', using=' + reservations.length);
-    if (reservations.length > 0) {
-      const meta = await extractEmailMetadata(text);
-      console.warn('[AI] Deterministic: ' + reservations.length + ' reservations, meta:', JSON.stringify(meta));
-      for (const r of reservations) {
-        r.adults = meta.adults || r.adults;
-        r.children = meta.children || r.children;
-        r.infants = meta.infants || r.infants;
-        r.freeTourLeaders = meta.freeTourLeaders || r.freeTourLeaders;
-        r.freeDrivers = meta.freeDrivers || r.freeDrivers;
-        r.menu = meta.menu || r.menu;
-        r.pricePerPerson = meta.pricePerPerson || r.pricePerPerson;
-        if (meta.notes) {
-          r.notes = r.notes ? r.notes + ', ' + meta.notes : meta.notes;
-        }
-      }
-      const contact = meta.contact;
-      if (meta.nationality && !contact.nationality) {
-        contact.nationality = meta.nationality;
-      }
-      return { contact, reservations, priceCurrency: meta.priceCurrency };
+// Apply shared email-level metadata onto every deterministically-parsed reservation.
+function applyMetadataToReservations(
+  reservations: AiMultiReservationEntry[],
+  meta: EmailMetadata,
+): AiParsedMultiReservation {
+  for (const r of reservations) {
+    r.adults = meta.adults || r.adults;
+    r.children = meta.children || r.children;
+    r.infants = meta.infants || r.infants;
+    r.freeTourLeaders = meta.freeTourLeaders || r.freeTourLeaders;
+    r.freeDrivers = meta.freeDrivers || r.freeDrivers;
+    r.menu = meta.menu || r.menu;
+    r.pricePerPerson = meta.pricePerPerson || r.pricePerPerson;
+    if (meta.notes) {
+      r.notes = r.notes ? r.notes + ', ' + meta.notes : meta.notes;
     }
   }
+  const contact = meta.contact;
+  if (meta.nationality && !contact.nationality) {
+    contact.nationality = meta.nationality;
+  }
+  return { contact, reservations, priceCurrency: meta.priceCurrency };
+}
 
-  // Strategy 2: Few/no date patterns = email conversation or complex format
-  // → Use full AI parsing (single call with complete system prompt)
-  // Clean up email: strip repeated signatures and boilerplate to fit context
+// Strategy 1: Many date patterns = structured list → deterministic parser + AI metadata.
+async function tryDeterministicMultiReservation(
+  text: string,
+): Promise<AiParsedMultiReservation | null> {
+  const reservations = pickBestDeterministicParse(text);
+  if (reservations.length === 0) return null;
+  const meta = await extractEmailMetadata(text);
+  console.warn('[AI] Deterministic: ' + reservations.length + ' reservations, meta:', JSON.stringify(meta));
+  return applyMetadataToReservations(reservations, meta);
+}
+
+// Strategy 2: Few/no date patterns = email conversation → full AI parse on cleaned email.
+async function fullAiMultiReservationParse(
+  text: string,
+  systemPrompt: string,
+): Promise<AiParsedMultiReservation> {
   const cleanedEmail = cleanEmailThread(text);
   const maxEmailChars = 4000;
   let emailForAi = cleanedEmail;
@@ -942,68 +794,22 @@ export async function parseMultiReservationWithAI(params: {
   return parseMultiReservationResponse(content);
 }
 
-// Process reservations via structured chunks (group code + date pairs)
-async function _processChunkedReservations(
-  chunkPrompt: string,
-  _header: string,
-  reservationLines: string[],
-): Promise<AiParsedMultiReservation> {
-  const chunks: string[][] = [];
-  for (let i = 0; i < reservationLines.length; i += CHUNK_SIZE) {
-    chunks.push(reservationLines.slice(i, i + CHUNK_SIZE));
+// Parse multiple reservations from email text
+export async function parseMultiReservationWithAI(params: {
+  text: string;
+}): Promise<AiParsedMultiReservation> {
+  const { text } = params;
+  const systemPrompt = buildMultiReservationSystemPrompt();
+
+  const estimatedCount = estimateReservationCount(text);
+  console.warn('🔵 [AI v3] estimated=' + estimatedCount + ', len=' + text.length);
+
+  if (estimatedCount > CHUNK_SIZE) {
+    console.warn('[AI] Structured list detected (' + estimatedCount + ' dates), using deterministic parser');
+    const deterministic = await tryDeterministicMultiReservation(text);
+    if (deterministic) return deterministic;
   }
 
-  console.warn('[AI] Structured chunking: ' + chunks.length + ' chunks of ~' + CHUNK_SIZE);
-
-  const tasks = chunks.map((chunk, idx) => async () => {
-    const label = (idx + 1) + '/' + chunks.length;
-    const chunkText = chunk.join('\n');
-    console.warn('[AI] Chunk ' + label + ': ' + chunk.length + ' entries');
-    const content = await aiChatCompletion(chunkPrompt, chunkText);
-    return parseMultiReservationResponse(content);
-  });
-
-  return _mergeChunkResults(await processChunksWithConcurrency(tasks, MAX_CONCURRENT));
+  return fullAiMultiReservationParse(text, systemPrompt);
 }
 
-// Fallback: split text into roughly equal parts by lines
-async function _processNaiveChunkedReservations(
-  chunkPrompt: string,
-  text: string,
-): Promise<AiParsedMultiReservation> {
-  const lines = text.split('\n');
-  const linesPerChunk = 20; // ~10 reservations × 2 lines each
-  const chunks: string[] = [];
-
-  for (let i = 0; i < lines.length; i += linesPerChunk) {
-    chunks.push(lines.slice(i, i + linesPerChunk).join('\n'));
-  }
-
-  // If only one chunk, just send it directly
-  if (chunks.length <= 1) {
-    const content = await aiChatCompletion(chunkPrompt, text);
-    return parseMultiReservationResponse(content);
-  }
-
-  console.warn('[AI] Naive chunking: ' + chunks.length + ' chunks of ~' + linesPerChunk + ' lines');
-
-  const tasks = chunks.map((chunk, idx) => async () => {
-    const label = (idx + 1) + '/' + chunks.length;
-    console.warn('[AI] Naive chunk ' + label + ': ' + chunk.length + ' chars');
-    const content = await aiChatCompletion(chunkPrompt, chunk);
-    return parseMultiReservationResponse(content);
-  });
-
-  return _mergeChunkResults(await processChunksWithConcurrency(tasks, MAX_CONCURRENT));
-}
-
-// Merge results from multiple chunks
-function _mergeChunkResults(results: AiParsedMultiReservation[]): AiParsedMultiReservation {
-  const merged: AiParsedMultiReservation = {
-    contact: results[0].contact,
-    reservations: results.flatMap(r => r.reservations),
-    priceCurrency: results[0].priceCurrency,
-  };
-  console.warn('[AI] Merged ' + results.length + ' chunks -> ' + merged.reservations.length + ' total reservations');
-  return merged;
-}

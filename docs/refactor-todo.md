@@ -52,11 +52,18 @@
 
 ## P1 — HIGH (security / architektura, sekvenční)
 
-### [~] 1.1 — Move AI parser to backend — BLOCKED ON §0.1
+### [x] 1.1 — Move AI parser to backend ✅ HOTOVO 2026-05-18 (minimal variant)
 
-**Stav (2026-05-15)**: Závislé na §0.1 (rotaci klíče). Dokud user neudělá rotaci, je BE proxy refactor předčasný — současný klíč v JS bundle by zůstal v git historii i po BE migraci. **Plán zůstává platný, jen čeká na zelenou.**
+**Final stav (2026-05-18)**: Implementována **minimální varianta** — BE proxy pro chat-completion, FE drží parsing logiku.
 
-**Co se v této session udělalo**: `ai.ts` 1009 → 879 ř. — smazáno ~130 ř. dead code, 3 cog-complex warningy vyřešené extrakcí helperů, žádný dotek API klíče. Ostatní logika (Zod schemas, parser, prompts) je připravená pro pozdější BE migraci.
+**Co se udělalo**:
+- BE: `api/src/Controller/ReservationAiController.php` — endpoint `POST /api/reservations/ai-proxy` (gated `reservations.create`). Validace messages array, max 50 000 znaků content. Inject `AiGatewayService` (sdíleno s chatbotem), klíč z env `AI_SERVER_1_KEY`.
+- FE: `client/src/modules/reservations/utils/ai.ts` — smazán `AI_SERVERS` const **s hardcoded klíčem**, smazán `aiClients` axios cache, smazán `aiRequest`, smazán `getClientForServer`. `aiChatCompletion` nyní volá BE proxy přes `api.post`. Error handling: 502/413/403 mají user-friendly česká hlášení. `isAiConfigured()` vrací vždy `true` (bez ping requestu nevíme, jestli BE má AI; UI fallback je 502 hlášení).
+- FE zachoval: Zod schemas (`AiMultiReservationEntrySchema`, `AiParsedReservationSchema`), `parseMultiReservationWithAI`, `cleanEmailThread`, JSON repair (`repairTruncatedJson`), deterministic parsers (`parseReservationsDeterministic`, `parseTabularReservations`), `extractEmailMetadata`. Tahle business-level logika je out-of-scope pro proxy refactor — případná migrace na BE je samostatný úkol (~500 řádků kódu).
+
+**Klíč v aktuálním FE kódu už není** — `grep -rn "sk-proj\|OPENAI_API_KEY\|api.openai.com" client/src` vrátí 0. V git historii zůstává (`git log -p -- client/src/modules/reservations/utils/ai.ts`) — revokaci na OpenAI dashboardu si user řeší sám podle `feedback_no_api_key_changes.md`. BFG / `git filter-repo` cleanup historie zůstává úkol uživatele, pokud bude repo někdy public.
+
+**Předchozí stav (2026-05-15)**: `ai.ts` 1009 → 879 ř. — smazáno ~130 ř. dead code, 3 cog-complex warningy vyřešené extrakcí helperů, žádný dotek API klíče. Ostatní logika (Zod schemas, parser, prompts) byla připravená pro pozdější BE migraci — viz výše.
 
 **Soubory** (pro pozdější refactor):
 - `client/src/modules/reservations/utils/ai.ts` (879 řádků — celé smazat z FE po BE migraci)
