@@ -241,6 +241,11 @@ curl -H "X-API-Key: $KEY" \
 - Když se UI po loginu načte, ale "Try it out" stejně vrací 401: alias klíč nemusel doexpirovat. Refresh stránky vystaví nový alias (TTL 1h od loginu).
 - Admin Swagger (`/api/doc`) — přihlas se **stejným adminským username/heslem**, které používáš pro frontend login. Pokud máš `ROLE_MANAGER` nebo nižší, dostaneš 403; jen `ROLE_ADMIN`+.
 
+### Swagger UI ukáže jen "NelmioApiDocBundle" nebo prázdnou stránku
+- Strict CSP blokuje `cdn.jsdelivr.net` (odkud Nelmio servíruje swagger-ui-bundle.js a CSS). `SecurityHeadersListener` má výjimku pro `^/api/doc*` paths — pokud výjimka chybí (např. po merge konfliktu nebo refactoru listeneru), nahodí se jen alt text loga.
+- Ověř v DevTools → Network: musíš vidět 200 na `swagger-ui-bundle.js` z jsdelivr. Pokud jsou requesty červené s "Refused to load… violates CSP", oprav listener.
+- Inline `<script>` v `templates/bundles/NelmioApiDocBundle/SwaggerUi/index.html.twig` potřebuje `script-src 'unsafe-inline'`. Bez něj `loadSwaggerUI()` neběží a UI je prázdné.
+
 ### Klíč existuje, ale `last_used_at` se neaktualizuje
 - Možná posíláš na cache-d endpoint nebo přes proxy bez `X-API-Key` propagace
 - Ověř raw curl proti aplikaci přímo, sleduj Symfony log
