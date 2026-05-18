@@ -484,10 +484,11 @@ export function ReservationPersonsSection({
           currentReservation.persons.map((person, pIndex) => (
             <div
               key={pIndex}
-              className={`grid grid-cols-1 md:grid-cols-12 gap-3 items-center border rounded-md p-2 ${
+              className={`space-y-2 border rounded-md p-2 ${
                 selectedIndices.has(pIndex) ? "bg-primary/5 border-primary/30" : ""
               }`}
             >
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
               <div className="md:col-span-1 flex items-center gap-2 text-sm text-muted-foreground">
                 <Checkbox
                   checked={selectedIndices.has(pIndex)}
@@ -601,66 +602,6 @@ export function ReservationPersonsSection({
                   </SelectContent>
                 </Select>
               </div>
-              {drinks && drinks.length > 0 && (person.drinkOption === "welcome" || person.drinkOption === "allin") && (
-                <div className="">
-                  {person.drinkOption === "welcome" ? (
-                    // Welcome může obsahovat víc nápojů (víno+medovina+sodovka) →
-                    // multi-select chips. Filtrované na DrinkItem.isWelcomeDrink.
-                    <MultiSelectFilter
-                      label="Welcome drinks"
-                      options={drinks
-                        .filter((d) => d.isActive && d.isWelcomeDrink)
-                        .map((d) => ({ value: d.id.toString(), label: `${d.name} (${d.price} Kč)` }))}
-                      selected={new Set((person.drinkItemIds ?? []).map(String))}
-                      onChange={(next) => {
-                        const ids = Array.from(next).map(Number);
-                        const selectedDrinks = drinks.filter((d) => ids.includes(d.id));
-                        updatePerson(activeTabIndex, pIndex, {
-                          drinkItemIds: ids,
-                          drinkName: selectedDrinks.map((d) => d.name).join(", "),
-                          drinkPrice: selectedDrinks.reduce((sum, d) => sum + (Number(d.price) || 0), 0),
-                        });
-                      }}
-                      maxBadgeCount={1}
-                    />
-                  ) : (
-                    // Allin = jeden nápoj (open bar preference). Single Select.
-                    <Select
-                      value={(person.drinkItemIds?.[0]?.toString()) ?? "none"}
-                      onValueChange={(v) => {
-                        if (v === "none") {
-                          updatePerson(activeTabIndex, pIndex, {
-                            drinkItemIds: [],
-                            drinkName: "",
-                            drinkPrice: 0,
-                          });
-                        } else {
-                          const selectedDrink = drinks.find((d) => d.id === Number(v));
-                          if (selectedDrink) {
-                            updatePerson(activeTabIndex, pIndex, {
-                              drinkItemIds: [selectedDrink.id],
-                              drinkName: selectedDrink.name,
-                              drinkPrice: Number(selectedDrink.price) || 0,
-                            });
-                          }
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="Vyberte napoj" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Bez napoje</SelectItem>
-                        {drinks.filter((d) => d.isActive).map((d) => (
-                          <SelectItem key={d.id} value={d.id.toString()}>
-                            {d.name} ({d.price} Kc)
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-              )}
               <div className=" flex justify-end">
                 <Button
                   type="button"
@@ -673,6 +614,75 @@ export function ReservationPersonsSection({
                   <Trash2 className="w-4 h-4 text-destructive" />
                 </Button>
               </div>
+            </div>
+            {/* Drink picker — celořádkový sub-block, ať se vejde vícenásobný výběr.
+                Welcome combo má MultiSelectFilter (víno+medovina+sodovka); allin
+                má klasický single Select. */}
+            {drinks && drinks.length > 0 && (person.drinkOption === "welcome" || person.drinkOption === "allin") && (
+              <div className="flex items-center gap-2 pl-2 text-sm">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  {person.drinkOption === "welcome" ? "Welcome drinky:" : "Nápoj:"}
+                </span>
+                {person.drinkOption === "welcome" ? (
+                  <MultiSelectFilter
+                    label="Vyber welcome drinky"
+                    options={drinks
+                      .filter((d) => d.isActive && d.isWelcomeDrink)
+                      .map((d) => ({ value: d.id.toString(), label: `${d.name} (${d.price} Kč)` }))}
+                    selected={new Set((person.drinkItemIds ?? []).map(String))}
+                    onChange={(next) => {
+                      const ids = Array.from(next).map(Number);
+                      const selectedDrinks = drinks.filter((d) => ids.includes(d.id));
+                      updatePerson(activeTabIndex, pIndex, {
+                        drinkItemIds: ids,
+                        drinkName: selectedDrinks.map((d) => d.name).join(", "),
+                        drinkPrice: selectedDrinks.reduce((sum, d) => sum + (Number(d.price) || 0), 0),
+                      });
+                    }}
+                    maxBadgeCount={3}
+                  />
+                ) : (
+                  <Select
+                    value={(person.drinkItemIds?.[0]?.toString()) ?? "none"}
+                    onValueChange={(v) => {
+                      if (v === "none") {
+                        updatePerson(activeTabIndex, pIndex, {
+                          drinkItemIds: [],
+                          drinkName: "",
+                          drinkPrice: 0,
+                        });
+                      } else {
+                        const selectedDrink = drinks.find((d) => d.id === Number(v));
+                        if (selectedDrink) {
+                          updatePerson(activeTabIndex, pIndex, {
+                            drinkItemIds: [selectedDrink.id],
+                            drinkName: selectedDrink.name,
+                            drinkPrice: Number(selectedDrink.price) || 0,
+                          });
+                        }
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs w-64">
+                      <SelectValue placeholder="Vyberte nápoj" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Bez nápoje</SelectItem>
+                      {drinks.filter((d) => d.isActive).map((d) => (
+                        <SelectItem key={d.id} value={d.id.toString()}>
+                          {d.name} ({d.price} Kč)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {person.drinkName && (
+                  <span className="text-xs text-muted-foreground">
+                    {person.drinkPrice > 0 && `+ ${person.drinkPrice} Kč`}
+                  </span>
+                )}
+              </div>
+            )}
             </div>
           ))
         )}
