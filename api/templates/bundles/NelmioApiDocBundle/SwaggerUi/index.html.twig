@@ -17,15 +17,16 @@
     {% endif %}
     <script type="text/javascript">
         window.onload = () => {
-            const ui = loadSwaggerUI({{ swagger_ui_config|json_encode(65)|raw }});
-            window.ui = ui;
+            // loadSwaggerUI() z Nelmio init-swagger-ui.js nevrací UI instance,
+            // ale ukládá ji do window.ui (viz vendor/nelmio/api-doc-bundle/public/init-swagger-ui.js).
+            loadSwaggerUI({{ swagger_ui_config|json_encode(65)|raw }});
 
             const aliasKeyMeta = document.querySelector('meta[name="partner-alias-api-key"]');
-            if (aliasKeyMeta && ui && typeof ui.preauthorizeApiKey === 'function') {
+            if (aliasKeyMeta && window.ui && typeof window.ui.preauthorizeApiKey === 'function') {
                 // ApiKey je název security scheme v nelmio_api_doc.yaml.
                 // Swagger UI ho po loginu vyplní jako kdyby uživatel klikl Authorize.
                 try {
-                    ui.preauthorizeApiKey('ApiKey', aliasKeyMeta.getAttribute('content'));
+                    window.ui.preauthorizeApiKey('ApiKey', aliasKeyMeta.getAttribute('content'));
                 } catch (e) {
                     console.warn('Nepodařilo se pre-fillnout X-API-Key:', e);
                 }
