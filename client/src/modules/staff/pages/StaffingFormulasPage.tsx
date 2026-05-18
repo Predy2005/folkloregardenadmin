@@ -21,6 +21,8 @@ import { Badge } from '@/shared/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
 import { Switch } from '@/shared/components/ui/switch';
 import { Textarea } from '@/shared/components/ui/textarea';
+import { StaffingFormulaTierEditor } from '../components/StaffingFormulaTierEditor';
+import { normalizeTiers } from '../utils/staffingFormula';
 
 export default function StaffingFormulas() {
   const dialog = useFormDialog<StaffingFormula>();
@@ -35,6 +37,7 @@ export default function StaffingFormulas() {
     defaultValues: {
       category: 'cisniciWaiters',
       ratio: 25,
+      tiers: null,
       enabled: true,
       description: '',
     },
@@ -63,6 +66,7 @@ export default function StaffingFormulas() {
     form.reset({
       category: 'cisniciWaiters',
       ratio: 25,
+      tiers: null,
       enabled: true,
       description: '',
     });
@@ -73,6 +77,7 @@ export default function StaffingFormulas() {
     form.reset({
       category: formula.category,
       ratio: formula.ratio,
+      tiers: formula.tiers && formula.tiers.length > 0 ? formula.tiers : null,
       enabled: formula.enabled,
       description: formula.description || '',
     });
@@ -89,10 +94,17 @@ export default function StaffingFormulas() {
   };
 
   const onSubmit = (data: StaffingFormulaForm) => {
+    // `normalizeTiers` zaručí, že na BE letí setříděná, validní pásma
+    // (drop invalid rows, sort by minGuests ASC). null pokud žádná pásma.
+    const normalized = data.tiers && data.tiers.length > 0 ? normalizeTiers(data.tiers) : null;
+    const payload: StaffingFormulaForm = {
+      ...data,
+      tiers: normalized && normalized.length > 0 ? normalized : null,
+    };
     if (dialog.editingItem) {
-      updateMutation.mutate({ id: dialog.editingItem.id, data });
+      updateMutation.mutate({ id: dialog.editingItem.id, data: payload });
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate(payload);
     }
   };
 
@@ -178,10 +190,26 @@ export default function StaffingFormulas() {
                       {STAFFING_CATEGORY_LABELS[formula.category]}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary">1 : {formula.ratio}</Badge>
+                      {formula.tiers && formula.tiers.length > 0 ? (
+                        <Badge variant="default">Pásma</Badge>
+                      ) : (
+                        <Badge variant="secondary">1 : {formula.ratio}</Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      1 osoba na každých {formula.ratio} hostů
+                      {formula.tiers && formula.tiers.length > 0 ? (
+                        <div className="space-y-0.5">
+                          {formula.tiers.map((t, idx) => (
+                            // eslint-disable-next-line react/no-array-index-key -- read-only tabulka, idx je stabilní v rámci řádku
+                            <div key={idx} className="font-mono text-xs">
+                              {t.minGuests}
+                              {t.maxGuests === null ? '+' : `–${t.maxGuests}`} hostů → {t.staffCount} pers.
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <>1 osoba na každých {formula.ratio} hostů</>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-xs truncate">
                       {formula.description || '-'}
@@ -339,7 +367,7 @@ export default function StaffingFormulas() {
                 name="ratio"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Poměr (počet hostů na 1 osobu) *</FormLabel>
+                    <FormLabel>Poměr (počet hostů na 1 osobu) — fallback</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -351,12 +379,14 @@ export default function StaffingFormulas() {
                       />
                     </FormControl>
                     <FormDescription>
-                      Např. hodnota 25 = 1 osoba na každých 25 hostů
+                      Lineární výpočet (1 osoba na N hostů). Použije se POUZE pokud níže nejsou stupňovitá pásma.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
+              <StaffingFormulaTierEditor form={form} />
 
               <FormField
                 control={form.control}
