@@ -155,6 +155,25 @@ npm run start    # Run production build
 - **Multipart upload**: Axios automaticky nastaví `Content-Type` s boundary, když pošleš `FormData`. Příklad: viz `ImportStaffDialog.tsx`.
 - **Toast helpers**: `successToast(msg)`, `errorToast(error)` z `shared/lib/toast-helpers.ts`.
 
+### Pravidla proti duplicitě mutací
+
+Bug 2026-05-18: `/admin/users` self-edit hlásil `403 "You cannot manage this user"`, ale heslo se reálně měnilo (první ze dvou requestů prošel, druhý padl, FE pak rolled back success toast). Příčina: `useUsersData.ts` hook měl správnou logiku, ale **nepoužíval ho nikdo** — `UsersPage.tsx` měl vlastní inline `updateMutation` s identickým, ale stale kódem. Refaktor začal a nedotáhl se.
+
+**Aby se to neopakovalo:**
+
+1. **Jedna mutace = jedno místo.** API volání pro CRUD nad entitou patří do `modules/<domain>/hooks/use*.ts` nebo `modules/<domain>/mutations/*.ts`. **Page komponenty a Dialog komponenty volají hook, nikdy `useMutation` inline.** Pokud refaktoruješ z inline na hook, smaž inline ve **stejném commitu** — žádné "necháme to tam pro jistotu".
+
+2. **Před přidáním `api.put/post/delete` grep zda už existuje.** `grep -rn "api.put.*/api/<resource>" client/src` — pokud existuje, importuj místo duplikování. Pokud existují **dvě** call sites, je to bug — sjednoť je.
+
+3. **Backend strukturálně brání chybnému FE flow** kde to dává smysl. Příklad — vlastní profil přes admin endpoint by mohl `UserController::edit` odmítnout přes `if ($id === $currentUser->getId()) return 400 "Use /auth/profile"`. Self-service flow s `currentPassword` verifikací je bezpečnější než admin endpoint bez ní. Když má každý endpoint **jasnou zodpovědnost a brání ostatní cesty**, FE nemá šanci se mýlit.
+
+4. **Self-edit ve správě usera** = vždy skip role/permission mutace pro vlastní ID. BE `PermissionService::canManageUser:252` to vrací `false` (správně). FE musí tuto cestu **přeskočit**, ne ji volat a chytat 403. Vzor: `useAuth().user.id === targetId` → skip.
+
+**Auth flow pro hesla (2026-05-18 audit):**
+- **Self-service**: `PUT /auth/profile` (gated `IS_AUTHENTICATED_FULLY`) s `currentPassword` + `newPassword`. Použij v `/profile` a podobných self-edit UI.
+- **Admin → cizí user**: `PUT /api/users/{id}` (gated `users.update`). BE NEMÁ self-edit guard, FE musí v `UsersPage` editovat sebe přes `/auth/profile`, ne tuto cestu (nebo accept že role mutace pro sebe se vždy skipne).
+- `PUT /api/permissions/users/{id}/roles` (gated `permissions.update` + `canManageUser`) — vlastní role nelze přiřazovat (security model). FE skipne pro self-edit.
+
 ## Key Files
 
 - `shared/types.ts` - All TypeScript interfaces for entities + enum labels (např. `DRINK_OPTION_LABELS`, `PERSON_TYPE_LABELS`).
