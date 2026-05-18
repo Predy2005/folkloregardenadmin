@@ -7,6 +7,7 @@ namespace App\EventListener;
 use Lexik\Bundle\JWTAuthenticationBundle\Event\AuthenticationSuccessEvent;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
 use Symfony\Component\HttpFoundation\Cookie;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\Security\Http\Event\LogoutEvent;
 
@@ -63,10 +64,12 @@ final class JWTAuthenticationCookieListener
     #[AsEventListener(event: LogoutEvent::class)]
     public function onLogout(LogoutEvent $event): void
     {
-        $response = $event->getResponse();
-        if ($response === null) {
-            return;
-        }
+        // Symfony default logout handler vrací 302 redirect na `target` ze
+        // `security.yaml` (= `/`). SPA s `withCredentials: true` nemůže
+        // následovat cross-origin redirect na `/` (chybí CORS headers,
+        // odpověď není JSON) — axios padá runtime errorem v prohlížeči.
+        // Override: vrátíme čisté 200 JSON `{status:"ok"}` přímo z eventu.
+        $response = new JsonResponse(['status' => 'ok']);
 
         // Expirovaná cookie se stejným name/path → browser ji smaže.
         $response->headers->clearCookie(
@@ -77,6 +80,8 @@ final class JWTAuthenticationCookieListener
             httpOnly: true,
             sameSite: Cookie::SAMESITE_LAX,
         );
+
+        $event->setResponse($response);
     }
 
     /**
