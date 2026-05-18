@@ -33,6 +33,15 @@ class DrinkItem
     #[ORM\Column(name: 'is_active', type: Types::BOOLEAN, options: ['default' => true])]
     private bool $isActive = true;
 
+    /**
+     * Příznak: tento nápoj je nabízen jako welcome drink (uvítací).
+     * V rezervaci u hosta s `drinkOption = welcome` se select filtruje na nápoje
+     * s `is_welcome_drink = true`. Nezávislé na `category` (welcome může být
+     * SPIRIT, COCKTAIL i SOFT).
+     */
+    #[ORM\Column(name: 'is_welcome_drink', type: Types::BOOLEAN, options: ['default' => false])]
+    private bool $isWelcomeDrink = false;
+
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $description = null;
 
@@ -69,6 +78,8 @@ class DrinkItem
     public function setIsAlcoholic(bool $v): self { $this->isAlcoholic = $v; return $this; }
     public function isActive(): bool { return $this->isActive; }
     public function setIsActive(bool $v): self { $this->isActive = $v; return $this; }
+    public function isWelcomeDrink(): bool { return $this->isWelcomeDrink; }
+    public function setIsWelcomeDrink(bool $v): self { $this->isWelcomeDrink = $v; return $this; }
     public function getDescription(): ?string { return $this->description; }
     public function setDescription(?string $v): self { $this->description = $v; return $this; }
     public function getSortOrder(): int { return $this->sortOrder; }

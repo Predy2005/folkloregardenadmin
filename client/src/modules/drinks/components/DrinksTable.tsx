@@ -180,6 +180,7 @@ export function DrinksTable({
                 <TableHead>Kategorie</TableHead>
                 <TableHead>Cena (Kc)</TableHead>
                 <TableHead>Alkoholicky</TableHead>
+                <TableHead>Welcome drink</TableHead>
                 <TableHead>Aktivni</TableHead>
                 <TableHead className="text-right">Akce</TableHead>
               </TableRow>
@@ -204,6 +205,13 @@ export function DrinksTable({
                     <Badge variant={drink.isAlcoholic ? "destructive" : "secondary"}>
                       {drink.isAlcoholic ? "Ano" : "Ne"}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {drink.isWelcomeDrink ? (
+                      <Badge variant="default">Welcome</Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge variant={drink.isActive ? "default" : "secondary"}>

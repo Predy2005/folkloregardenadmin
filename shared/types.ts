@@ -1455,6 +1455,12 @@ export interface DrinkItem {
   price: string;
   isAlcoholic: boolean;
   isActive: boolean;
+  /**
+   * Pokud true, nápoj se nabízí jako welcome drink (uvítací). V rezervaci
+   * u hosta s `drinkOption = welcome` se select filtruje na tyto nápoje.
+   * Nezávislé na `category` — welcome drink může být SPIRIT/COCKTAIL/SOFT.
+   */
+  isWelcomeDrink: boolean;
   description?: string;
   sortOrder: number;
   createdAt: string;

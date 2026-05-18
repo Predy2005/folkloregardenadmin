@@ -30,6 +30,7 @@ export interface DrinkFormData {
   price: string;
   isAlcoholic: boolean;
   isActive: boolean;
+  isWelcomeDrink: boolean;
   description: string;
 }
 
@@ -104,7 +105,7 @@ export function DrinkDialog({
               <CurrencySelect value={currency} onChange={setCurrency} className="w-24" />
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
               <Checkbox
                 id="isAlcoholic"
@@ -124,6 +125,16 @@ export function DrinkDialog({
                 }
               />
               <Label htmlFor="isActive">Aktivni</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="isWelcomeDrink"
+                checked={form.isWelcomeDrink}
+                onCheckedChange={(checked) =>
+                  setForm({ ...form, isWelcomeDrink: !!checked })
+                }
+              />
+              <Label htmlFor="isWelcomeDrink">Nabízet jako welcome drink</Label>
             </div>
           </div>
           <div>

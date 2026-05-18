@@ -15,7 +15,7 @@ import { PairingDialog, type PairingFormData } from "../components/PairingDialog
 import { useBulkSelection } from "@/shared/hooks/useBulkSelection";
 
 const defaultDrinkForm: DrinkFormData = {
-  name: "", category: "OTHER", price: "", isAlcoholic: false, isActive: true, description: "",
+  name: "", category: "OTHER", price: "", isAlcoholic: false, isActive: true, isWelcomeDrink: false, description: "",
 };
 
 const defaultPairingForm: PairingFormData = {
@@ -103,7 +103,7 @@ export default function DrinksPage() {
   const openCreateDrink = () => { setEditingDrink(null); setDrinkForm({ ...defaultDrinkForm }); setDrinkDialogOpen(true); };
   const openEditDrink = (drink: DrinkItem) => {
     setEditingDrink(drink);
-    setDrinkForm({ name: drink.name, category: drink.category, price: drink.price, isAlcoholic: drink.isAlcoholic, isActive: drink.isActive, description: drink.description || "" });
+    setDrinkForm({ name: drink.name, category: drink.category, price: drink.price, isAlcoholic: drink.isAlcoholic, isActive: drink.isActive, isWelcomeDrink: drink.isWelcomeDrink, description: drink.description || "" });
     setDrinkDialogOpen(true);
   };
   const handleDrinkSubmit = () => {

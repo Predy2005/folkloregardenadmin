@@ -25,9 +25,22 @@ class DrinkController extends AbstractController
 
     #[Route('', methods: ['GET'])]
     #[IsGranted('drinks.read')]
-    public function list(): JsonResponse
+    public function list(Request $request): JsonResponse
     {
-        $items = $this->drinkRepo->findBy([], ['sortOrder' => 'ASC', 'name' => 'ASC']);
+        // `?welcomeOnly=true` filtr — používá rezervace u hostů s drinkOption=welcome.
+        // `?activeOnly=true` filtr — skryj deaktivované drinks.
+        $criteria = [];
+        if (filter_var($request->query->get('welcomeOnly'), FILTER_VALIDATE_BOOLEAN)) {
+            $criteria['isWelcomeDrink'] = true;
+        }
+        if (filter_var($request->query->get('activeOnly'), FILTER_VALIDATE_BOOLEAN)) {
+            $criteria['isActive'] = true;
+        }
+
+        $items = empty($criteria)
+            ? $this->drinkRepo->findBy([], ['sortOrder' => 'ASC', 'name' => 'ASC'])
+            : $this->drinkRepo->findBy($criteria, ['sortOrder' => 'ASC', 'name' => 'ASC']);
+
         return $this->json(array_map(fn(DrinkItem $d) => $this->serialize($d), $items));
     }
 
@@ -185,6 +198,7 @@ class DrinkController extends AbstractController
         if (isset($data['price'])) $d->setPrice((string)$data['price']);
         if (isset($data['isAlcoholic'])) $d->setIsAlcoholic((bool)$data['isAlcoholic']);
         if (isset($data['isActive'])) $d->setIsActive((bool)$data['isActive']);
+        if (isset($data['isWelcomeDrink'])) $d->setIsWelcomeDrink((bool)$data['isWelcomeDrink']);
         if (array_key_exists('description', $data)) $d->setDescription($data['description']);
         if (isset($data['sortOrder'])) $d->setSortOrder((int)$data['sortOrder']);
     }
@@ -198,6 +212,7 @@ class DrinkController extends AbstractController
             'price' => $d->getPrice(),
             'isAlcoholic' => $d->isAlcoholic(),
             'isActive' => $d->isActive(),
+            'isWelcomeDrink' => $d->isWelcomeDrink(),
             'description' => $d->getDescription(),
             'sortOrder' => $d->getSortOrder(),
             'createdAt' => $d->getCreatedAt()->format('c'),
