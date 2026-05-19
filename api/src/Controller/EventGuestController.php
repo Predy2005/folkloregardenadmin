@@ -58,9 +58,39 @@ class EventGuestController extends AbstractController
             return $this->json(['error' => 'Not found'], 404);
         }
 
+        // Index ReservationPerson napříč všemi rezervacemi přiřazenými k eventu
+        // — chceme `drinkOption / drinkName / drinkPrice` (+ kontakt) přímo
+        // v `/guests` response, aby floor plan UI nemuselo dělat per-guest fetche.
+        // Klíč: "<reservationId>:<personIndexInReservation>".
+        $personLookup = [];
+        $contactLookup = [];
+        foreach ($event->getGuests() as $g) {
+            $reservation = $g->getReservation();
+            if (!$reservation) {
+                continue;
+            }
+            $rid = $reservation->getId();
+            if (isset($contactLookup[$rid])) {
+                continue;
+            }
+            $contactLookup[$rid] = $reservation->getContactName();
+            $idx = 0;
+            foreach ($reservation->getPersons() as $person) {
+                $personLookup["{$rid}:{$idx}"] = $person;
+                $idx++;
+            }
+        }
+
         $guests = [];
         foreach ($event->getGuests() as $g) {
             $menuItem = $g->getMenuItem();
+            $reservation = $g->getReservation();
+            $rid = $reservation?->getId();
+            $personKey = $rid !== null && $g->getPersonIndex() !== null
+                ? "{$rid}:" . $g->getPersonIndex()
+                : null;
+            $person = $personKey !== null && isset($personLookup[$personKey]) ? $personLookup[$personKey] : null;
+
             $guests[] = [
                 'id' => $g->getId(),
                 'firstName' => $g->getFirstName(),
@@ -71,9 +101,13 @@ class EventGuestController extends AbstractController
                 'isPresent' => $g->isPresent(),
                 'eventTableId' => $g->getEventTable()?->getId(),
                 'personIndex' => $g->getPersonIndex(),
-                'reservationId' => $g->getReservation()?->getId(),
+                'reservationId' => $rid,
+                'reservationContactName' => $rid !== null ? ($contactLookup[$rid] ?? null) : null,
                 'menuItemId' => $menuItem?->getId(),
                 'menuName' => $menuItem?->getMenuName(),
+                'drinkOption' => $person?->getDrinkOption(),
+                'drinkName' => $person?->getDrinkName(),
+                'drinkPrice' => $person?->getDrinkPrice(),
                 'notes' => $g->getNotes(),
             ];
         }

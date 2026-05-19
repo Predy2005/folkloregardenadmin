@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRightLeft, UserPlus, ArrowUpCircle, ArrowDownCircle, Utensils, X, ArrowLeft,
-  UserMinus, Users2, LogOut,
+  UserMinus, Users2, LogOut, Wine,
 } from "lucide-react";
 import { api } from "@/shared/lib/api";
 import { Button } from "@/shared/components/ui/button";
@@ -27,8 +27,17 @@ interface TableMovement {
   createdAt: string;
 }
 
-// Extended guest type with menuName (returned by /api/events/{id}/guests)
-type GuestWithMenu = EventGuest & { menuName?: string | null };
+// Extended guest type — `/api/events/{id}/guests` přidává join na rezervaci
+// (contactName, personIndex) a ReservationPerson (drinkOption, drinkName,
+// drinkPrice) + menuName z EventMenu. Umožňuje per-host UI: rezervace + jídlo
+// + pití bez dalších fetches.
+type GuestWithMenu = EventGuest & {
+  menuName?: string | null;
+  reservationContactName?: string | null;
+  drinkOption?: "none" | "welcome" | "allin" | null;
+  drinkName?: string | null;
+  drinkPrice?: string | number | null;
+};
 
 interface TableActionPanelProps {
   onClose: () => void;
@@ -406,6 +415,13 @@ export function TableActionPanel({
                     <div key={g.id} className="p-2.5 rounded-lg bg-muted/50 min-h-[52px]">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
+                          {/* Rezervace nahoře — když má host reservationId, ukáže contact name + #id;
+                              jinak "Manuální host" (přidán ručně přes UI bez rezervace). */}
+                          <div className="text-[10px] text-muted-foreground truncate mb-0.5">
+                            {g.reservationId
+                              ? <>Rez. #{g.reservationId}{g.reservationContactName ? ` — ${g.reservationContactName}` : ""}</>
+                              : "Manuálně přidaný host"}
+                          </div>
                           <div className="font-medium text-sm truncate">
                             {g.firstName || g.lastName
                               ? `${g.firstName ?? ""} ${g.lastName ?? ""}`.trim()
@@ -431,6 +447,18 @@ export function TableActionPanel({
                             <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
                               <Utensils className="h-3 w-3 shrink-0" />
                               <span className="truncate">{g.menuName}</span>
+                            </div>
+                          )}
+                          {/* Nápoje — drinkOption (none/welcome/allin) + konkrétní vybrané drinky.
+                              `welcome` může obsahovat víc položek (víno+medovina+sodovka) jako combo,
+                              `drinkName` je čárkami spojený snapshot z ReservationPerson. */}
+                          {(g.drinkOption && g.drinkOption !== "none") && (
+                            <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                              <Wine className="h-3 w-3 shrink-0" />
+                              <span className="truncate">
+                                {g.drinkOption === "welcome" ? "Welcome" : "Neomezeně"}
+                                {g.drinkName ? `: ${g.drinkName}` : ""}
+                              </span>
                             </div>
                           )}
                         </div>

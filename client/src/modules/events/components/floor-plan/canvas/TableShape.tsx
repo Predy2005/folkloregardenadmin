@@ -128,6 +128,29 @@ export const TableShape = forwardRef<TableShapeHandle, TableShapeProps>(function
   const guideCount = guests.filter((g) => g.type === "guide").length;
   const hasSpecialTypes = childCount > 0 || driverCount > 0 || guideCount > 0;
 
+  // Seskupení hostů u stolu podle rezervace — jeden stůl může mít 8 hostů
+  // z 8 různých rezervací. Pro každou unikátní rezervaci vykreslíme jeden
+  // řádek `#<id> ×<count>`. Manuálně přidaní hosté (bez reservationId) jdou
+  // do bucketu "manuál".
+  const reservationGroups = (() => {
+    const groups = new Map<number | "manual", number>();
+    guests.forEach((g) => {
+      const key = g.reservationId ?? "manual";
+      groups.set(key, (groups.get(key) ?? 0) + 1);
+    });
+    return Array.from(groups.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([id, count]) => ({
+        id,
+        count,
+        label: id === "manual" ? `Ručně ×${count}` : `#${id} ×${count}`,
+      }));
+  })();
+  // Maximální počet řádků viditelných uvnitř stolu — víc se ořízne na "+N…".
+  const maxReservationLines = Math.max(0, Math.floor((h - 28) / 11));
+  const visibleGroups = reservationGroups.slice(0, maxReservationLines);
+  const hiddenGroupsCount = reservationGroups.length - visibleGroups.length;
+
   // Render seat grid for rectangular tables
   const renderSeatGrid = () => {
     const grid = getSeatGrid(table.capacity, table.shape);
@@ -261,6 +284,42 @@ export const TableShape = forwardRef<TableShapeHandle, TableShapeProps>(function
       onTransformEnd={handleTransformEnd}
     >
       {renderShape()}
+
+      {/* Reservation breakdown — jeden řádek na unikátní rezervaci u tohoto
+          stolu. Pomáhá u-stolu vidět "8 hostů z rezervace #708" vs "1 host
+          z #708, 1 z #712, 6 ručně". Pokud se počet rezervací nevejde dovnitř
+          stolu, zbytek se zkrátí na "+N…" a detail je v side panelu po kliknutí. */}
+      {guestCount > 0 && visibleGroups.length > 0 && (
+        <>
+          {visibleGroups.map((group, i) => (
+            <Text
+              key={`res-${group.id}`}
+              x={2}
+              y={(table.shape === "round" || table.shape === "oval") ? h / 2 + 18 + i * 10 : 14 + i * 10}
+              width={w - 4}
+              text={group.label}
+              fontSize={8}
+              fill="#374151"
+              align="center"
+              listening={false}
+            />
+          ))}
+          {hiddenGroupsCount > 0 && (
+            <Text
+              x={2}
+              y={(table.shape === "round" || table.shape === "oval")
+                ? h / 2 + 18 + visibleGroups.length * 10
+                : 14 + visibleGroups.length * 10}
+              width={w - 4}
+              text={`+${hiddenGroupsCount} dalších`}
+              fontSize={8}
+              fill="#9ca3af"
+              align="center"
+              listening={false}
+            />
+          )}
+        </>
+      )}
 
       {table.shape !== "round" && table.shape !== "oval" && (
         <Text
