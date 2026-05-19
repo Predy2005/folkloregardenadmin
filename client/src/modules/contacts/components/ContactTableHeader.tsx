@@ -1,4 +1,4 @@
-import type { KeyboardEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
@@ -20,60 +20,28 @@ const sortIcon = (active: boolean, direction: "asc" | "desc") => {
     : <ArrowDown className="ml-1 h-3 w-3 inline-block" />;
 };
 
-// jsx-a11y: non-interactive elementy (TableHead = <th>, span) s onClick musí
-// být tabbable + reagovat na Enter/Space. Helper sjednocuje accessibility
-// boilerplate pro klikací sort triggery.
-const activateOnKey = (handler: () => void) => (e: KeyboardEvent<HTMLElement>) => {
-  if (e.key === "Enter" || e.key === " ") {
-    e.preventDefault();
-    handler();
-  }
-};
-
-interface SortableHeadProps {
+// Native <button> uvnitř <th> — žádné role="button" / tabIndex hacky.
+// Browser už ovládá Enter/Space, focus ring, screen reader announcement.
+interface SortButtonProps {
   readonly active: boolean;
   readonly direction: "asc" | "desc";
   readonly onActivate: () => void;
   readonly children: ReactNode;
+  readonly stopPropagation?: boolean;
 }
 
-function SortableHead({ active, direction, onActivate, children }: Readonly<SortableHeadProps>) {
+function SortButton({ active, direction, onActivate, children, stopPropagation }: Readonly<SortButtonProps>) {
   return (
-    <TableHead
-      role="button"
-      tabIndex={0}
-      onClick={onActivate}
-      onKeyDown={activateOnKey(onActivate)}
-      className="cursor-pointer select-none hover:bg-muted/50"
+    <button
+      type="button"
+      onClick={(e) => {
+        if (stopPropagation) e.stopPropagation();
+        onActivate();
+      }}
+      className="inline-flex items-center font-medium text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
     >
       {children}{sortIcon(active, direction)}
-    </TableHead>
-  );
-}
-
-interface SortableSpanProps {
-  readonly onActivate: () => void;
-  readonly children: ReactNode;
-  readonly className?: string;
-}
-
-function SortableSpan({ onActivate, children, className }: Readonly<SortableSpanProps>) {
-  return (
-    <span
-      role="button"
-      tabIndex={0}
-      onClick={(e) => { e.stopPropagation(); onActivate(); }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          e.stopPropagation();
-          onActivate();
-        }
-      }}
-      className={className}
-    >
-      {children}
-    </span>
+    </button>
   );
 }
 
@@ -94,23 +62,39 @@ export function ContactTableHeader({
         <TableHead className="w-[40px]">
           <Checkbox checked={checkboxState} onCheckedChange={onToggleSelectAll} />
         </TableHead>
-        <SortableHead active={sortColumn === "name"} direction={sortDirection} onActivate={() => toggleSort("name")}>
-          Kontakt
-        </SortableHead>
-        <SortableHead active={sortColumn === "phone"} direction={sortDirection} onActivate={() => toggleSort("phone")}>
-          Telefon
-        </SortableHead>
-        <SortableHead active={sortColumn === "company"} direction={sortDirection} onActivate={() => toggleSort("company")}>
-          Firma
-        </SortableHead>
-        <TableHead className="select-none">
-          <SortableSpan onActivate={() => toggleSort("invoiceIc")}>IČO</SortableSpan>
-          {sortIcon(sortColumn === "invoiceIc", sortDirection)}
+        <TableHead className="hover:bg-muted/50">
+          <SortButton active={sortColumn === "name"} direction={sortDirection} onActivate={() => toggleSort("name")}>
+            Kontakt
+          </SortButton>
+        </TableHead>
+        <TableHead className="hover:bg-muted/50">
+          <SortButton active={sortColumn === "phone"} direction={sortDirection} onActivate={() => toggleSort("phone")}>
+            Telefon
+          </SortButton>
+        </TableHead>
+        <TableHead className="hover:bg-muted/50">
+          <SortButton active={sortColumn === "company"} direction={sortDirection} onActivate={() => toggleSort("company")}>
+            Firma
+          </SortButton>
+        </TableHead>
+        <TableHead>
+          <SortButton
+            active={sortColumn === "invoiceIc"}
+            direction={sortDirection}
+            onActivate={() => toggleSort("invoiceIc")}
+            stopPropagation
+          >
+            IČO
+          </SortButton>
           <span className="mx-1 text-muted-foreground">/</span>
-          <SortableSpan onActivate={() => toggleSort("invoiceDic")} className="hover:underline">
+          <SortButton
+            active={sortColumn === "invoiceDic"}
+            direction={sortDirection}
+            onActivate={() => toggleSort("invoiceDic")}
+            stopPropagation
+          >
             DIČ
-          </SortableSpan>
-          {sortIcon(sortColumn === "invoiceDic", sortDirection)}
+          </SortButton>
         </TableHead>
         <TableHead>Zdroj</TableHead>
         <TableHead className="text-right">Akce</TableHead>

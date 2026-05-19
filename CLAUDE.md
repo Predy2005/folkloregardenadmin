@@ -155,6 +155,36 @@ npm run start    # Run production build
 - **Multipart upload**: Axios automaticky nastaví `Content-Type` s boundary, když pošleš `FormData`. Příklad: viz `ImportStaffDialog.tsx`.
 - **Toast helpers**: `successToast(msg)`, `errorToast(error)` z `shared/lib/toast-helpers.ts`.
 
+### Komponentní pravidla (TS + a11y + SonarJS)
+
+Tyhle pravidla pípají v IDE/Sonaru, sleduj při psaní nové komponenty — ušetříš si druhý průchod „fix lint":
+
+1. **Props vždy `readonly` na obou úrovních** (S6759 — *Mark the props of the component as read-only*). Vzor:
+   ```tsx
+   interface FooProps {
+     readonly value: string;       // 1) readonly na poli
+     readonly onChange: (v: string) => void;
+   }
+   export function Foo({ value, onChange }: Readonly<FooProps>) { … }  // 2) Readonly<> wrap
+   ```
+   Belt-and-suspenders — interface field stops přímé mutace, `Readonly<>` na parametru chrání před `Object.assign(props, …)` apod. Vzor: `ReservationPersonsSectionProps` v `client/src/modules/reservations/types/components/edit/`.
+
+2. **Klikatelný prvek = native `<button type="button">`, NIKDY `role="button"` workaround** (S6822 / S6843 / S6819). Browser už zařídí Enter/Space, focus ring, screen reader announcement. Vzor pro „klikací" tabulkovou hlavičku — `<button>` **dovnitř** `<th>`/`<TableHead>`:
+   ```tsx
+   <TableHead className="hover:bg-muted/50">
+     <button type="button" onClick={onSort} className="inline-flex items-center font-medium hover:underline focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
+       Sloupec {sortIcon}
+     </button>
+   </TableHead>
+   ```
+   Vzor: `ContactTableHeader.tsx:SortButton`. **Když máš víc klikacích zón uvnitř buňky** (např. IČO/DIČ kombo), každá je vlastní `<button>` se `stopPropagation` v `onClick` aby se neaktivovaly obě najednou.
+
+3. **Tlačítka uvnitř formuláře** mají vždycky `type="button"` (kromě toho jediného „Odeslat"). Bez toho browser default `type="submit"` triggruje submit při klikání na zrušit / přepínače apod.
+
+4. **Velikost souboru** (frontend-rules §1.1, mimo stash → reference v root CLAUDE.md): komponenta ≤ 250 ř., hook ≤ 150 ř., utility ≤ 250 ř. Nad 350 = povinný refaktor (extrakce sub-komponent do `components/`, hooků do `hooks/`, typů do `types/` v rámci modulu). Příklad refaktoru: commit `cd0edde` — `ContactTable.tsx` 532 → 213 ř., split na 6 souborů.
+
+5. **Žádné `useMutation` inline v page/dialog komponentě** — vždy přes hook v `modules/<doména>/hooks/`. Viz „Pravidla proti duplicitě mutací" níž.
+
 ### Pravidla proti duplicitě mutací
 
 Bug 2026-05-18: `/admin/users` self-edit hlásil `403 "You cannot manage this user"`, ale heslo se reálně měnilo (první ze dvou requestů prošel, druhý padl, FE pak rolled back success toast). Příčina: `useUsersData.ts` hook měl správnou logiku, ale **nepoužíval ho nikdo** — `UsersPage.tsx` měl vlastní inline `updateMutation` s identickým, ale stale kódem. Refaktor začal a nedotáhl se.
