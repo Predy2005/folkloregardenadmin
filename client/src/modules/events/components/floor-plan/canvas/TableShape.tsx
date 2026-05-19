@@ -295,27 +295,31 @@ export const TableShape = forwardRef<TableShapeHandle, TableShapeProps>(function
           {visibleGroups.map((group, i) => (
             <Text
               key={`res-${group.id}`}
-              x={2}
+              x={4}
               y={(table.shape === "round" || table.shape === "oval") ? h / 2 + 18 + i * 10 : 14 + i * 10}
-              width={w - 4}
+              width={w - 8}
               text={group.label}
               fontSize={8}
               fill="#374151"
-              align="center"
+              align="left"
+              wrap="none"
+              ellipsis
               listening={false}
             />
           ))}
           {hiddenGroupsCount > 0 && (
             <Text
-              x={2}
+              x={4}
               y={(table.shape === "round" || table.shape === "oval")
                 ? h / 2 + 18 + visibleGroups.length * 10
                 : 14 + visibleGroups.length * 10}
-              width={w - 4}
+              width={w - 8}
               text={`+${hiddenGroupsCount} dalších`}
               fontSize={8}
               fill="#9ca3af"
-              align="center"
+              align="left"
+              wrap="none"
+              ellipsis
               listening={false}
             />
           )}
