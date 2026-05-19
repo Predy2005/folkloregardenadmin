@@ -125,6 +125,19 @@ export const TableShape = forwardRef<TableShapeHandle, TableShapeProps>(function
   // Seskupení hostů u stolu podle rezervace. Label = kontaktní jméno z rezervace
   // (např. "Novák ×8"), což je čitelnější než `#708`. Manuálně přidaní hosté
   // (bez reservationId) jdou do bucketu "Ručně".
+  //
+  // Konva `ellipsis` prop nefunguje spolehlivě s `wrap="none"` (drží text
+  // na jednom řádku ale neoře přesahy). Truncate řešíme v JS — odhad ~5.2 px
+  // na znak při fontSize 8, takže `maxChars = floor((width - padding) / 5.2)`.
+  // Suffix `×N` necháváme vždy viditelný; ořez jde do jména.
+  const truncateLabel = (name: string, suffix: string, availableWidth: number): string => {
+    const suffixLen = suffix.length;
+    const maxTotal = Math.max(suffixLen + 1, Math.floor((availableWidth - 4) / 5.2));
+    if (name.length + suffixLen <= maxTotal) return `${name}${suffix}`;
+    const nameMax = Math.max(1, maxTotal - suffixLen - 1);
+    return `${name.slice(0, nameMax)}…${suffix}`;
+  };
+
   const reservationGroups = (() => {
     const groups = new Map<number | "manual", { count: number; name: string | null }>();
     guests.forEach((g) => {
@@ -136,16 +149,18 @@ export const TableShape = forwardRef<TableShapeHandle, TableShapeProps>(function
         groups.set(key, { count: 1, name: g.reservationContactName ?? null });
       }
     });
+    const availableWidth = w - 8; // matchuje padding níž v render
     return Array.from(groups.entries())
       .sort((a, b) => b[1].count - a[1].count)
-      .map(([id, info]) => ({
-        id,
-        count: info.count,
-        // Pokud je contactName k dispozici, ukáže "Novák ×3", jinak fallback "#708 ×3".
-        label: id === "manual"
-          ? `Ručně ×${info.count}`
-          : `${info.name ?? `#${id}`} ×${info.count}`,
-      }));
+      .map(([id, info]) => {
+        const baseName = id === "manual" ? "Ručně" : (info.name ?? `#${id}`);
+        const suffix = ` ×${info.count}`;
+        return {
+          id,
+          count: info.count,
+          label: truncateLabel(baseName, suffix, availableWidth),
+        };
+      });
   })();
   // Maximální počet řádků viditelných uvnitř stolu — víc se ořízne na "+N…".
   const maxReservationLines = Math.max(0, Math.floor((h - 28) / 11));
@@ -303,7 +318,6 @@ export const TableShape = forwardRef<TableShapeHandle, TableShapeProps>(function
               fill="#374151"
               align="left"
               wrap="none"
-              ellipsis
               listening={false}
             />
           ))}
@@ -319,7 +333,6 @@ export const TableShape = forwardRef<TableShapeHandle, TableShapeProps>(function
               fill="#9ca3af"
               align="left"
               wrap="none"
-              ellipsis
               listening={false}
             />
           )}
