@@ -37,6 +37,7 @@ interface ContactFiltersProps {
   selectedCount: number;
   onBulkSource: () => void;
   onBulkDelete: () => void;
+  onBulkCreatePartners: () => void;
   onClearSelection: () => void;
 }
 
@@ -59,6 +60,7 @@ export function ContactFilters({
   selectedCount,
   onBulkSource,
   onBulkDelete,
+  onBulkCreatePartners,
   onClearSelection,
 }: ContactFiltersProps) {
   return (
@@ -209,6 +211,13 @@ export function ContactFilters({
             onClick={onBulkSource}
           >
             Změnit zdroj
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onBulkCreatePartners}
+          >
+            Vytvořit partnery
           </Button>
           <Button
             variant="destructive"

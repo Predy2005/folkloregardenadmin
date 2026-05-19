@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Entity\Contact;
+use App\Entity\Partner;
 use App\Entity\Reservation;
 use App\Repository\ContactRepository;
+use App\Repository\PartnerRepository;
 use App\Repository\ReservationRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -71,6 +73,102 @@ class ContactController extends AbstractController
         $em->flush();
 
         return $this->json(['status' => 'updated', 'count' => $count]);
+    }
+
+    /**
+     * Hromadné vytvoření partnerů z vybraných kontaktů. Mirror logiky z
+     * `usePartnerForm.ts:127` (pre-fill from contact) — name = company || name,
+     * contactPerson = name, fakturační údaje se přenášejí 1:1.
+     *
+     * Skipuje:
+     *  - Kontakty, kde už partner se shodným `pohoda_code` nebo IČ existuje
+     *    (duplicate guard, vrací v `skipped` s důvodem).
+     *  - Kontakty, kterým chybí `name` i `company` (nelze odvodit Partner.name).
+     *
+     * Body: `{ ids: number[], partnerType: string }`. `partnerType` default "OTHER"
+     * (must match slug v partner_category).
+     */
+    #[Route('/bulk-create-partners', methods: ['POST'])]
+    #[IsGranted('partners.create')]
+    public function bulkCreatePartners(
+        Request $request,
+        ContactRepository $contactRepo,
+        PartnerRepository $partnerRepo,
+        EntityManagerInterface $em,
+    ): JsonResponse {
+        $data = json_decode($request->getContent(), true) ?? [];
+        $ids = $data['ids'] ?? [];
+        $partnerType = (string)($data['partnerType'] ?? 'OTHER');
+
+        if (!is_array($ids) || empty($ids)) {
+            return $this->json(['error' => 'Pole ids je povinné a nesmí být prázdné'], 400);
+        }
+
+        $contacts = $contactRepo->findBy(['id' => $ids]);
+
+        $created = [];
+        $skipped = [];
+
+        foreach ($contacts as $contact) {
+            $partnerName = $contact->getCompany() ?: $contact->getName();
+            if (!$partnerName) {
+                $skipped[] = ['contactId' => $contact->getId(), 'reason' => 'Chybí jméno i firma'];
+                continue;
+            }
+
+            // Duplicate guard — IČ / Pohoda code shoda na existujícím partnerovi.
+            if ($contact->getInvoiceIc()) {
+                $existing = $partnerRepo->findOneBy(['ic' => $contact->getInvoiceIc()]);
+                if ($existing) {
+                    $skipped[] = [
+                        'contactId' => $contact->getId(),
+                        'reason' => sprintf('IČ %s už má partner #%d (%s)', $contact->getInvoiceIc(), $existing->getId(), $existing->getName()),
+                    ];
+                    continue;
+                }
+            }
+            if ($contact->getPohodaCode()) {
+                $existing = $partnerRepo->findOneBy(['pohodaCode' => $contact->getPohodaCode()]);
+                if ($existing) {
+                    $skipped[] = [
+                        'contactId' => $contact->getId(),
+                        'reason' => sprintf('Pohoda kód %s už má partner #%d', $contact->getPohodaCode(), $existing->getId()),
+                    ];
+                    continue;
+                }
+            }
+
+            $partner = new Partner();
+            $partner->setName($partnerName)
+                ->setPartnerType($partnerType)
+                ->setContactPerson($contact->getName())
+                ->setEmail($contact->getEmail())
+                ->setPhone($contact->getPhone())
+                ->setIc($contact->getInvoiceIc())
+                ->setDic($contact->getInvoiceDic())
+                ->setInvoiceCompany($contact->getCompany())
+                ->setInvoiceStreet($contact->getBillingStreet())
+                ->setInvoiceCity($contact->getBillingCity())
+                ->setInvoiceZipcode($contact->getBillingZip())
+                ->setBillingEmail($contact->getInvoiceEmail() ?: $contact->getEmail())
+                ->setPohodaCode($contact->getPohodaCode())
+                ->setIsActive(true);
+
+            $em->persist($partner);
+            $created[] = [
+                'contactId' => $contact->getId(),
+                'partnerName' => $partnerName,
+            ];
+        }
+
+        $em->flush();
+
+        return $this->json([
+            'created' => count($created),
+            'skipped' => count($skipped),
+            'createdItems' => $created,
+            'skippedItems' => $skipped,
+        ]);
     }
 
     #[Route('/bulk-delete', methods: ['DELETE'])]

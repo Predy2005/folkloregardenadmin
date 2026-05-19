@@ -12,6 +12,23 @@ import type { Contact } from '@shared/types';
 import { usePagination } from '@/shared/hooks/usePagination';
 import { ContactFilters } from './ContactFilters';
 import { ContactBulkActionDialog } from './ContactBulkActionDialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/components/ui/dialog';
+import { Label } from '@/shared/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/components/ui/select';
+import { usePartnerCategories } from '@modules/partners/hooks/usePartnerCategories';
 
 type Props = {
   contacts: Contact[];
@@ -41,6 +58,9 @@ export function ContactTable({
   const [bulkActionOpen, setBulkActionOpen] = useState(false);
   const [bulkActionType, setBulkActionType] = useState<'delete' | 'source' | null>(null);
   const [bulkValue, setBulkValue] = useState('');
+  const [createPartnersOpen, setCreatePartnersOpen] = useState(false);
+  const [createPartnersType, setCreatePartnersType] = useState<string>('OTHER');
+  const { data: partnerCategories } = usePartnerCategories();
 
   // Extract unique clientComeFrom values
   const clientSources = useMemo(() => {
@@ -141,6 +161,37 @@ export function ContactTable({
     onError: (error: Error) => errorToast(error),
   });
 
+  // Hromadné vytvoření partnerů z vybraných kontaktů. BE endpoint
+  // POST /api/contacts/bulk-create-partners skipuje kontakty s existujícím
+  // IČ / Pohoda kódem v partner tabulce (duplicate guard) + kontakty bez jména.
+  const bulkCreatePartnersMutation = useMutation({
+    mutationFn: async ({ ids, partnerType }: { ids: number[]; partnerType: string }) =>
+      api.post<{ created: number; skipped: number; skippedItems: Array<{ contactId: number; reason: string }> }>(
+        '/api/contacts/bulk-create-partners',
+        { ids, partnerType },
+      ),
+    onSuccess: (data) => {
+      let msg = `Vytvořeno ${data.created} partnerů`;
+      if (data.skipped > 0) {
+        const reasons = data.skippedItems.slice(0, 3).map((s) => `#${s.contactId}: ${s.reason}`).join('; ');
+        msg += `, přeskočeno ${data.skipped} (${reasons}${data.skipped > 3 ? '…' : ''})`;
+      }
+      successToast(msg);
+      clearSelection();
+      setCreatePartnersOpen(false);
+      invalidateContactQueries();
+    },
+    onError: (error: Error) => errorToast(error),
+  });
+
+  const handleBulkCreatePartners = () => {
+    if (selectedIds.size === 0) return;
+    bulkCreatePartnersMutation.mutate({
+      ids: Array.from(selectedIds),
+      partnerType: createPartnersType,
+    });
+  };
+
   const executeBulkAction = () => {
     const ids = Array.from(selectedIds);
     if (bulkActionType === 'delete') {
@@ -206,6 +257,7 @@ export function ContactTable({
         selectedCount={selectedIds.size}
         onBulkSource={() => openBulkAction('source')}
         onBulkDelete={() => openBulkAction('delete')}
+        onBulkCreatePartners={() => setCreatePartnersOpen(true)}
         onClearSelection={clearSelection}
       />
 
@@ -356,6 +408,53 @@ export function ContactTable({
         onClose={closeBulkAction}
         isPending={bulkDeleteMutation.isPending || bulkUpdateMutation.isPending}
       />
+
+      {/* Bulk create partners dialog — same mapping jako /contacts/{id}/edit → "Vytvořit partnera" */}
+      <Dialog open={createPartnersOpen} onOpenChange={setCreatePartnersOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Vytvořit partnery z vybraných kontaktů</DialogTitle>
+            <DialogDescription>
+              Pro každý z {selectedIds.size} kontaktů vytvořím partnera s předvyplněnými údaji
+              (firma → název, jméno → kontaktní osoba, fakturační údaje 1:1). Kontakty
+              s duplicitním IČ nebo Pohoda kódem se přeskočí.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label htmlFor="bulk-partner-type" className="text-xs">Kategorie partnera</Label>
+              <Select value={createPartnersType} onValueChange={setCreatePartnersType}>
+                <SelectTrigger id="bulk-partner-type" className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(partnerCategories ?? []).map((c) => (
+                    <SelectItem key={c.slug} value={c.slug}>{c.name}</SelectItem>
+                  ))}
+                  {(!partnerCategories || partnerCategories.length === 0) && (
+                    <SelectItem value="OTHER">Ostatní</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Kategorie se použije u všech vytvořených partnerů. Můžeš ji u každého
+                upravit individuálně v /partners.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreatePartnersOpen(false)}>
+              Zrušit
+            </Button>
+            <Button
+              onClick={handleBulkCreatePartners}
+              disabled={bulkCreatePartnersMutation.isPending || selectedIds.size === 0}
+            >
+              Vytvořit {selectedIds.size} partnerů
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
     </TooltipProvider>
   );
