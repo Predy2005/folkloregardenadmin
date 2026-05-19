@@ -2,6 +2,67 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠ STOP — Před napsáním JAKÉHOKOLI kódu si přečti tuto sekci
+
+Tady jsou pravidla, která **každý průchod** musíš dodržovat. Nepřebírej je „při review", ale **už při psaní** — uživatel jinak musí znova říkat to samé a to ho štve. Když nějaké pravidlo přijde divné, **zeptej se** než ho ignoruješ. Když ti nějaké chybí, **zapiš ho sem** ve stejném commitu, kde jsi narazil na situaci, kterou popisuje.
+
+### Komponenty (TS + React + a11y + SonarJS)
+
+1. **Props vždy `readonly` + `Readonly<>` na destructured parametru** (SonarJS S6759). Vzor — `client/src/modules/reservations/types/components/edit/ReservationPersonsSection.ts`:
+   ```tsx
+   interface FooProps {
+     readonly value: string;
+     readonly onChange: (v: string) => void;
+   }
+   export function Foo({ value, onChange }: Readonly<FooProps>) { … }
+   ```
+
+2. **Klikatelný prvek = `<button type="button">`, NIKDY `role="button"` / `tabIndex`+`onKeyDown` workaround** (S6822 / S6843 / S6819). Browser už zařídí Enter/Space, focus ring, screen reader. Vzor — `client/src/modules/contacts/components/ContactTableHeader.tsx:SortButton`. Když máš víc klikacích zón v jedné buňce, každá je vlastní `<button>` se `stopPropagation`.
+
+3. **`<button>` ve formuláři má vždy `type="button"`** kromě toho jediného „Odeslat" — bez toho browser default `type="submit"` triggruje submit při klikání na zrušit / přepínače.
+
+4. **Velikost souboru** (frontend-rules §1.1):
+   - Komponenta ≤ **250 řádků** (nad 350 = povinný refaktor, žádné výjimky)
+   - Hook ≤ **150 řádků**, většinou ≤ 80
+   - Utility / api modul ≤ **250 řádků**
+
+   Když píšeš novou komponentu, **kontroluj řádky během psaní**. Když refaktoruješ, sub-komponenty do `components/`, hooky do `hooks/`, typy do `types/` ve stejném modulu. Vzor refaktoru: commit `cd0edde` — `ContactTable.tsx` 532 → 213 ř., split na 6 souborů.
+
+5. **Žádné `useMutation` inline v Page / Dialog komponentě** — vždy přes hook v `modules/<doména>/hooks/use*.ts`. Když refaktoruješ inline → hook, **smaž inline ve stejném commitu** (žádné „necháme to tam pro jistotu"). Dead-code duplicita způsobila bug 2026-05-18 v `/admin/users` (self-edit 403, viz „Pravidla proti duplicitě mutací" níž).
+
+6. **Před `api.put/post/delete` v komponentě grep**, jestli mutace už existuje. `grep -rn "api.put.*/api/<resource>" client/src` — pokud ano, importuj hook místo duplikování. **Dvě call sites pro stejný endpoint = bug**, sjednoť je.
+
+7. **České UI texty** — všechny labels, placeholder, validační hlášky, toasty. Anglické error messages do UI nepatří. Backend JSON klíče zůstávají v angličtině.
+
+8. **Bez emoji** — pokud uživatel explicitně nepožádá. Žádné 🚀 ✨ ✅ v kódu ani v commit zprávách. Lucide-react ikony ano (`<CheckCircle />`, `<AlertTriangle />`).
+
+### Backend (Symfony + Doctrine)
+
+1. **API klíče a Comgate secret v `services.yaml` NESAHEJ** — uživatel je rotuje sám (memory `feedback_no_api_key_changes.md`). Pre-commit security hook je flagne; bypass `--no-verify` je v tomhle případě OK.
+
+2. **Granular permissions, ne `ROLE_SUPER_ADMIN`** pro běžné akce (`#[IsGranted('reservations.update')]`, ne `#[IsGranted('ROLE_SUPER_ADMIN')]`). Super-admin si necháme jen pro destruktivní system operace (delete role definitions, force-delete s blockers, hide cashbox).
+
+3. **Doctrine `migrations:diff` produkuje smetí** — vždy projdi output a **smaž `ALTER/DROP INDEX rename`** řádky (uniq_xxx → UNIQ_HASH). Tyhle renames jsou kosmetické, neopravují drift; můžou rozbít prod migrace, které vytvořily named indexy. Lekce z `Version20260518071658` co dropla `uniq_partner_api_key_hash` + `uniq_partner_swagger_username` (commit `da0d855` to opravoval).
+
+4. **Po každé Doctrine migraci povinně PHP ekvivalent v `api/prod_migrations/`** (identický timestamp, idempotentní `IF NOT EXISTS` / `pg_indexes` checks). Detaily v `api/prod_migrations/README.md`. Bez prod migrace prod server nemá jak migraci spustit (nemá `php bin/console`).
+
+5. **Self-edit guards** — BE blokuje admin-edit sebe sama (`PermissionService::canManageUser:252`). FE musí tuto cestu **přeskočit**, ne ji volat a chytat 403. Vzor: `useAuth().user.id === targetId` → skip role mutation, ponech jen základní edit přes `/auth/profile` nebo `/api/users/{id}`.
+
+### Workflow
+
+- **Nepiš `*.md` dokumentaci sám od sebe** — jen na explicitní pokyn uživatele.
+- **Po každé větší změně updatuj `CLAUDE.md`** (sekce relevantní k danému modulu) — feedback memory `feedback_update_docs.md` to vyžaduje.
+- **Commit messages**: 1-2 věty, focus na „proč", angličtina. Vždy zahrň `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>` na konci. Žádné emoji v subjectu ani body.
+- **Před commitem grep TS errors + SonarJS warnings** ve změněných souborech (`npm run check 2>&1 | grep -E "<soubor>"`) — neommitej s lintem.
+- **Pre-commit hook bypass `--no-verify`** je OK pro: pre-existing Comgate secret v `services.yaml` (user rotuje sám), Docker nedostupný pro gitleaks. Jinak hook spravně označuje problém, fixni před commitem.
+
+### Pre-existing legacy (vědomé výjimky)
+
+- Mnoho souborů má pre-existing modifikace v stagingu / WT z předchozích sessions (přes 200 file). **Nesahej do nich**, pokud to není přímo součást tvého úkolu. Při `git commit` používej `--only <konkrétní soubory>` aby pre-existing staged content nezatekl do tvého commitu.
+- `docs/frontend-rules.md` je v `git stash` (1055 ř., komplet pravidla pro `client/`). Není v WT — když potřebuješ konkrétní pravidlo, projdi `git stash show -p | grep -A N frontend-rules`. Až user stash unstashne, frontend-rules.md bude souborem který kontextuje pravidla.
+
+---
+
 ## Project Overview
 
 Folklore Garden Admin is a full-stack monorepo for managing event reservations and staff at Folklore Garden. It consists of:
