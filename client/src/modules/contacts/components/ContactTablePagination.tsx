@@ -2,11 +2,11 @@ import { Button } from "@/shared/components/ui/button";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 
 interface ContactTablePaginationProps {
-  page: number;
-  pageSize: number;
-  totalPages: number;
-  totalItems: number;
-  setPage: (page: number) => void;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly totalPages: number;
+  readonly totalItems: number;
+  readonly setPage: (page: number) => void;
 }
 
 export function ContactTablePagination({
@@ -15,7 +15,7 @@ export function ContactTablePagination({
   totalPages,
   totalItems,
   setPage,
-}: ContactTablePaginationProps) {
+}: Readonly<ContactTablePaginationProps>) {
   if (totalItems === 0) return null;
   const from = (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, totalItems);

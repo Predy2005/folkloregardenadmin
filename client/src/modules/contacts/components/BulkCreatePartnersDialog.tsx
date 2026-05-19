@@ -19,11 +19,11 @@ import {
 import { usePartnerCategories } from "@modules/partners/hooks/usePartnerCategories";
 
 interface BulkCreatePartnersDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  selectedCount: number;
-  isPending: boolean;
-  onConfirm: (partnerType: string) => void;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly selectedCount: number;
+  readonly isPending: boolean;
+  readonly onConfirm: (partnerType: string) => void;
 }
 
 /**
@@ -37,7 +37,7 @@ export function BulkCreatePartnersDialog({
   selectedCount,
   isPending,
   onConfirm,
-}: BulkCreatePartnersDialogProps) {
+}: Readonly<BulkCreatePartnersDialogProps>) {
   const [partnerType, setPartnerType] = useState<string>("OTHER");
   const { data: partnerCategories } = usePartnerCategories();
 

@@ -6,12 +6,12 @@ import { Edit, Trash2, Plus } from "lucide-react";
 import type { Contact } from "@shared/types";
 
 interface ContactTableRowProps {
-  contact: Contact;
-  isSelected: boolean;
-  onToggleSelect: (id: number) => void;
-  onEdit: (contact: Contact) => void;
-  onDelete: (id: number) => void;
-  onNewReservation: (contact: Contact) => void;
+  readonly contact: Contact;
+  readonly isSelected: boolean;
+  readonly onToggleSelect: (id: number) => void;
+  readonly onEdit: (contact: Contact) => void;
+  readonly onDelete: (id: number) => void;
+  readonly onNewReservation: (contact: Contact) => void;
 }
 
 export function ContactTableRow({
@@ -21,7 +21,7 @@ export function ContactTableRow({
   onEdit,
   onDelete,
   onNewReservation,
-}: ContactTableRowProps) {
+}: Readonly<ContactTableRowProps>) {
   return (
     <TableRow className={isSelected ? "bg-primary/5" : ""}>
       <TableCell className="w-[40px]">

@@ -4,12 +4,12 @@ import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import type { ContactSortColumn } from "../hooks/useContactsSort";
 
 interface ContactTableHeaderProps {
-  sortColumn: ContactSortColumn | null;
-  sortDirection: "asc" | "desc";
-  toggleSort: (col: ContactSortColumn) => void;
-  pageAllSelected: boolean;
-  pageSomeSelected: boolean;
-  onToggleSelectAll: () => void;
+  readonly sortColumn: ContactSortColumn | null;
+  readonly sortDirection: "asc" | "desc";
+  readonly toggleSort: (col: ContactSortColumn) => void;
+  readonly pageAllSelected: boolean;
+  readonly pageSomeSelected: boolean;
+  readonly onToggleSelectAll: () => void;
 }
 
 const sortIcon = (active: boolean, direction: "asc" | "desc") => {
@@ -26,7 +26,7 @@ export function ContactTableHeader({
   pageAllSelected,
   pageSomeSelected,
   onToggleSelectAll,
-}: ContactTableHeaderProps) {
+}: Readonly<ContactTableHeaderProps>) {
   const checkboxState: boolean | "indeterminate" =
     pageAllSelected ? true : pageSomeSelected ? "indeterminate" : false;
 

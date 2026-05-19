@@ -13,17 +13,17 @@ import { useContactsSort } from "../hooks/useContactsSort";
 import { useContactsBulkActions } from "../hooks/useContactsBulkActions";
 
 type Props = {
-  contacts: Contact[];
-  searchTerm: string;
-  onSearchChange: (value: string) => void;
-  onEdit: (contact: Contact) => void;
-  onDelete: (id: number) => void;
-  onNewReservation: (contact: Contact) => void;
+  readonly contacts: Contact[];
+  readonly searchTerm: string;
+  readonly onSearchChange: (value: string) => void;
+  readonly onEdit: (contact: Contact) => void;
+  readonly onDelete: (id: number) => void;
+  readonly onNewReservation: (contact: Contact) => void;
 };
 
 const COL_COUNT = 7;
 
-export function ContactTable({ contacts, searchTerm, onSearchChange, onEdit, onDelete, onNewReservation }: Props) {
+export function ContactTable({ contacts, searchTerm, onSearchChange, onEdit, onDelete, onNewReservation }: Readonly<Props>) {
   // Filter states
   const [companyFilter, setCompanyFilter] = useState("");
   const [invoiceFilter, setInvoiceFilter] = useState("");

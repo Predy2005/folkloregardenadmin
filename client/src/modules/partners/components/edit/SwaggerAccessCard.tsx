@@ -28,8 +28,8 @@ import { successToast, errorToast } from "@/shared/lib/toast-helpers";
 import { useAuth } from "@/modules/auth";
 
 interface SwaggerAccessCardProps {
-  partnerId: number;
-  swaggerAccess?: {
+  readonly partnerId: number;
+  readonly swaggerAccess?: {
     username: string | null;
     generatedAt: string | null;
     active: boolean;
@@ -45,7 +45,7 @@ interface GenerateResponse {
 const SWAGGER_URL =
   (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000") + "/api/doc/partner";
 
-export function SwaggerAccessCard({ partnerId, swaggerAccess }: SwaggerAccessCardProps) {
+export function SwaggerAccessCard({ partnerId, swaggerAccess }: Readonly<SwaggerAccessCardProps>) {
   const qc = useQueryClient();
   const { hasPermission } = useAuth();
   const canManage = hasPermission("partners.update");
