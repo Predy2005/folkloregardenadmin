@@ -28,15 +28,11 @@ interface TableMovement {
 }
 
 // Extended guest type — `/api/events/{id}/guests` přidává join na rezervaci
-// (contactName, personIndex) a ReservationPerson (drinkOption, drinkName,
-// drinkPrice) + menuName z EventMenu. Umožňuje per-host UI: rezervace + jídlo
-// + pití bez dalších fetches.
+// + ReservationPerson + EventMenu. Většina polí už žije v shared `EventGuest`
+// (reservationContactName, drinkOption, drinkName, drinkPrice), `menuName`
+// zatím zůstává lokální extension protože je čistě derived field z EventMenu.
 type GuestWithMenu = EventGuest & {
   menuName?: string | null;
-  reservationContactName?: string | null;
-  drinkOption?: "none" | "welcome" | "allin" | null;
-  drinkName?: string | null;
-  drinkPrice?: string | number | null;
 };
 
 interface TableActionPanelProps {

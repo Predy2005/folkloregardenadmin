@@ -1004,6 +1004,8 @@ export interface EventGuest {
   eventId: number;
   eventTableId?: number;
   reservationId?: number; // pokud je z rezervace
+  /** Kontaktní jméno z napojené rezervace — joinuje BE v /api/events/{id}/guests. */
+  reservationContactName?: string | null;
   personIndex?: number; // index osoby v rezervaci
   firstName?: string;
   lastName?: string;
@@ -1013,6 +1015,10 @@ export interface EventGuest {
   isPresent: boolean;
   menuItemId?: number;
   notes?: string;
+  /** Pití — viz ReservationPerson.drinkOption / drinkName / drinkPrice. */
+  drinkOption?: "none" | "welcome" | "allin" | null;
+  drinkName?: string | null;
+  drinkPrice?: string | number | null;
   roomId?: number; // FK to Room entity
   createdAt?: string;
 }

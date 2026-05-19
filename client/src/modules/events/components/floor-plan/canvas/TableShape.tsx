@@ -115,35 +115,36 @@ export const TableShape = forwardRef<TableShapeHandle, TableShapeProps>(function
     ? `${table.tableNumber}`
     : table.tableName.replace(/\D+/g, '') || table.tableName;
 
-  // Get dominant nationality
-  const nationalities: Record<string, number> = {};
-  guests.forEach((g) => {
-    if (g.nationality) {
-      nationalities[g.nationality] = (nationalities[g.nationality] || 0) + 1;
-    }
-  });
-  const topNat = Object.entries(nationalities).sort((a, b) => b[1] - a[1])[0];
+  // Národnost se na canvas záměrně nezobrazuje — admin ji vidí v side panelu
+  // jako badge na guest kartě. Tady je důležitější seznam rezervací.
   const childCount = guests.filter((g) => g.type === "child" || g.type === "infant").length;
   const driverCount = guests.filter((g) => g.type === "driver").length;
   const guideCount = guests.filter((g) => g.type === "guide").length;
   const hasSpecialTypes = childCount > 0 || driverCount > 0 || guideCount > 0;
 
-  // Seskupení hostů u stolu podle rezervace — jeden stůl může mít 8 hostů
-  // z 8 různých rezervací. Pro každou unikátní rezervaci vykreslíme jeden
-  // řádek `#<id> ×<count>`. Manuálně přidaní hosté (bez reservationId) jdou
-  // do bucketu "manuál".
+  // Seskupení hostů u stolu podle rezervace. Label = kontaktní jméno z rezervace
+  // (např. "Novák ×8"), což je čitelnější než `#708`. Manuálně přidaní hosté
+  // (bez reservationId) jdou do bucketu "Ručně".
   const reservationGroups = (() => {
-    const groups = new Map<number | "manual", number>();
+    const groups = new Map<number | "manual", { count: number; name: string | null }>();
     guests.forEach((g) => {
       const key = g.reservationId ?? "manual";
-      groups.set(key, (groups.get(key) ?? 0) + 1);
+      const existing = groups.get(key);
+      if (existing) {
+        existing.count++;
+      } else {
+        groups.set(key, { count: 1, name: g.reservationContactName ?? null });
+      }
     });
     return Array.from(groups.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([id, count]) => ({
+      .sort((a, b) => b[1].count - a[1].count)
+      .map(([id, info]) => ({
         id,
-        count,
-        label: id === "manual" ? `Ručně ×${count}` : `#${id} ×${count}`,
+        count: info.count,
+        // Pokud je contactName k dispozici, ukáže "Novák ×3", jinak fallback "#708 ×3".
+        label: id === "manual"
+          ? `Ručně ×${info.count}`
+          : `${info.name ?? `#${id}`} ×${info.count}`,
       }));
   })();
   // Maximální počet řádků viditelných uvnitř stolu — víc se ořízne na "+N…".
@@ -342,19 +343,6 @@ export const TableShape = forwardRef<TableShapeHandle, TableShapeProps>(function
           text={`${guestCount}/${table.capacity}`}
           fontSize={9}
           fill="#6b7280"
-          align="center"
-          listening={false}
-        />
-      )}
-
-      {topNat && (
-        <Text
-          x={0}
-          y={table.shape === "round" || table.shape === "oval" ? h / 2 + 18 : h + 12}
-          width={w}
-          text={topNat[0]}
-          fontSize={8}
-          fill="#9ca3af"
           align="center"
           listening={false}
         />
