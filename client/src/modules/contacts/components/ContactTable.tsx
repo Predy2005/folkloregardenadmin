@@ -63,7 +63,7 @@ export function ContactTable({
   const { data: partnerCategories } = usePartnerCategories();
 
   // Sorting — click na hlavičku přepíná `asc → desc → off (page-default order)`.
-  type SortColumn = 'name' | 'company' | 'invoiceIc' | 'invoiceDic';
+  type SortColumn = 'name' | 'phone' | 'company' | 'invoiceIc' | 'invoiceDic';
   const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -320,7 +320,12 @@ export function ContactTable({
               >
                 Kontakt{sortIcon('name')}
               </TableHead>
-              <TableHead>Telefon</TableHead>
+              <TableHead
+                onClick={() => toggleSort('phone')}
+                className="cursor-pointer select-none hover:bg-muted/50"
+              >
+                Telefon{sortIcon('phone')}
+              </TableHead>
               <TableHead
                 onClick={() => toggleSort('company')}
                 className="cursor-pointer select-none hover:bg-muted/50"
