@@ -81,6 +81,9 @@ export function ReservationPersonsSection({
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [countDialogOpen, setCountDialogOpen] = useState(false);
+  // Hromadná změna welcome nápojů u vybraných hostů (selection-based, ne "všem").
+  const [welcomeDialogOpen, setWelcomeDialogOpen] = useState(false);
+  const [welcomeDialogIds, setWelcomeDialogIds] = useState<number[]>([]);
   const [targetCountStr, setTargetCountStr] = useState("0");
 
   useEffect(() => {
@@ -132,6 +135,46 @@ export function ReservationPersonsSection({
   const openCountDialog = () => {
     setTargetCountStr(String(totalPersons));
     setCountDialogOpen(true);
+  };
+
+  const openWelcomeDialog = () => {
+    if (selectedIndices.size === 0 || !drinks) return;
+    // Pre-fill multi-select common-drink set napříč všemi vybranými hosty
+    // (drink, který má každý označený host už zvolený). Pokud nic shodného,
+    // dialog otevřu s prázdným výběrem — admin si vybere co chce.
+    const allDrinkIdSets = Array.from(selectedIndices)
+      .map((i) => new Set(currentReservation.persons[i]?.drinkItemIds ?? []));
+    if (allDrinkIdSets.length === 0) {
+      setWelcomeDialogIds([]);
+    } else {
+      const intersection = Array.from(allDrinkIdSets[0]).filter((id) =>
+        allDrinkIdSets.every((s) => s.has(id))
+      );
+      setWelcomeDialogIds(intersection);
+    }
+    setWelcomeDialogOpen(true);
+  };
+
+  const applyWelcomeToSelected = () => {
+    if (selectedIndices.size === 0 || !drinks) {
+      setWelcomeDialogOpen(false);
+      return;
+    }
+    const ids = welcomeDialogIds;
+    const selectedDrinks = drinks.filter((d) => ids.includes(d.id));
+    const aggregatedName = selectedDrinks.map((d) => d.name).join(", ");
+    const aggregatedPrice = selectedDrinks.reduce((sum, d) => sum + (Number(d.price) || 0), 0);
+    for (const idx of Array.from(selectedIndices)) {
+      const person = currentReservation.persons[idx];
+      if (!person || person.type === "infant") continue;
+      updatePerson(activeTabIndex, idx, {
+        drinkOption: "welcome",
+        drinkItemIds: [...ids],
+        drinkName: aggregatedName,
+        drinkPrice: aggregatedPrice,
+      });
+    }
+    setWelcomeDialogOpen(false);
   };
 
   const confirmSetTargetCount = () => {
@@ -359,13 +402,14 @@ export function ReservationPersonsSection({
               // Pro welcome v hromadné změně lze vybrat víc nápojů (combo).
               // Aplikuje se na všechny hosty (kromě infantů) najednou.
               <MultiSelectFilter
-                label="Welcome combo"
+                label=""
+                placeholder="Vyberte welcome nápoje"
                 options={drinks
                   .filter((d) => d.isActive && d.isWelcomeDrink)
-                  .map((d) => ({ value: d.id.toString(), label: `${d.name} (${d.price} Kč)` }))}
+                  .map((d) => ({ value: d.id.toString(), label: d.name }))}
                 selected={new Set(bulkWelcomeDrinkIds.map(String))}
                 onChange={(next) => setBulkWelcomeDrinkIds(Array.from(next).map(Number))}
-                maxBadgeCount={1}
+                maxBadgeCount={3}
               />
             )}
             <Button
@@ -461,6 +505,17 @@ export function ReservationPersonsSection({
           >
             Upravit počet
           </Button>
+          {drinks && drinks.length > 0 && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={openWelcomeDialog}
+              disabled={selectedIndices.size === 0}
+            >
+              Welcome drinky u vybraných
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"
@@ -625,10 +680,11 @@ export function ReservationPersonsSection({
                 </span>
                 {person.drinkOption === "welcome" ? (
                   <MultiSelectFilter
-                    label="Vyber welcome drinky"
+                    label=""
+                    placeholder="Vyberte welcome nápoje"
                     options={drinks
                       .filter((d) => d.isActive && d.isWelcomeDrink)
-                      .map((d) => ({ value: d.id.toString(), label: `${d.name} (${d.price} Kč)` }))}
+                      .map((d) => ({ value: d.id.toString(), label: d.name }))}
                     selected={new Set((person.drinkItemIds ?? []).map(String))}
                     onChange={(next) => {
                       const ids = Array.from(next).map(Number);
@@ -639,7 +695,7 @@ export function ReservationPersonsSection({
                         drinkPrice: selectedDrinks.reduce((sum, d) => sum + (Number(d.price) || 0), 0),
                       });
                     }}
-                    maxBadgeCount={3}
+                    maxBadgeCount={4}
                   />
                 ) : (
                   <Select
@@ -689,6 +745,51 @@ export function ReservationPersonsSection({
       </div>
 
       {/* Dialog: Upravit počet osob */}
+      {/* Dialog: hromadná změna welcome drinků u vybraných hostů */}
+      <Dialog open={welcomeDialogOpen} onOpenChange={setWelcomeDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Welcome drinky u vybraných</DialogTitle>
+            <DialogDescription>
+              Vyberte jeden nebo víc nápojů (víno + medovina + sodovka jako combo).
+              Aplikuje se na {selectedIndices.size} vybraných osob (kojenci se přeskočí).
+              `drinkOption` se nastaví na "Welcome drink".
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            {drinks && drinks.filter((d) => d.isActive && d.isWelcomeDrink).length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Žádné welcome drinky v číselníku. Přidejte je v <code>/drinks</code> se zaškrtnutým "Nabízet jako welcome drink".
+              </p>
+            ) : (
+              <MultiSelectFilter
+                label=""
+                placeholder="Vyberte welcome nápoje"
+                options={(drinks ?? [])
+                  .filter((d) => d.isActive && d.isWelcomeDrink)
+                  .map((d) => ({ value: d.id.toString(), label: `${d.name} (${d.price} Kč)` }))}
+                selected={new Set(welcomeDialogIds.map(String))}
+                onChange={(next) => setWelcomeDialogIds(Array.from(next).map(Number))}
+                maxBadgeCount={5}
+                className="w-full"
+              />
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setWelcomeDialogOpen(false)}>
+              Zrušit
+            </Button>
+            <Button
+              type="button"
+              onClick={applyWelcomeToSelected}
+              disabled={!drinks || drinks.filter((d) => d.isActive && d.isWelcomeDrink).length === 0}
+            >
+              Aplikovat na {selectedIndices.size} osob
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={countDialogOpen} onOpenChange={setCountDialogOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>

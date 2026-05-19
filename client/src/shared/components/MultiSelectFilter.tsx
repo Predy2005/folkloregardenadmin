@@ -12,8 +12,10 @@ export interface MultiSelectFilterOption {
 }
 
 export interface MultiSelectFilterProps {
-  /** Krátký popisek (např. "Pozice"). Zobrazuje se v tlačítku, když nic není vybráno. */
+  /** Krátký popisek (např. "Pozice"). Prefix v tlačítku. Pokud `""`, prefix se nevykreslí — užitečné když chceš v triggeru jen samotné chipy bez nálepky. */
   label: string;
+  /** Placeholder, který se ukáže v triggeru když není nic vybrané a `label` je prázdný (nebo se má override default ": vše"). */
+  placeholder?: string;
   options: MultiSelectFilterOption[];
   /** Vybrané hodnoty. Prázdná množina = "vše". */
   selected: Set<string>;
@@ -27,6 +29,7 @@ export interface MultiSelectFilterProps {
 
 export function MultiSelectFilter({
   label,
+  placeholder,
   options,
   selected,
   onChange,
@@ -71,9 +74,9 @@ export function MultiSelectFilter({
           )}
         >
           <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-            <span className="font-medium text-foreground">{label}</span>
+            {label && <span className="font-medium text-foreground">{label}</span>}
             {selected.size === 0 ? (
-              <span>: vše</span>
+              <span>{placeholder ?? (label ? ": vše" : "Vyberte…")}</span>
             ) : selectedLabels.length <= maxBadgeCount ? (
               selectedLabels.map((o) => (
                 <Badge key={o.value} variant="secondary" className="h-5 px-1.5 text-xs">
