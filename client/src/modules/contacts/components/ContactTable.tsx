@@ -1,34 +1,16 @@
-import { useState, useMemo } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { api } from '@/shared/lib/api';
-import { invalidateContactQueries } from '@/shared/lib/query-helpers';
-import { successToast, errorToast } from '@/shared/lib/toast-helpers';
-import { Button } from '@/shared/components/ui/button';
-import { Checkbox } from '@/shared/components/ui/checkbox';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/components/ui/table';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
-import { Edit, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
-import type { Contact } from '@shared/types';
-import { usePagination } from '@/shared/hooks/usePagination';
-import { ContactFilters } from './ContactFilters';
-import { ContactBulkActionDialog } from './ContactBulkActionDialog';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/shared/components/ui/dialog';
-import { Label } from '@/shared/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/components/ui/select';
-import { usePartnerCategories } from '@modules/partners/hooks/usePartnerCategories';
+import { useMemo, useState } from "react";
+import { Table, TableBody, TableCell, TableRow } from "@/shared/components/ui/table";
+import { TooltipProvider } from "@/shared/components/ui/tooltip";
+import type { Contact } from "@shared/types";
+import { usePagination } from "@/shared/hooks/usePagination";
+import { ContactFilters } from "./ContactFilters";
+import { ContactBulkActionDialog } from "./ContactBulkActionDialog";
+import { ContactTableHeader } from "./ContactTableHeader";
+import { ContactTableRow } from "./ContactTableRow";
+import { ContactTablePagination } from "./ContactTablePagination";
+import { BulkCreatePartnersDialog } from "./BulkCreatePartnersDialog";
+import { useContactsSort } from "../hooks/useContactsSort";
+import { useContactsBulkActions } from "../hooks/useContactsBulkActions";
 
 type Props = {
   contacts: Contact[];
@@ -39,116 +21,60 @@ type Props = {
   onNewReservation: (contact: Contact) => void;
 };
 
-export function ContactTable({
-  contacts,
-  searchTerm,
-  onSearchChange,
-  onEdit,
-  onDelete,
-  onNewReservation,
-}: Props) {
+const COL_COUNT = 7;
+
+export function ContactTable({ contacts, searchTerm, onSearchChange, onEdit, onDelete, onNewReservation }: Props) {
   // Filter states
-  const [companyFilter, setCompanyFilter] = useState<string>('');
-  const [invoiceFilter, setInvoiceFilter] = useState<string>('');
-  const [clientComeFromFilter, setClientComeFromFilter] = useState<string>('');
+  const [companyFilter, setCompanyFilter] = useState("");
+  const [invoiceFilter, setInvoiceFilter] = useState("");
+  const [clientComeFromFilter, setClientComeFromFilter] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
-  // Bulk action states
+  // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [bulkActionOpen, setBulkActionOpen] = useState(false);
-  const [bulkActionType, setBulkActionType] = useState<'delete' | 'source' | null>(null);
-  const [bulkValue, setBulkValue] = useState('');
   const [createPartnersOpen, setCreatePartnersOpen] = useState(false);
-  const [createPartnersType, setCreatePartnersType] = useState<string>('OTHER');
-  const { data: partnerCategories } = usePartnerCategories();
 
-  // Sorting — click na hlavičku přepíná `asc → desc → off (page-default order)`.
-  type SortColumn = 'name' | 'phone' | 'company' | 'invoiceIc' | 'invoiceDic';
-  const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const clearSelection = () => setSelectedIds(new Set());
 
-  const toggleSort = (col: SortColumn) => {
-    if (sortColumn !== col) {
-      setSortColumn(col);
-      setSortDirection('asc');
-    } else if (sortDirection === 'asc') {
-      setSortDirection('desc');
-    } else {
-      setSortColumn(null);
-      setSortDirection('asc');
-    }
-  };
+  const bulk = useContactsBulkActions({ selectedIds, clearSelection });
 
-  const sortIcon = (col: SortColumn) => {
-    if (sortColumn !== col) return <ArrowUpDown className="ml-1 h-3 w-3 opacity-40 inline-block" />;
-    return sortDirection === 'asc'
-      ? <ArrowUp className="ml-1 h-3 w-3 inline-block" />
-      : <ArrowDown className="ml-1 h-3 w-3 inline-block" />;
-  };
-
-  // Extract unique clientComeFrom values
-  const clientSources = useMemo(() => {
-    const uniqueSources = new Set<string>();
-    (contacts || []).forEach((c) => {
-      if (c.clientComeFrom) {
-        uniqueSources.add(c.clientComeFrom);
-      }
-    });
-    return Array.from(uniqueSources).sort();
-  }, [contacts]);
-
-  // Filter contacts
+  // Filter contacts (search + side filters)
   const filtered = useMemo(() => {
     return (contacts || []).filter((contact) => {
-      const search = (searchTerm || '').toLowerCase();
+      const search = (searchTerm || "").toLowerCase();
       const matchesSearch =
-        (contact.name || '').toLowerCase().includes(search) ||
-        (contact.email || '').toLowerCase().includes(search) ||
-        (contact.phone || '').includes(search) ||
-        (contact.company || '').toLowerCase().includes(search) ||
-        (contact.invoiceIc || '').includes(search) ||
-        (contact.invoiceDic || '').includes(search);
-
+        (contact.name || "").toLowerCase().includes(search) ||
+        (contact.email || "").toLowerCase().includes(search) ||
+        (contact.phone || "").includes(search) ||
+        (contact.company || "").toLowerCase().includes(search) ||
+        (contact.invoiceIc || "").includes(search) ||
+        (contact.invoiceDic || "").includes(search);
       if (!matchesSearch) return false;
-
-      if (companyFilter === 'with_company' && !contact.company) return false;
-      if (companyFilter === 'without_company' && contact.company) return false;
-      if (invoiceFilter === 'with_ic' && !contact.invoiceIc) return false;
-      if (invoiceFilter === 'without_ic' && contact.invoiceIc) return false;
+      if (companyFilter === "with_company" && !contact.company) return false;
+      if (companyFilter === "without_company" && contact.company) return false;
+      if (invoiceFilter === "with_ic" && !contact.invoiceIc) return false;
+      if (invoiceFilter === "without_ic" && contact.invoiceIc) return false;
       if (clientComeFromFilter && contact.clientComeFrom !== clientComeFromFilter) return false;
-
       return true;
     });
   }, [contacts, searchTerm, companyFilter, invoiceFilter, clientComeFromFilter]);
 
-  // Sort filtered contacts. Český localeCompare pro háčky/čárky a numeric pro
-  // IČO/DIČ ať se "123" nesetřídí před "9".
-  const sortedContacts = useMemo(() => {
-    if (!sortColumn) return filtered;
-    const collator = new Intl.Collator('cs', { sensitivity: 'base', numeric: true });
-    const copy = [...filtered];
-    copy.sort((a, b) => {
-      const av = (a[sortColumn] ?? '') as string;
-      const bv = (b[sortColumn] ?? '') as string;
-      // Prázdné hodnoty padají na konec bez ohledu na směr.
-      if (!av && bv) return 1;
-      if (av && !bv) return -1;
-      const cmp = collator.compare(av, bv);
-      return sortDirection === 'asc' ? cmp : -cmp;
-    });
-    return copy;
-  }, [filtered, sortColumn, sortDirection]);
-
-  // Pagination
+  const { sortColumn, sortDirection, toggleSort, sortedContacts } = useContactsSort(filtered);
   const { page, pageSize, setPage, setPageSize, paginatedData, totalPages, totalItems } = usePagination(sortedContacts);
+
+  const clientSources = useMemo(() => {
+    const set = new Set<string>();
+    (contacts || []).forEach((c) => { if (c.clientComeFrom) set.add(c.clientComeFrom); });
+    return Array.from(set).sort();
+  }, [contacts]);
 
   const hasActiveFilters = !!(companyFilter || invoiceFilter || clientComeFromFilter);
 
-  // Selection functions
   const toggleSelect = (id: number) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) { next.delete(id); } else { next.add(id); }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -158,89 +84,10 @@ export function ContactTable({
     const allSelected = pageIds.every((id) => selectedIds.has(id));
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (allSelected) { pageIds.forEach((id) => next.delete(id)); }
-      else { pageIds.forEach((id) => next.add(id)); }
+      if (allSelected) pageIds.forEach((id) => next.delete(id));
+      else pageIds.forEach((id) => next.add(id));
       return next;
     });
-  };
-
-  const clearSelection = () => setSelectedIds(new Set());
-
-  const openBulkAction = (type: 'delete' | 'source') => {
-    setBulkActionType(type);
-    setBulkValue('');
-    setBulkActionOpen(true);
-  };
-
-  const closeBulkAction = () => {
-    setBulkActionOpen(false);
-    setBulkActionType(null);
-    setBulkValue('');
-  };
-
-  // Bulk mutations
-  const bulkDeleteMutation = useMutation({
-    mutationFn: async (ids: number[]) =>
-      api.delete('/api/contacts/bulk-delete', { data: { ids } }),
-    onSuccess: () => {
-      successToast(`Smazáno ${selectedIds.size} kontaktů`);
-      clearSelection();
-      closeBulkAction();
-      invalidateContactQueries();
-    },
-    onError: (error: Error) => errorToast(error),
-  });
-
-  const bulkUpdateMutation = useMutation({
-    mutationFn: async ({ ids, updates }: { ids: number[]; updates: Record<string, string> }) =>
-      api.put('/api/contacts/bulk-update', { ids, updates }),
-    onSuccess: () => {
-      successToast(`Aktualizováno ${selectedIds.size} kontaktů`);
-      clearSelection();
-      closeBulkAction();
-      invalidateContactQueries();
-    },
-    onError: (error: Error) => errorToast(error),
-  });
-
-  // Hromadné vytvoření partnerů z vybraných kontaktů. BE endpoint
-  // POST /api/contacts/bulk-create-partners skipuje kontakty s existujícím
-  // IČ / Pohoda kódem v partner tabulce (duplicate guard) + kontakty bez jména.
-  const bulkCreatePartnersMutation = useMutation({
-    mutationFn: async ({ ids, partnerType }: { ids: number[]; partnerType: string }) =>
-      api.post<{ created: number; skipped: number; skippedItems: Array<{ contactId: number; reason: string }> }>(
-        '/api/contacts/bulk-create-partners',
-        { ids, partnerType },
-      ),
-    onSuccess: (data) => {
-      let msg = `Vytvořeno ${data.created} partnerů`;
-      if (data.skipped > 0) {
-        const reasons = data.skippedItems.slice(0, 3).map((s) => `#${s.contactId}: ${s.reason}`).join('; ');
-        msg += `, přeskočeno ${data.skipped} (${reasons}${data.skipped > 3 ? '…' : ''})`;
-      }
-      successToast(msg);
-      clearSelection();
-      setCreatePartnersOpen(false);
-      invalidateContactQueries();
-    },
-    onError: (error: Error) => errorToast(error),
-  });
-
-  const handleBulkCreatePartners = () => {
-    if (selectedIds.size === 0) return;
-    bulkCreatePartnersMutation.mutate({
-      ids: Array.from(selectedIds),
-      partnerType: createPartnersType,
-    });
-  };
-
-  const executeBulkAction = () => {
-    const ids = Array.from(selectedIds);
-    if (bulkActionType === 'delete') {
-      bulkDeleteMutation.mutate(ids);
-    } else if (bulkActionType === 'source') {
-      bulkUpdateMutation.mutate({ ids, updates: { clientComeFrom: bulkValue } });
-    }
   };
 
   const handleSearchChange = (value: string) => {
@@ -250,283 +97,117 @@ export function ContactTable({
 
   const handlePageSizeChange = (value: string) => setPageSize(Number(value));
 
-  const handleCompanyFilterChange = (value: string) => {
-    setCompanyFilter(value === 'all' ? '' : value);
-    setPage(1);
-  };
-
-  const handleInvoiceFilterChange = (value: string) => {
-    setInvoiceFilter(value === 'all' ? '' : value);
-    setPage(1);
-  };
-
-  const handleClientComeFromChange = (value: string) => {
-    setClientComeFromFilter(value === 'all' ? '' : value);
-    setPage(1);
-  };
+  const handleCompanyFilterChange = (value: string) => { setCompanyFilter(value === "all" ? "" : value); setPage(1); };
+  const handleInvoiceFilterChange = (value: string) => { setInvoiceFilter(value === "all" ? "" : value); setPage(1); };
+  const handleClientComeFromChange = (value: string) => { setClientComeFromFilter(value === "all" ? "" : value); setPage(1); };
 
   const clearAllFilters = () => {
-    setCompanyFilter('');
-    setInvoiceFilter('');
-    setClientComeFromFilter('');
-    onSearchChange('');
+    setCompanyFilter("");
+    setInvoiceFilter("");
+    setClientComeFromFilter("");
+    onSearchChange("");
     setPage(1);
+  };
+
+  const handleConfirmCreatePartners = (partnerType: string) => {
+    if (selectedIds.size === 0) return;
+    bulk.bulkCreatePartnersMutation.mutate(
+      { ids: Array.from(selectedIds), partnerType },
+      { onSettled: () => setCreatePartnersOpen(false) },
+    );
   };
 
   const pageAllSelected = paginatedData.length > 0 && paginatedData.every((c) => selectedIds.has(c.id));
   const pageSomeSelected = paginatedData.some((c) => selectedIds.has(c.id)) && !pageAllSelected;
-  const colCount = 7;
 
   return (
     <TooltipProvider>
-    <div className="space-y-4">
-      <ContactFilters
-        searchTerm={searchTerm}
-        onSearchChange={handleSearchChange}
-        showFilters={showFilters}
-        onToggleFilters={() => setShowFilters(!showFilters)}
-        companyFilter={companyFilter}
-        onCompanyFilterChange={handleCompanyFilterChange}
-        invoiceFilter={invoiceFilter}
-        onInvoiceFilterChange={handleInvoiceFilterChange}
-        clientComeFromFilter={clientComeFromFilter}
-        onClientComeFromChange={handleClientComeFromChange}
-        clientSources={clientSources}
-        hasActiveFilters={hasActiveFilters}
-        onClearAllFilters={clearAllFilters}
-        pageSize={pageSize}
-        onPageSizeChange={handlePageSizeChange}
-        selectedCount={selectedIds.size}
-        onBulkSource={() => openBulkAction('source')}
-        onBulkDelete={() => openBulkAction('delete')}
-        onBulkCreatePartners={() => setCreatePartnersOpen(true)}
-        onClearSelection={clearSelection}
-      />
+      <div className="space-y-4">
+        <ContactFilters
+          searchTerm={searchTerm}
+          onSearchChange={handleSearchChange}
+          showFilters={showFilters}
+          onToggleFilters={() => setShowFilters(!showFilters)}
+          companyFilter={companyFilter}
+          onCompanyFilterChange={handleCompanyFilterChange}
+          invoiceFilter={invoiceFilter}
+          onInvoiceFilterChange={handleInvoiceFilterChange}
+          clientComeFromFilter={clientComeFromFilter}
+          onClientComeFromChange={handleClientComeFromChange}
+          clientSources={clientSources}
+          hasActiveFilters={hasActiveFilters}
+          onClearAllFilters={clearAllFilters}
+          pageSize={pageSize}
+          onPageSizeChange={handlePageSizeChange}
+          selectedCount={selectedIds.size}
+          onBulkSource={() => bulk.openBulkAction("source")}
+          onBulkDelete={() => bulk.openBulkAction("delete")}
+          onBulkCreatePartners={() => setCreatePartnersOpen(true)}
+          onClearSelection={clearSelection}
+        />
 
-      {/* Table */}
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[40px]">
-                <Checkbox
-                  checked={pageAllSelected ? true : pageSomeSelected ? 'indeterminate' : false}
-                  onCheckedChange={toggleSelectAll}
-                />
-              </TableHead>
-              <TableHead
-                onClick={() => toggleSort('name')}
-                className="cursor-pointer select-none hover:bg-muted/50"
-              >
-                Kontakt{sortIcon('name')}
-              </TableHead>
-              <TableHead
-                onClick={() => toggleSort('phone')}
-                className="cursor-pointer select-none hover:bg-muted/50"
-              >
-                Telefon{sortIcon('phone')}
-              </TableHead>
-              <TableHead
-                onClick={() => toggleSort('company')}
-                className="cursor-pointer select-none hover:bg-muted/50"
-              >
-                Firma{sortIcon('company')}
-              </TableHead>
-              <TableHead
-                onClick={() => toggleSort('invoiceIc')}
-                className="cursor-pointer select-none hover:bg-muted/50"
-              >
-                <span onClick={(e) => { e.stopPropagation(); toggleSort('invoiceIc'); }}>IČO</span>
-                {sortIcon('invoiceIc')}
-                <span className="mx-1 text-muted-foreground">/</span>
-                <span
-                  onClick={(e) => { e.stopPropagation(); toggleSort('invoiceDic'); }}
-                  className="hover:underline"
-                >
-                  DIČ
-                </span>
-                {sortIcon('invoiceDic')}
-              </TableHead>
-              <TableHead>Zdroj</TableHead>
-              <TableHead className="text-right">Akce</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {paginatedData.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={colCount} className="text-center py-8 text-muted-foreground">
-                  Žádné kontakty
-                </TableCell>
-              </TableRow>
-            ) : (
-              paginatedData.map((contact) => (
-                <TableRow
-                  key={contact.id}
-                  className={selectedIds.has(contact.id) ? 'bg-primary/5' : ''}
-                >
-                  <TableCell className="w-[40px]">
-                    <Checkbox
-                      checked={selectedIds.has(contact.id)}
-                      onCheckedChange={() => toggleSelect(contact.id)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="font-medium">{contact.name}</span>
-                      <span className="text-sm text-muted-foreground">{contact.email || '-'}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-mono text-sm">{contact.phone || '-'}</TableCell>
-                  <TableCell className="text-sm">{contact.company || '-'}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-col gap-0.5 text-sm">
-                      <span>{contact.invoiceIc || '-'}</span>
-                      {contact.invoiceDic && (
-                        <span className="text-muted-foreground">{contact.invoiceDic}</span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {contact.clientComeFrom || '-'}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => onEdit(contact)}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Detail / Upravit</TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => onNewReservation(contact)}
-                          >
-                            <Plus className="w-4 h-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Nová rezervace</TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive"
-                            onClick={() => onDelete(contact.id)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Smazat</TooltipContent>
-                      </Tooltip>
-                    </div>
+        <div className="rounded-md border">
+          <Table>
+            <ContactTableHeader
+              sortColumn={sortColumn}
+              sortDirection={sortDirection}
+              toggleSort={toggleSort}
+              pageAllSelected={pageAllSelected}
+              pageSomeSelected={pageSomeSelected}
+              onToggleSelectAll={toggleSelectAll}
+            />
+            <TableBody>
+              {paginatedData.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={COL_COUNT} className="text-center py-8 text-muted-foreground">
+                    Žádné kontakty
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Pagination footer */}
-      {totalItems > 0 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-2">
-          <div className="text-sm text-muted-foreground">
-            Zobrazeno {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalItems)} z {totalItems} kontaktů
-          </div>
-          <div className="flex items-center gap-1">
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setPage(1)} disabled={page === 1}>
-              <ChevronsLeft className="w-4 h-4" />
-            </Button>
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setPage(page - 1)} disabled={page === 1}>
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <div className="flex items-center gap-1 px-2">
-              <span className="text-sm">
-                Strana <strong>{page}</strong> z <strong>{totalPages || 1}</strong>
-              </span>
-            </div>
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setPage(page + 1)} disabled={page >= totalPages}>
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setPage(totalPages)} disabled={page >= totalPages}>
-              <ChevronsRight className="w-4 h-4" />
-            </Button>
-          </div>
+              ) : (
+                paginatedData.map((contact) => (
+                  <ContactTableRow
+                    key={contact.id}
+                    contact={contact}
+                    isSelected={selectedIds.has(contact.id)}
+                    onToggleSelect={toggleSelect}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    onNewReservation={onNewReservation}
+                  />
+                ))
+              )}
+            </TableBody>
+          </Table>
         </div>
-      )}
 
-      {/* Bulk action dialog */}
-      <ContactBulkActionDialog
-        open={bulkActionOpen}
-        onOpenChange={(o) => { if (!o) closeBulkAction(); }}
-        actionType={bulkActionType}
-        selectedCount={selectedIds.size}
-        bulkValue={bulkValue}
-        onBulkValueChange={setBulkValue}
-        onExecute={executeBulkAction}
-        onClose={closeBulkAction}
-        isPending={bulkDeleteMutation.isPending || bulkUpdateMutation.isPending}
-      />
+        <ContactTablePagination
+          page={page}
+          pageSize={pageSize}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          setPage={setPage}
+        />
 
-      {/* Bulk create partners dialog — same mapping jako /contacts/{id}/edit → "Vytvořit partnera" */}
-      <Dialog open={createPartnersOpen} onOpenChange={setCreatePartnersOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Vytvořit partnery z vybraných kontaktů</DialogTitle>
-            <DialogDescription>
-              Pro každý z {selectedIds.size} kontaktů vytvořím partnera s předvyplněnými údaji
-              (firma → název, jméno → kontaktní osoba, fakturační údaje 1:1). Kontakty
-              s duplicitním IČ nebo Pohoda kódem se přeskočí.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div>
-              <Label htmlFor="bulk-partner-type" className="text-xs">Kategorie partnera</Label>
-              <Select value={createPartnersType} onValueChange={setCreatePartnersType}>
-                <SelectTrigger id="bulk-partner-type" className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(partnerCategories ?? []).map((c) => (
-                    <SelectItem key={c.slug} value={c.slug}>{c.name}</SelectItem>
-                  ))}
-                  {(!partnerCategories || partnerCategories.length === 0) && (
-                    <SelectItem value="OTHER">Ostatní</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground mt-1">
-                Kategorie se použije u všech vytvořených partnerů. Můžeš ji u každého
-                upravit individuálně v /partners.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreatePartnersOpen(false)}>
-              Zrušit
-            </Button>
-            <Button
-              onClick={handleBulkCreatePartners}
-              disabled={bulkCreatePartnersMutation.isPending || selectedIds.size === 0}
-            >
-              Vytvořit {selectedIds.size} partnerů
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+        <ContactBulkActionDialog
+          open={bulk.bulkActionOpen}
+          onOpenChange={(o) => { if (!o) bulk.closeBulkAction(); }}
+          actionType={bulk.bulkActionType}
+          selectedCount={selectedIds.size}
+          bulkValue={bulk.bulkValue}
+          onBulkValueChange={bulk.setBulkValue}
+          onExecute={bulk.executeBulkAction}
+          onClose={bulk.closeBulkAction}
+          isPending={bulk.bulkDeleteMutation.isPending || bulk.bulkUpdateMutation.isPending}
+        />
+
+        <BulkCreatePartnersDialog
+          open={createPartnersOpen}
+          onOpenChange={setCreatePartnersOpen}
+          selectedCount={selectedIds.size}
+          isPending={bulk.bulkCreatePartnersMutation.isPending}
+          onConfirm={handleConfirmCreatePartners}
+        />
+      </div>
     </TooltipProvider>
   );
 }
