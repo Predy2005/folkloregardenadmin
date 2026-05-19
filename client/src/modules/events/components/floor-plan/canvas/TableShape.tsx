@@ -126,13 +126,15 @@ export const TableShape = forwardRef<TableShapeHandle, TableShapeProps>(function
   // (např. "Novák ×8"), což je čitelnější než `#708`. Manuálně přidaní hosté
   // (bez reservationId) jdou do bucketu "Ručně".
   //
-  // Konva `ellipsis` prop nefunguje spolehlivě s `wrap="none"` (drží text
-  // na jednom řádku ale neoře přesahy). Truncate řešíme v JS — odhad ~5.2 px
-  // na znak při fontSize 8, takže `maxChars = floor((width - padding) / 5.2)`.
-  // Suffix `×N` necháváme vždy viditelný; ořez jde do jména.
+  // Konva `ellipsis` prop nefunguje spolehlivě s `wrap="none"` a uppercase /
+  // číslice / lomítka jsou ~6.5 px široké při fontSize 8 (lowercase je ~5 px),
+  // takže odhady na základě průměru selhávaly u stringů jako "4-GTS 05ESEE1526/26QR".
+  // Truncate řešíme v JS s konzervativnějšími 6.5 px/znak; `×N` suffix necháváme
+  // viditelný (admin musí vědět počet hostů), ořez jde do jména. Plus `height`
+  // na <Text> níž jako safety net ať se případný overflow vizuálně ořeže.
   const truncateLabel = (name: string, suffix: string, availableWidth: number): string => {
     const suffixLen = suffix.length;
-    const maxTotal = Math.max(suffixLen + 1, Math.floor((availableWidth - 4) / 5.2));
+    const maxTotal = Math.max(suffixLen + 2, Math.floor((availableWidth - 4) / 6.5));
     if (name.length + suffixLen <= maxTotal) return `${name}${suffix}`;
     const nameMax = Math.max(1, maxTotal - suffixLen - 1);
     return `${name.slice(0, nameMax)}…${suffix}`;
@@ -313,11 +315,13 @@ export const TableShape = forwardRef<TableShapeHandle, TableShapeProps>(function
               x={4}
               y={(table.shape === "round" || table.shape === "oval") ? h / 2 + 18 + i * 10 : 14 + i * 10}
               width={w - 8}
+              height={9}
               text={group.label}
               fontSize={8}
               fill="#374151"
               align="left"
               wrap="none"
+              ellipsis
               listening={false}
             />
           ))}
@@ -328,11 +332,13 @@ export const TableShape = forwardRef<TableShapeHandle, TableShapeProps>(function
                 ? h / 2 + 18 + visibleGroups.length * 10
                 : 14 + visibleGroups.length * 10}
               width={w - 8}
+              height={9}
               text={`+${hiddenGroupsCount} dalších`}
               fontSize={8}
               fill="#9ca3af"
               align="left"
               wrap="none"
+              ellipsis
               listening={false}
             />
           )}
