@@ -27,10 +27,14 @@ export function useReservationSubmit(params: {
   const [submitResults, setSubmitResults] = useState<{ success: boolean; date: string; error?: string }[]>([]);
 
   const handleSubmitAll = async () => {
+    // Jméno povinné, e-mail volitelný (jen validace formátu pokud vyplněn),
+    // telefon volitelný. Chybějící oba kontaktní kanály jen varují (oranžová
+    // hláška v ContactSection), save se neblokuje — admin se rozhoduje sám.
     const contactErrors: string[] = [];
     if (!sharedContact.contactName?.trim()) contactErrors.push("Jméno kontaktu");
-    if (!sharedContact.contactEmail?.trim() || !sharedContact.contactEmail.includes("@")) contactErrors.push("Platný e-mail");
-    if (!sharedContact.contactPhone?.trim()) contactErrors.push("Telefon");
+    if (sharedContact.contactEmail?.trim() && !sharedContact.contactEmail.includes("@")) {
+      contactErrors.push("Platný formát e-mailu");
+    }
 
     if (contactErrors.length > 0) {
       errorToast(`Vyplňte: ${contactErrors.join(", ")}`);
@@ -109,8 +113,10 @@ export function useReservationSubmit(params: {
   const handleSubmitSingle = async (options?: { stayOnPage?: boolean }) => {
     const errors: string[] = [];
     if (!sharedContact.contactName?.trim()) errors.push("Jméno kontaktu");
-    if (!sharedContact.contactEmail?.trim() || !sharedContact.contactEmail.includes("@")) errors.push("Platný e-mail");
-    if (!sharedContact.contactPhone?.trim()) errors.push("Telefon");
+    if (sharedContact.contactEmail?.trim() && !sharedContact.contactEmail.includes("@")) {
+      errors.push("Platný formát e-mailu");
+    }
+    // Telefon i e-mail jsou volitelné — chybějící oba jen varují v UI.
 
     if (errors.length > 0) {
       errorToast(`Vyplňte: ${errors.join(", ")}`);

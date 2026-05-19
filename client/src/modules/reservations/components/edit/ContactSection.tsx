@@ -1,3 +1,4 @@
+import { AlertTriangle } from "lucide-react";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { NationalityInput } from "@/shared/components/NationalityInput";
@@ -101,11 +102,11 @@ export function ContactSection({
             }))
           }
           className="mt-1"
-          placeholder="(volitelné)"
+          placeholder="(volitelné, pokud máš telefon)"
         />
       </div>
       <div>
-        <Label>Telefon *</Label>
+        <Label>Telefon</Label>
         <Input
           value={sharedContact.contactPhone}
           onChange={(e) =>
@@ -115,8 +116,22 @@ export function ContactSection({
             }))
           }
           className="mt-1"
+          placeholder="(volitelné, pokud máš email)"
         />
       </div>
+      {/* Aspoň jeden kontaktní kanál — bez něj klienta nelze kontaktovat
+          (potvrzení rezervace, dodatečné info). Save se nezablokuje, ale
+          admin musí vědět, že chybí. */}
+      {!sharedContact.contactEmail?.trim() && !sharedContact.contactPhone?.trim() && (
+        <div className="md:col-span-2 flex items-start gap-2 rounded-md border border-orange-300 bg-orange-50 dark:bg-orange-950/30 dark:border-orange-800 px-3 py-2 text-sm text-orange-800 dark:text-orange-200">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>
+            Není vyplněn telefon ani e‑mail — doplň alespoň jeden, ať můžeš klienta
+            kontaktovat. Bez kontaktu lze rezervaci uložit, ale potvrzovací e‑maily
+            ani SMS neodejdou.
+          </span>
+        </div>
+      )}
       <div>
         <Label>Národnost *</Label>
         <NationalityInput
