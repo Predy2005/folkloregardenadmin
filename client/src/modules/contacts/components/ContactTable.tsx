@@ -7,7 +7,7 @@ import { Button } from '@/shared/components/ui/button';
 import { Checkbox } from '@/shared/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
-import { Edit, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Edit, Trash2, Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import type { Contact } from '@shared/types';
 import { usePagination } from '@/shared/hooks/usePagination';
 import { ContactFilters } from './ContactFilters';
@@ -62,6 +62,30 @@ export function ContactTable({
   const [createPartnersType, setCreatePartnersType] = useState<string>('OTHER');
   const { data: partnerCategories } = usePartnerCategories();
 
+  // Sorting — click na hlavičku přepíná `asc → desc → off (page-default order)`.
+  type SortColumn = 'name' | 'company' | 'invoiceIc' | 'invoiceDic';
+  const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const toggleSort = (col: SortColumn) => {
+    if (sortColumn !== col) {
+      setSortColumn(col);
+      setSortDirection('asc');
+    } else if (sortDirection === 'asc') {
+      setSortDirection('desc');
+    } else {
+      setSortColumn(null);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortIcon = (col: SortColumn) => {
+    if (sortColumn !== col) return <ArrowUpDown className="ml-1 h-3 w-3 opacity-40 inline-block" />;
+    return sortDirection === 'asc'
+      ? <ArrowUp className="ml-1 h-3 w-3 inline-block" />
+      : <ArrowDown className="ml-1 h-3 w-3 inline-block" />;
+  };
+
   // Extract unique clientComeFrom values
   const clientSources = useMemo(() => {
     const uniqueSources = new Set<string>();
@@ -97,8 +121,26 @@ export function ContactTable({
     });
   }, [contacts, searchTerm, companyFilter, invoiceFilter, clientComeFromFilter]);
 
+  // Sort filtered contacts. Český localeCompare pro háčky/čárky a numeric pro
+  // IČO/DIČ ať se "123" nesetřídí před "9".
+  const sortedContacts = useMemo(() => {
+    if (!sortColumn) return filtered;
+    const collator = new Intl.Collator('cs', { sensitivity: 'base', numeric: true });
+    const copy = [...filtered];
+    copy.sort((a, b) => {
+      const av = (a[sortColumn] ?? '') as string;
+      const bv = (b[sortColumn] ?? '') as string;
+      // Prázdné hodnoty padají na konec bez ohledu na směr.
+      if (!av && bv) return 1;
+      if (av && !bv) return -1;
+      const cmp = collator.compare(av, bv);
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+    return copy;
+  }, [filtered, sortColumn, sortDirection]);
+
   // Pagination
-  const { page, pageSize, setPage, setPageSize, paginatedData, totalPages, totalItems } = usePagination(filtered);
+  const { page, pageSize, setPage, setPageSize, paginatedData, totalPages, totalItems } = usePagination(sortedContacts);
 
   const hasActiveFilters = !!(companyFilter || invoiceFilter || clientComeFromFilter);
 
@@ -272,10 +314,34 @@ export function ContactTable({
                   onCheckedChange={toggleSelectAll}
                 />
               </TableHead>
-              <TableHead>Kontakt</TableHead>
+              <TableHead
+                onClick={() => toggleSort('name')}
+                className="cursor-pointer select-none hover:bg-muted/50"
+              >
+                Kontakt{sortIcon('name')}
+              </TableHead>
               <TableHead>Telefon</TableHead>
-              <TableHead>Firma</TableHead>
-              <TableHead>IČO / DIČ</TableHead>
+              <TableHead
+                onClick={() => toggleSort('company')}
+                className="cursor-pointer select-none hover:bg-muted/50"
+              >
+                Firma{sortIcon('company')}
+              </TableHead>
+              <TableHead
+                onClick={() => toggleSort('invoiceIc')}
+                className="cursor-pointer select-none hover:bg-muted/50"
+              >
+                <span onClick={(e) => { e.stopPropagation(); toggleSort('invoiceIc'); }}>IČO</span>
+                {sortIcon('invoiceIc')}
+                <span className="mx-1 text-muted-foreground">/</span>
+                <span
+                  onClick={(e) => { e.stopPropagation(); toggleSort('invoiceDic'); }}
+                  className="hover:underline"
+                >
+                  DIČ
+                </span>
+                {sortIcon('invoiceDic')}
+              </TableHead>
               <TableHead>Zdroj</TableHead>
               <TableHead className="text-right">Akce</TableHead>
             </TableRow>
