@@ -478,8 +478,16 @@ class ReservationController extends AbstractController
                 $person->setDrinkPrice(isset($personData['drinkPrice']) ? (string)$personData['drinkPrice'] : null);
                 $this->applyDrinkItemIds($person, $personData);
 
-                // Compute base price by type, ignore client provided price
-                $basePrice = SpecialDateRules::getBasePrice($type, $reservation->getDate());
+                // Adult / child mají server-pinned cenu (SpecialDateRules) ať FE
+                // nepošle libovolnou částku. Driver/guide v defaultu zdarma (0 z
+                // getBasePrice), ALE admin je může nastavit jako placené (placený
+                // řidič / průvodce s jídlem v rezervaci) — v takovém případě
+                // respektujeme klientem zaslanou cenu.
+                if (($type === 'driver' || $type === 'guide') && isset($personData['price'])) {
+                    $basePrice = max(0, (int) $personData['price']);
+                } else {
+                    $basePrice = SpecialDateRules::getBasePrice($type, $reservation->getDate());
+                }
                 $person->setPrice($basePrice);
                 $price += $basePrice;
 

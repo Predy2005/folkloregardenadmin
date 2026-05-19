@@ -160,8 +160,11 @@ export function useReservationPersons(params: {
       return;
     }
 
-    const isMenuDisabled = bulkType === "infant" || bulkType === "driver" || bulkType === "guide";
-    const menuValue = isMenuDisabled ? "Bez jídla" : bulkMenu || "";
+    // Jen kojenci automaticky dostanou "Bez jídla" — driver/guide mohou mít menu
+    // v rámci rezervace (placený řidič / průvodce s jídlem). Pokud bulkMenu
+    // není zvolené, padá na "Bez jídla" jako sensible default.
+    const isMenuDisabled = bulkType === "infant";
+    const menuValue = isMenuDisabled ? "Bez jídla" : bulkMenu || "Bez jídla";
 
     const selectedFood = findFoodByValue(menuValue);
     const surcharge = selectedFood?.surcharge ?? 0;

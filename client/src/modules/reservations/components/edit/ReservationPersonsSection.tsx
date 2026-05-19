@@ -242,11 +242,9 @@ export function ReservationPersonsSection({
             <Select
               value={bulkMenu}
               onValueChange={(v) => setBulkMenu(v)}
-              disabled={
-                bulkType === "infant" ||
-                bulkType === "driver" ||
-                bulkType === "guide"
-              }
+              // Jen kojenci (infant) nemají jídlo. Driver/guide můžou být
+              // placení nebo mít menu v rezervaci.
+              disabled={bulkType === "infant"}
             >
               <SelectTrigger className="mt-1">
                 <SelectValue placeholder="Vyberte menu" />
@@ -289,7 +287,8 @@ export function ReservationPersonsSection({
                 )
               }
               className="mt-1"
-              disabled={bulkType === "driver" || bulkType === "guide"}
+              // Cena u driver/guide editovatelná — placený řidič / průvodce
+              // s jídlem v rezervaci je legit use case.
             />
           </div>
           <div className="md:col-span-1">
@@ -586,11 +585,9 @@ export function ReservationPersonsSection({
                   onValueChange={(v) =>
                     handleMenuChange(activeTabIndex, pIndex, v)
                   }
-                  disabled={
-                    person.type === "infant" ||
-                    person.type === "driver" ||
-                    person.type === "guide"
-                  }
+                  // Pouze kojenci (infant) jí nemají — driver/guide můžou být placení
+                  // nebo mít jídlo v ceně rezervace, takže menu volitelné.
+                  disabled={person.type === "infant"}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Vyberte menu" />
@@ -631,10 +628,8 @@ export function ReservationPersonsSection({
                       price: Number(e.target.value),
                     })
                   }
-                  disabled={
-                    person.type === "driver" ||
-                    person.type === "guide"
-                  }
+                  // Cena editovatelná i pro driver/guide — někdy jsou placení
+                  // nebo mají jídlo/pití v rezervaci (default zůstává 0 z handleTypeChange).
                 />
               </div>
               <div className="">
