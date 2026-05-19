@@ -10,6 +10,7 @@ import {
   QuickActionsBar,
   StockRequirementsCard,
   DashboardFloorPlan,
+  FoodsCard,
 } from "../components/dashboard";
 import {
   DashboardLayoutProvider,
@@ -24,6 +25,7 @@ import {
   Bus,
   Package,
   LayoutGrid,
+  Utensils,
 } from "lucide-react";
 import { Badge } from "@/shared/components/ui/badge";
 import { InfoTooltip } from "@/shared/components/ui/info-tooltip";
@@ -158,6 +160,12 @@ export default function EventDashboardPage() {
       title: "Sklad",
       icon: <Package className="h-4 w-4" />,
       render: () => <StockRequirementsCard eventId={eventId} />,
+    },
+    {
+      id: "foods",
+      title: "Jídla",
+      icon: <Utensils className="h-4 w-4" />,
+      render: () => <FoodsCard eventId={eventId} />,
     },
     {
       id: "expenses",

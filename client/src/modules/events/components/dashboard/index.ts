@@ -6,6 +6,7 @@ export { TransportCard } from "./TransportCard";
 export { VoucherCard } from "./VoucherCard";
 export { QuickActionsBar } from "./QuickActionsBar";
 export { StockRequirementsCard } from "./StockRequirementsCard";
+export { FoodsCard } from "./FoodsCard";
 
 // NEW: Unified Guest Command Center (combines stats + check-in + spaces)
 export { GuestCommandCenter } from "./guest-command";
